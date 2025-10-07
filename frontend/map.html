@@ -1,0 +1,143 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreetHeat - CivicFix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="container">
+        <a href="/" class="nav-logo">
+          <span class="logo-icon">🏙️</span>
+          <span class="logo-text">CivicFix</span>
+        </a>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <ul class="nav-menu" id="nav-menu">
+          <li><a href="/feed.html" class="nav-link">📰 StreetFeed</a></li>
+          <li><a href="/map.html" class="nav-link active">🗺️ StreetHeat</a></li>
+          <li><a href="/upload.html" class="nav-link">📸 Upload</a></li>
+          <li><a href="/leaderboard.html" class="nav-link">🏆 Leaderboard</a></li>
+          <li><a href="/profile.html" class="nav-link">👤 Profile</a></li>
+        </ul>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+          <span class="theme-icon">☀️</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- StreetHeat Section -->
+    <section class="page-content street-heat">
+      <div class="container-fluid">
+        <h1 class="page-title">🗺️ StreetHeat</h1>
+        <p class="page-subtitle">Real-time Issue Density Map with Elasticsearch Integration</p>
+
+        <div class="map-layout">
+          <aside class="map-sidebar left">
+            <h3>Filters</h3>
+
+            <div class="filter-group">
+              <label>📊 Status</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" name="status-filter" value="open"> Open</label>
+                <label><input type="checkbox" name="status-filter" value="verified"> Verified</label>
+                <label><input type="checkbox" name="status-filter" value="closed"> Closed</label>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <label>🔖 Issue Type</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" name="type-filter" value="pothole"> Pothole</label>
+                <label><input type="checkbox" name="type-filter" value="garbage"> Garbage</label>
+                <label><input type="checkbox" name="type-filter" value="streetlight"> Streetlight</label>
+                <label><input type="checkbox" name="type-filter" value="drain"> Drain</label>
+                <label><input type="checkbox" name="type-filter" value="construction"> Construction</label>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <label>📡 Source</label>
+              <div class="checkbox-group">
+                <label><input type="checkbox" name="source-filter" value="citizen"> Citizen</label>
+                <label><input type="checkbox" name="source-filter" value="ngo"> NGO</label>
+                <label><input type="checkbox" name="source-filter" value="anonymous"> Anonymous</label>
+              </div>
+            </div>
+
+            <div class="filter-group">
+              <label>📅 Date From</label>
+              <input type="date" id="date-from" class="form-input">
+            </div>
+
+            <div class="filter-group">
+              <label>📅 Date To</label>
+              <input type="date" id="date-to" class="form-input">
+            </div>
+
+            <div class="filter-actions">
+              <button id="apply-filters" class="filter-btn primary">Apply Filters</button>
+              <button id="reset-filters" class="filter-btn secondary">Reset</button>
+            </div>
+          </aside>
+
+          <div class="map-container-main">
+            <div id="map" class="map-view"></div>
+          </div>
+
+          <aside class="map-sidebar right">
+            <h3>Legend &amp; Stats</h3>
+            <div class="stats-panel">
+              <div class="density-legend">
+                <h4>Issue Types</h4>
+                <div class="legend-grid">
+                  <div class="legend-item"><span class="legend-color" style="background: #FF6B6B;"></span> Pothole</div>
+                  <div class="legend-item"><span class="legend-color" style="background: #FFD93D;"></span> Streetlight</div>
+                  <div class="legend-item"><span class="legend-color" style="background: #6FCF97;"></span> Garbage</div>
+                  <div class="legend-item"><span class="legend-color" style="background: #A8E6CF;"></span> Drain</div>
+                  <div class="legend-item"><span class="legend-color" style="background: #9CA3AF;"></span> Construction</div>
+                </div>
+              </div>
+              <div class="map-info">
+                <h4>About Clustering</h4>
+                <p class="info-text"><strong>Zoom &lt; 12:</strong> Issues are grouped into clusters showing aggregate counts.</p>
+                <p class="info-text"><strong>Zoom ≥ 12:</strong> Individual issue pins are displayed with full details.</p>
+              </div>
+              <div class="map-info">
+                <h4>Interaction</h4>
+                <ul class="info-list">
+                  <li>Click clusters to see breakdown</li>
+                  <li>Click pins for issue details</li>
+                  <li>Zoom in/out to toggle views</li>
+                </ul>
+              </div>
+            </div>
+          </aside>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-bottom">
+          <p>&copy; CivicFix. Powered by Elasticsearch & MapLibre GL JS</p>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/pages/map.js"></script>
+  </body>
+</html>

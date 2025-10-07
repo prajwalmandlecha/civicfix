@@ -1,0 +1,133 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Profile - CivicFix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="container">
+        <a href="/" class="nav-logo">
+          <span class="logo-icon">🏙️</span>
+          <span class="logo-text">CivicFix</span>
+        </a>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <ul class="nav-menu" id="nav-menu">
+          <li><a href="/feed.html" class="nav-link">📰 StreetFeed</a></li>
+          <li><a href="/map.html" class="nav-link">🗺️ StreetHeat</a></li>
+          <li><a href="/upload.html" class="nav-link">📸 Upload</a></li>
+          <li><a href="/leaderboard.html" class="nav-link">🏆 Leaderboard</a></li>
+          <li><a href="/profile.html" class="nav-link active">👤 Profile</a></li>
+        </ul>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+          <span class="theme-icon">☀️</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Profile Section -->
+    <section class="page-content street-you">
+      <div class="container">
+        <h1 class="page-title">👤 Your Profile</h1>
+        <p class="page-subtitle">Your Impact Dashboard</p>
+
+        <div class="profile-layout">
+          <div class="profile-card">
+            <div class="profile-avatar">
+              <div class="avatar-hash">#user456</div>
+            </div>
+            <div class="profile-stats">
+              <div class="profile-stat">
+                <span class="stat-value">342</span>
+                <span class="stat-name">kg CO₂ Saved</span>
+              </div>
+              <div class="profile-stat">
+                <span class="stat-value">#47</span>
+                <span class="stat-name">Current Rank</span>
+              </div>
+            </div>
+            <div class="badge-grid">
+              <span class="badge" title="First Report">🌟</span>
+              <span class="badge" title="10 Reports">⭐</span>
+              <span class="badge" title="Fixed 5 Issues">🔧</span>
+              <span class="badge" title="Week Streak">🔥</span>
+            </div>
+            <div class="profile-controls">
+              <label class="profile-toggle">
+                <input type="checkbox" id="profile-anonymous">
+                <span>🎭 Anonymous Mode</span>
+              </label>
+              <button class="logout-btn">🚪 Logout</button>
+            </div>
+          </div>
+
+          <div class="profile-chart">
+            <h3>Your Activity</h3>
+            <div class="chart-container">
+              <svg viewBox="0 0 400 200" class="activity-chart">
+                <text x="10" y="20" class="chart-label">Issues Uploaded</text>
+                <rect x="50" y="50" width="100" height="80" fill="#6FCF97" rx="4"/>
+                <text x="100" y="150" class="chart-value">24</text>
+
+                <text x="210" y="20" class="chart-label">Issues Resolved</text>
+                <rect x="250" y="80" width="100" height="50" fill="#FFD93D" rx="4"/>
+                <text x="300" y="150" class="chart-value">15</text>
+              </svg>
+            </div>
+
+            <div class="recent-activity">
+              <h3>Recent Activity</h3>
+              <div class="activity-list">
+                <div class="activity-item">
+                  <span class="activity-icon">📸</span>
+                  <div class="activity-info">
+                    <div class="activity-title">Reported pothole on Main St</div>
+                    <div class="activity-date">2 days ago</div>
+                  </div>
+                  <span class="activity-karma">+10</span>
+                </div>
+                <div class="activity-item">
+                  <span class="activity-icon">✅</span>
+                  <div class="activity-info">
+                    <div class="activity-title">Issue marked as resolved</div>
+                    <div class="activity-date">3 days ago</div>
+                  </div>
+                  <span class="activity-karma">+15</span>
+                </div>
+                <div class="activity-item">
+                  <span class="activity-icon">❤️</span>
+                  <div class="activity-info">
+                    <div class="activity-title">Upvoted streetlight issue</div>
+                    <div class="activity-date">5 days ago</div>
+                  </div>
+                  <span class="activity-karma">+2</span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-bottom">
+          <p>&copy; 2025 CivicFix. Built with ❤️ for better cities.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/pages/profile.js"></script>
+  </body>
+</html>

@@ -1,0 +1,16 @@
+{
+  "name": "civicfix-map-server",
+  "version": "1.0.0",
+  "type": "module",
+  "description": "Backend server for CivicFix map integration with Elasticsearch",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "dev": "node --watch index.js"
+  },
+  "dependencies": {
+    "@elastic/elasticsearch": "^8.15.0",
+    "cors": "^2.8.5",
+    "express": "^4.21.1"
+  }
+}

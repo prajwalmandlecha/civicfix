@@ -1,0 +1,173 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>CivicFix – See it. Share it. Fix it. Rise it.</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="container">
+        <a href="/" class="nav-logo">
+          <span class="logo-icon">🏙️</span>
+          <span class="logo-text">CivicFix</span>
+        </a>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <ul class="nav-menu" id="nav-menu">
+          <li><a href="/feed.html" class="nav-link">📰 StreetFeed</a></li>
+          <li><a href="/map.html" class="nav-link">🗺️ StreetHeat</a></li>
+          <li><a href="/upload.html" class="nav-link">📸 Upload</a></li>
+          <li><a href="/leaderboard.html" class="nav-link">🏆 Leaderboard</a></li>
+          <li><a href="/profile.html" class="nav-link">👤 Profile</a></li>
+        </ul>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+          <span class="theme-icon">☀️</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Hero Section -->
+    <section class="hero">
+      <div class="container">
+        <h1 class="hero-title">CivicFix</h1>
+        <p class="hero-tagline">See it. Share it. Fix it. Rise it.</p>
+        <p class="hero-subtitle">Community-powered urban improvement, one issue at a time</p>
+        <div class="hero-cta-group">
+          <a href="/feed.html" class="cta-button primary">📰 Browse Issues</a>
+          <a href="/upload.html" class="cta-button secondary">📸 Report Issue</a>
+        </div>
+
+        <div class="hero-stats">
+          <div class="stat-card">
+            <div class="stat-emoji">🔥</div>
+            <div class="stat-number" data-count="247">0</div>
+            <div class="stat-label">Issues Today</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-emoji">🌱</div>
+            <div class="stat-number" data-count="8542">0</div>
+            <div class="stat-label">kg CO₂ Saved</div>
+          </div>
+          <div class="stat-card">
+            <div class="stat-emoji">🏆</div>
+            <div class="stat-number" data-count="12">0</div>
+            <div class="stat-label">National Rank</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Features Section -->
+    <section class="features-section">
+      <div class="container">
+        <h2 class="section-title">How CivicFix Works</h2>
+        <p class="section-subtitle">Four simple steps to make your city better</p>
+
+        <div class="features-grid">
+          <div class="feature-card">
+            <div class="feature-icon">👁️</div>
+            <h3 class="feature-title">See It</h3>
+            <p class="feature-description">Spot an issue in your neighborhood? From potholes to broken streetlights, every problem matters.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">📸</div>
+            <h3 class="feature-title">Share It</h3>
+            <p class="feature-description">Take a photo, add a voice note, and upload. Our AI helps categorize the issue automatically.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🔧</div>
+            <h3 class="feature-title">Fix It</h3>
+            <p class="feature-description">City officials and NGOs get notified. Track progress and see your issue get resolved.</p>
+          </div>
+          <div class="feature-card">
+            <div class="feature-icon">🌟</div>
+            <h3 class="feature-title">Rise It</h3>
+            <p class="feature-description">Earn karma points, climb the leaderboard, and see your CO₂ impact on the community.</p>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Impact Section -->
+    <section class="impact-section">
+      <div class="container">
+        <h2 class="section-title">Our Community Impact</h2>
+        <div class="impact-grid">
+          <div class="impact-stat">
+            <div class="impact-number">12,847</div>
+            <div class="impact-label">Issues Reported</div>
+          </div>
+          <div class="impact-stat">
+            <div class="impact-number">8,542</div>
+            <div class="impact-label">Issues Resolved</div>
+          </div>
+          <div class="impact-stat">
+            <div class="impact-number">342 tons</div>
+            <div class="impact-label">CO₂ Saved</div>
+          </div>
+          <div class="impact-stat">
+            <div class="impact-number">5,432</div>
+            <div class="impact-label">Active Citizens</div>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-content">
+          <div class="footer-section">
+            <h3>Download CivicFix</h3>
+            <div class="app-badges">
+              <a href="#" class="app-badge">
+                <span class="badge-icon">🍎</span>
+                <div>
+                  <div class="badge-small">Download on the</div>
+                  <div class="badge-large">App Store</div>
+                </div>
+              </a>
+              <a href="#" class="app-badge">
+                <span class="badge-icon">🤖</span>
+                <div>
+                  <div class="badge-small">GET IT ON</div>
+                  <div class="badge-large">Google Play</div>
+                </div>
+              </a>
+            </div>
+          </div>
+
+          <div class="footer-section">
+            <h3>Open Source</h3>
+            <a href="https://github.com/civicfix/app" class="footer-link">
+              💻 GitHub Repository
+            </a>
+            <p class="footer-text">MIT License • Free Forever</p>
+          </div>
+
+          <div class="footer-section">
+            <h3>Our Promise</h3>
+            <p class="footer-guarantee">💰 <strong>No-money guarantee</strong></p>
+            <p class="footer-text">CivicFix is and always will be free, funded by the community, for the community.</p>
+            <a href="#" class="footer-link">📊 Carbon Methodology PDF</a>
+          </div>
+        </div>
+
+        <div class="footer-bottom">
+          <p>&copy; 2025 CivicFix. Built with ❤️ for better cities.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/main.js"></script>
+  </body>
+</html>

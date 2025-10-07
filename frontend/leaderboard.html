@@ -1,0 +1,119 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Leaderboard - CivicFix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="container">
+        <a href="/" class="nav-logo">
+          <span class="logo-icon">🏙️</span>
+          <span class="logo-text">CivicFix</span>
+        </a>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <ul class="nav-menu" id="nav-menu">
+          <li><a href="/feed.html" class="nav-link">📰 StreetFeed</a></li>
+          <li><a href="/map.html" class="nav-link">🗺️ StreetHeat</a></li>
+          <li><a href="/upload.html" class="nav-link">📸 Upload</a></li>
+          <li><a href="/leaderboard.html" class="nav-link active">🏆 Leaderboard</a></li>
+          <li><a href="/profile.html" class="nav-link">👤 Profile</a></li>
+        </ul>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+          <span class="theme-icon">☀️</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Leaderboard Section -->
+    <section class="page-content street-rise">
+      <div class="container">
+        <h1 class="page-title">🏆 Leaderboard</h1>
+        <p class="page-subtitle">Community Champions</p>
+
+        <div class="leaderboard-tabs">
+          <button class="tab-btn active" data-tab="citizen">👤 Citizen Karma</button>
+          <button class="tab-btn" data-tab="ngo">🏢 NGO Karma</button>
+        </div>
+
+        <div class="leaderboard-content">
+          <div class="tab-panel active" id="citizen-panel">
+            <div class="podium">
+              <div class="podium-item rank-2">
+                <div class="podium-avatar">🥈</div>
+                <div class="podium-name">#abc123</div>
+                <div class="podium-co2">1,245 kg</div>
+                <div class="podium-stand">2</div>
+              </div>
+              <div class="podium-item rank-1">
+                <div class="podium-avatar">🥇</div>
+                <div class="podium-name">#xyz789</div>
+                <div class="podium-co2">2,847 kg</div>
+                <div class="podium-stand">1</div>
+              </div>
+              <div class="podium-item rank-3">
+                <div class="podium-avatar">🥉</div>
+                <div class="podium-name">#def456</div>
+                <div class="podium-co2">987 kg</div>
+                <div class="podium-stand">3</div>
+              </div>
+            </div>
+
+            <div class="leaderboard-list" id="citizen-list"></div>
+          </div>
+
+          <div class="tab-panel" id="ngo-panel">
+            <div class="podium">
+              <div class="podium-item rank-2">
+                <div class="podium-avatar">🥈</div>
+                <div class="podium-name">GreenCity NGO</div>
+                <div class="podium-co2">15,432 kg</div>
+                <div class="podium-stand">2</div>
+              </div>
+              <div class="podium-item rank-1">
+                <div class="podium-avatar">🥇</div>
+                <div class="podium-name">CleanStreets Org</div>
+                <div class="podium-co2">28,965 kg</div>
+                <div class="podium-stand">1</div>
+              </div>
+              <div class="podium-item rank-3">
+                <div class="podium-avatar">🥉</div>
+                <div class="podium-name">FixItNow Foundation</div>
+                <div class="podium-co2">12,789 kg</div>
+                <div class="podium-stand">3</div>
+              </div>
+            </div>
+
+            <div class="leaderboard-list" id="ngo-list"></div>
+          </div>
+        </div>
+
+        <div class="download-sticky">
+          <p>Want to climb the ranks?</p>
+          <button class="download-app-btn">📱 Download App</button>
+        </div>
+      </div>
+    </section>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-bottom">
+          <p>&copy; 2025 CivicFix. Built with ❤️ for better cities.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/pages/leaderboard.js"></script>
+  </body>
+</html>

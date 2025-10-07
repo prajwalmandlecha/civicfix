@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Upload Issue - CivicFix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="container">
+        <a href="/" class="nav-logo">
+          <span class="logo-icon">🏙️</span>
+          <span class="logo-text">CivicFix</span>
+        </a>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <ul class="nav-menu" id="nav-menu">
+          <li><a href="/feed.html" class="nav-link">📰 StreetFeed</a></li>
+          <li><a href="/map.html" class="nav-link">🗺️ StreetHeat</a></li>
+          <li><a href="/upload.html" class="nav-link active">📸 Upload</a></li>
+          <li><a href="/leaderboard.html" class="nav-link">🏆 Leaderboard</a></li>
+          <li><a href="/profile.html" class="nav-link">👤 Profile</a></li>
+        </ul>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+          <span class="theme-icon">☀️</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- Upload Section -->
+    <section class="page-content street-snap">
+      <div class="container">
+        <h1 class="page-title">📸 Report an Issue</h1>
+        <p class="page-subtitle">Help improve your neighborhood by reporting issues</p>
+
+        <div class="upload-card">
+          <div class="upload-area" id="upload-area">
+            <input type="file" id="file-input" accept="image/*,video/*" multiple hidden>
+            <div class="upload-placeholder">
+              <div class="upload-icon">📤</div>
+              <p class="upload-text">Drag & drop photos or videos</p>
+              <p class="upload-subtext">or click to browse</p>
+            </div>
+            <div class="preview-container" id="preview-container"></div>
+          </div>
+
+          <div class="upload-controls">
+            <div class="form-group">
+              <label class="form-label">📝 Description</label>
+              <textarea
+                id="description-input"
+                class="form-textarea"
+                placeholder="Describe the issue in detail..."
+                rows="4"
+              ></textarea>
+            </div>
+
+            <div class="form-group">
+              <label class="form-label">📍 Location</label>
+              <input
+                type="text"
+                id="location-input"
+                class="form-input"
+                placeholder="e.g., Main St & 5th Ave"
+              >
+            </div>
+
+            <button class="voice-btn" id="voice-btn">
+              🎤 Record Voice Note
+            </button>
+
+            <div class="anonymous-toggle">
+              <label>
+                <input type="checkbox" id="anonymous-toggle">
+                <span class="toggle-slider"></span>
+                <span class="toggle-label">🎭 Anonymous (skip karma)</span>
+              </label>
+            </div>
+
+            <div class="issue-types" id="issue-types">
+              <p class="types-label">🤖 AI-Detected Issue Types:</p>
+              <div class="type-chips">
+                <span class="type-chip">🕳️ Pothole</span>
+              </div>
+            </div>
+
+            <button class="submit-btn" id="submit-btn" disabled>
+              Submit Issue
+            </button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-bottom">
+          <p>&copy; 2025 CivicFix. Built with ❤️ for better cities.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/pages/upload.js"></script>
+  </body>
+</html>

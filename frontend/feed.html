@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>StreetFeed - CivicFix</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  </head>
+  <body>
+    <!-- Navigation -->
+    <nav class="navbar">
+      <div class="container">
+        <a href="/" class="nav-logo">
+          <span class="logo-icon">🏙️</span>
+          <span class="logo-text">CivicFix</span>
+        </a>
+        <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+          <span></span>
+          <span></span>
+          <span></span>
+        </button>
+        <ul class="nav-menu" id="nav-menu">
+          <li><a href="/feed.html" class="nav-link active">📰 StreetFeed</a></li>
+          <li><a href="/map.html" class="nav-link">🗺️ StreetHeat</a></li>
+          <li><a href="/upload.html" class="nav-link">📸 Upload</a></li>
+          <li><a href="/leaderboard.html" class="nav-link">🏆 Leaderboard</a></li>
+          <li><a href="/profile.html" class="nav-link">👤 Profile</a></li>
+        </ul>
+        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+          <span class="theme-icon">☀️</span>
+        </button>
+      </div>
+    </nav>
+
+    <!-- StreetFeed Section -->
+    <section class="page-content street-feed">
+      <div class="container">
+        <h1 class="page-title">📰 StreetFeed</h1>
+        <p class="page-subtitle">Trending Issues in Your Community</p>
+
+        <div class="filter-pills">
+          <button class="filter-pill active" data-filter="all">All Issues</button>
+          <button class="filter-pill" data-filter="open">Open</button>
+          <button class="filter-pill" data-filter="verified">Verified</button>
+          <button class="filter-pill" data-filter="closed">Closed</button>
+        </div>
+
+        <div class="issues-grid" id="issues-grid"></div>
+      </div>
+    </section>
+
+    <!-- Issue Detail Modal -->
+    <div id="issue-modal" class="modal">
+      <div class="modal-content">
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Toast Notification -->
+    <div id="toast" class="toast"></div>
+
+    <!-- Footer -->
+    <footer class="footer">
+      <div class="container">
+        <div class="footer-bottom">
+          <p>&copy; 2025 CivicFix. Built with ❤️ for better cities.</p>
+        </div>
+      </div>
+    </footer>
+
+    <script type="module" src="/pages/feed.js"></script>
+  </body>
+</html>
