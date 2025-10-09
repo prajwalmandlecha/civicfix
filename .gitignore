@@ -1,5 +1,5 @@
 # Ignore environment variables
-.env
+*.env
 
 # Ignore all files in the secrets folder
 secrets/
