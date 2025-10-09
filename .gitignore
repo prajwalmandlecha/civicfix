@@ -1,0 +1,9 @@
+# Ignore environment variables
+.env
+
+# Ignore all files in the secrets folder
+secrets/
+
+# Ignore Python cache files and folders
+__pycache__/
+*.pyc
