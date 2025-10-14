@@ -7,3 +7,9 @@ secrets/
 # Ignore Python cache files and folders
 __pycache__/
 *.pyc
+
+# Ignore virtual environment folders
+venv*/
+.venv*/
+*/venv/
+*/.venv/
