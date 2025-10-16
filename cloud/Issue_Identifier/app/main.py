@@ -60,9 +60,14 @@ def analyze(report: ReportIn):
 
         issues_parsed = []
         for item in parsed:
+            # Ensure all required fields are present, fill with defaults if missing
             if isinstance(item, dict):
+                # Backward compatibility: fill missing fields with None or 0
+                item.setdefault("predicted_CO2_emissions", 0.0)
+                item.setdefault("predicted_fix", "")
                 issue_obj = Issue(**item)
             else:
+                # If not dict, parse as before
                 issue_obj = Issue.parse_obj(item)
             issues_parsed.append(issue_obj)
 

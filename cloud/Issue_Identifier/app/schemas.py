@@ -16,6 +16,8 @@ class Issue(BaseModel):
     confidence: float = Field(..., ge=0.0, le=1.0)
     severity: Literal["low", "medium", "high"]
     predicted_impact: str
+    predicted_CO2_emissions: float
+    predicted_fix: str
 
 class AnalyzeOut(BaseModel):
     issues: list[Issue]
