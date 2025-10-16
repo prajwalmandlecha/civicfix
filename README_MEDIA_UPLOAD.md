@@ -1,6 +1,6 @@
-# CivicFix Image Upload Guide
+# CivicFix Media Upload Guide
 
-This guide will help you set up a Python virtual environment, install dependencies, configure environment variables, run the FastAPI image upload server, and test the image upload endpoint from both PowerShell and WSL.
+This guide will help you set up a Python virtual environment, install dependencies, configure environment variables, run the FastAPI media upload server, and test the media upload endpoint from both PowerShell and WSL.
 
 ---
 
@@ -41,25 +41,25 @@ GOOGLE_APPLICATION_CREDENTIALS=secrets/your-service-account.json
 
 ---
 
-## 4. Run the FastAPI Image Upload Server
+## 4. Run the FastAPI Media Upload Server
 
 ### Windows (PowerShell):
 ```powershell
-uvicorn image_upload:app --reload --host 0.0.0.0 --port 8080
+uvicorn media_upload:app --reload --host 0.0.0.0 --port 8080
 ```
 
 ### WSL/Linux:
 ```bash
-uvicorn image_upload:app --reload --host 0.0.0.0 --port 8080
+uvicorn media_upload:app --reload --host 0.0.0.0 --port 8080
 ```
 
 ---
 
-## 5. Test the Image Upload Endpoint
+## 5. Test the Media Upload Endpoint
 
 ### PowerShell (use full path to curl.exe):
 ```powershell
-& "C:\Windows\System32\curl.exe" -X POST "http://127.0.0.1:8080/upload" -F "file=@your_image.png"
+& "C:\Windows\System32\curl.exe" -X POST "http://127.0.0.1:8080/upload" -F "file=@your_media.png"
 ```
 
 ### WSL (find your Windows host IP):
@@ -69,14 +69,14 @@ First, get your Windows host IP:
 ```
 Suppose it returns `192.168.160.1`, then run:
 ```bash
-curl -X POST "http://192.168.160.1:8080/upload" -F "file=@your_image.png"
+curl -X POST "http://192.168.160.1:8080/upload" -F "file=@your_media.png"
 ```
 
 ---
 
 ## 6. Notes
 - Make sure your GCS bucket exists and your credentials are valid.
-- The uploaded image's public URL will be returned in the response JSON.
+- The uploaded media's public URL will be returned in the response JSON.
 - For troubleshooting, check the FastAPI server logs for errors.
 
 ---

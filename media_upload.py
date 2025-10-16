@@ -46,3 +46,23 @@ async def upload_image(file: UploadFile = File(...)):
     public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{object_name}"
     
     return JSONResponse({"object_name": object_name, "public_url": public_url})
+
+@app.post("/upload_video")
+async def upload_video(file: UploadFile = File(...)):
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    # Optional: restrict to video files
+    if not (file.content_type or "").startswith("video/"):
+        raise HTTPException(status_code=400, detail="Only video files are allowed")
+    ext = ""
+    if "." in (file.filename or ""):
+        ext = "." + file.filename.rsplit(".", 1)[1]
+    object_name = f"fix-videos/{uuid.uuid4().hex}{ext}"
+    data = await file.read()
+    if not data:
+        raise HTTPException(status_code=400, detail="File is empty")
+    bucket = storage_client.bucket(BUCKET_NAME)
+    blob = bucket.blob(object_name)
+    blob.upload_from_string(data, content_type=file.content_type)
+    public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{object_name}"
+    return JSONResponse({"object_name": object_name, "public_url": public_url})
