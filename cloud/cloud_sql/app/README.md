@@ -46,19 +46,19 @@ This will forward your local port 5432 to the Cloud SQL instance.
 
 #### Windows (PowerShell)
 ```powershell
-psql -h 127.0.0.1 -p 5432 -U <db_user> -d <db_name>
+psql -h 127.0.0.1 -p 5433 -U <db_user> -d <db_name>
 ```
 
 #### WSL/Linux & Mac
 ```bash
-psql -h 127.0.0.1 -p 5432 -U <db_user> -d <db_name>
+psql -h 127.0.0.1 -p 5433 -U <db_user> -d <db_name>
 ```
 
 You will be prompted for your database password. Replace `<db_user>` and `<db_name>` with your actual credentials.
 
 ### Running the API
 ```bash
-uvicorn cloud.cloud_sql.app.main:app --reload
+uvicorn cloud.cloud_sql.app.main:app --reload   # If running from project root else use appropriate path
 ```
 
 The API will be available at `http://127.0.0.1:8000`

@@ -2,3 +2,4 @@ fastapi[all]
 asyncpg
 sqlalchemy[asyncio]
 python-dotenv
+uvicorn[standard]
