@@ -1,8 +1,9 @@
 import React, { useState } from "react";
-import { View, Text, StyleSheet, FlatList } from "react-native";
+import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
 import SocialPost from "../components/SocialPost";
 
 const HomeScreen = () => {
+  const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState([
     {
       id: 1,
@@ -67,6 +68,13 @@ const HomeScreen = () => {
     console.log(`Same issue elsewhere for post ${postId}`);
   };
 
+  const onRefresh = React.useCallback(() => {
+    setRefreshing(true);
+    setTimeout(() => {
+      setRefreshing(false);
+    }, 1500);
+  }, []);
+
   return (
     <View style={styles.container}>
       <FlatList
@@ -89,6 +97,14 @@ const HomeScreen = () => {
         keyExtractor={(item) => item.id.toString()}
         showsVerticalScrollIndicator={false}
         contentContainerStyle={styles.listContent}
+        refreshControl={
+          <RefreshControl
+            refreshing={refreshing}
+            onRefresh={onRefresh}
+            tintColor="#4285f4"
+            colors={["#4285f4"]}
+          />
+        }
       />
     </View>
   );
@@ -97,11 +113,11 @@ const HomeScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
+    backgroundColor: "#f8f9fa",
   },
   listContent: {
-    padding: 15,
-    paddingBottom: 100, // Account for bottom tab bar (70px) + extra spacing
+    padding: 16,
+    paddingBottom: 100, // Account for bottom tab bar + extra spacing
   },
 });
 

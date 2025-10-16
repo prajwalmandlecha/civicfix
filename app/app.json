@@ -24,6 +24,21 @@
     },
     "web": {
       "favicon": "./assets/favicon.png"
-    }
+    },
+    "plugins": [
+      [
+        "expo-image-picker",
+        {
+          "photosPermission": "Allow $(PRODUCT_NAME) to access your photos to report a civic issue.",
+          "cameraPermission": "Allow $(PRODUCT_NAME) to use your camera to report a civic issue."
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to tag the issue."
+        }
+      ]
+    ]
   }
 }

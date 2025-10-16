@@ -1,17 +1,17 @@
-import React, { useEffect } from "react";
+import { useEffect } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { StatusBar } from "expo-status-bar";
-import { View, Platform } from "react-native";
-import Constants from "expo-constants";
+import { SafeAreaProvider } from "react-native-safe-area-context";
 import HomeScreen from "./screens/HomeScreen";
 import LocationScreen from "./screens/LocationScreen";
 import AnalyticsScreen from "./screens/AnalyticsScreen";
 import CommunityScreen from "./screens/CommunityScreen";
-import ScanScreen from "./screens/ScanScreen";
+import IssueUploadScreen from "./screens/IssueUploadScreen";
 import CustomTabBar from "./components/CustomTabBar";
 import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { auth } from "./services/firebase";
+import { ActionSheetProvider } from "@expo/react-native-action-sheet";
 
 const Tab = createBottomTabNavigator();
 
@@ -19,14 +19,56 @@ const TabNav = () => (
   <Tab.Navigator
     tabBar={(props) => <CustomTabBar {...props} />}
     screenOptions={{
-      // headerShown: false,
+      headerStyle: {
+        backgroundColor: "#ffffff",
+        elevation: 0,
+        shadowOpacity: 0,
+        borderBottomWidth: 1,
+        borderBottomColor: "#f0f0f0",
+      },
+      headerTitleStyle: {
+        fontWeight: "700",
+        fontSize: 20,
+        color: "#1a1a1a",
+      },
+      headerTintColor: "#4285f4",
     }}
   >
-    <Tab.Screen name="Home" component={HomeScreen} />
-    <Tab.Screen name="Location" component={LocationScreen} />
-    <Tab.Screen name="Scan" component={ScanScreen} />
-    <Tab.Screen name="Analytics" component={AnalyticsScreen} />
-    <Tab.Screen name="Community" component={CommunityScreen} />
+    <Tab.Screen
+      name="Home"
+      component={HomeScreen}
+      options={{
+        headerTitle: "CivicFix Feed",
+      }}
+    />
+    <Tab.Screen
+      name="Location"
+      component={LocationScreen}
+      options={{
+        headerTitle: "Nearby Issues",
+      }}
+    />
+    <Tab.Screen
+      name="IssueUpload"
+      component={IssueUploadScreen}
+      options={{
+        headerTitle: "Report Issues",
+      }}
+    />
+    <Tab.Screen
+      name="Analytics"
+      component={AnalyticsScreen}
+      options={{
+        headerTitle: "Impact Stats",
+      }}
+    />
+    <Tab.Screen
+      name="Community"
+      component={CommunityScreen}
+      options={{
+        headerTitle: "Community",
+      }}
+    />
   </Tab.Navigator>
 );
 
@@ -48,16 +90,20 @@ export default function App() {
         console.log("No user is signed in, signing in anonymously...");
         signIn();
       }
+      console.log("Verifying user token...");
     });
 
     return () => unsubscribe();
   }, []);
 
   return (
-    <NavigationContainer>
-      <View style={{ height: Constants.statusBarHeight }} />
-      <StatusBar style="auto" />
-      <TabNav />
-    </NavigationContainer>
+    <SafeAreaProvider>
+      <ActionSheetProvider>
+        <NavigationContainer>
+          <StatusBar style="dark" />
+          <TabNav />
+        </NavigationContainer>
+      </ActionSheetProvider>
+    </SafeAreaProvider>
   );
 }

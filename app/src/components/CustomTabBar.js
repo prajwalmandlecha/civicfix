@@ -5,67 +5,96 @@ import {
   StyleSheet,
   Text,
   Dimensions,
+  Platform,
 } from "react-native";
-import Svg, { Path } from "react-native-svg";
+import Svg, { Path, Defs, LinearGradient, Stop } from "react-native-svg";
 
 const { width } = Dimensions.get("window");
 
-// Custom icon components
+// Custom icon components with better styling
 const HomeIcon = ({ focused }) => (
-  <Text style={[styles.iconText, focused && styles.activeIconText]}>⌂</Text>
+  <View style={styles.iconWrapper}>
+    <Text style={[styles.iconText, focused && styles.activeIconText]}>⌂</Text>
+    {focused && <Text style={styles.iconLabel}>Home</Text>}
+  </View>
 );
 
 const LocationIcon = ({ focused }) => (
-  <Text style={[styles.iconText, focused && styles.activeIconText]}>📍</Text>
+  <View style={styles.iconWrapper}>
+    <Text style={[styles.iconText, focused && styles.activeIconText]}>📍</Text>
+    {focused && <Text style={styles.iconLabel}>Map</Text>}
+  </View>
 );
 
 const StatsIcon = ({ focused }) => (
-  <Text style={[styles.iconText, focused && styles.activeIconText]}>📊</Text>
+  <View style={styles.iconWrapper}>
+    <Text style={[styles.iconText, focused && styles.activeIconText]}>📊</Text>
+    {focused && <Text style={styles.iconLabel}>Stats</Text>}
+  </View>
 );
 
 const CommunityIcon = ({ focused }) => (
-  <Text style={[styles.iconText, focused && styles.activeIconText]}>👥</Text>
+  <View style={styles.iconWrapper}>
+    <Text style={[styles.iconText, focused && styles.activeIconText]}>👥</Text>
+    {focused && <Text style={styles.iconLabel}>Social</Text>}
+  </View>
 );
 
 const ScanIcon = () => (
   <View style={styles.scanIconContainer}>
-    <Text style={styles.scanIconText}>📷</Text>
+    <View style={styles.cameraBody}>
+      <View style={styles.cameraLens} />
+      <View style={styles.cameraFlash} />
+    </View>
   </View>
 );
 
 const TabBarShape = () => {
-  const curveWidth = 80;
-  const curveHeight = 35;
+  const curveWidth = 90;
+  const curveHeight = 40;
   const centerX = width / 2;
 
   const d = `
     M 0,0
     L ${centerX - curveWidth / 2},0
-    Q ${centerX - curveWidth / 2},0 ${centerX - curveWidth / 2 + 10},${
-    curveHeight / 3
+    Q ${centerX - curveWidth / 2},0 ${centerX - curveWidth / 2 + 12},${
+    curveHeight / 2.5
   }
-    Q ${centerX},${curveHeight} ${centerX + curveWidth / 2 - 10},${
-    curveHeight / 3
+    Q ${centerX},${curveHeight + 5} ${centerX + curveWidth / 2 - 12},${
+    curveHeight / 2.5
   }
     Q ${centerX + curveWidth / 2},0 ${centerX + curveWidth / 2},0
     L ${width},0
-    L ${width},70
-    L 0,70
+    L ${width},75
+    L 0,75
     Z
   `;
 
   return (
-    <Svg width={width} height={70} style={styles.svgContainer}>
-      <Path d={d} fill="#ffffff" />
+    <Svg width={width} height={75} style={styles.svgContainer}>
+      <Defs>
+        <LinearGradient id="grad" x1="0" y1="0" x2="0" y2="1">
+          <Stop offset="0" stopColor="#ffffff" stopOpacity="1" />
+          <Stop offset="0.5" stopColor="#fafbfc" stopOpacity="1" />
+          <Stop offset="1" stopColor="#f8f9fa" stopOpacity="1" />
+        </LinearGradient>
+      </Defs>
+      <Path d={d} fill="url(#grad)" />
     </Svg>
   );
 };
 
 const CustomTabBar = ({ state, descriptors, navigation }) => {
+  // Hide tab bar when on Scan screen
+  const currentRoute = state.routes[state.index];
+  if (currentRoute.name === "IssueUpload") {
+    return null;
+  }
+
   const tabs = [
     { name: "Home", icon: HomeIcon },
     { name: "Location", icon: LocationIcon },
-    { name: "Scan", icon: ScanIcon, isCenter: true },
+    { name: "IssueUpload", icon: ScanIcon, isCenter: true },
     { name: "Analytics", icon: StatsIcon },
     { name: "Community", icon: CommunityIcon },
   ];
@@ -75,12 +104,14 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
       {/* Tab bar with curved cutout */}
       <TabBarShape />
 
-      {/* Center scan button */}
+      {/* Center scan button with pulse animation effect */}
       <View style={styles.centerButtonContainer}>
+        <View style={styles.pulseOuter} />
+        <View style={styles.pulseMiddle} />
         <TouchableOpacity
           style={styles.centerButton}
-          onPress={() => navigation.navigate("Scan")}
-          activeOpacity={0.8}
+          onPress={() => navigation.navigate("IssueUpload")}
+          activeOpacity={0.7}
         >
           <ScanIcon />
         </TouchableOpacity>
@@ -112,12 +143,11 @@ const CustomTabBar = ({ state, descriptors, navigation }) => {
           return (
             <TouchableOpacity
               key={index}
-              style={styles.tabButton}
+              style={[styles.tabButton, isFocused && styles.tabButtonActive]}
               onPress={onPress}
-              activeOpacity={0.7}
+              activeOpacity={0.6}
             >
               <IconComponent focused={isFocused} />
-              {isFocused && <View style={styles.activeDot} />}
             </TouchableOpacity>
           );
         })}
@@ -132,7 +162,7 @@ const styles = StyleSheet.create({
     bottom: 0,
     left: 0,
     right: 0,
-    height: 70,
+    height: 75,
   },
   svgContainer: {
     position: "absolute",
@@ -141,78 +171,156 @@ const styles = StyleSheet.create({
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: -2,
+      height: -4,
     },
-    shadowOpacity: 0.1,
-    shadowRadius: 3,
-    elevation: 10,
+    shadowOpacity: 0.15,
+    shadowRadius: 12,
+    elevation: 20,
   },
   centerButtonContainer: {
     position: "absolute",
-    top: -25,
-    left: width / 2 - 32,
+    top: -32,
+    left: width / 2 - 36,
     zIndex: 100,
   },
+  pulseOuter: {
+    position: "absolute",
+    top: -8,
+    left: -8,
+    width: 88,
+    height: 88,
+    borderRadius: 44,
+    backgroundColor: "#4285f4",
+    opacity: 0.12,
+  },
+  pulseMiddle: {
+    position: "absolute",
+    top: -4,
+    left: -4,
+    width: 80,
+    height: 80,
+    borderRadius: 40,
+    backgroundColor: "#4285f4",
+    opacity: 0.18,
+  },
   centerButton: {
-    width: 64,
-    height: 64,
-    borderRadius: 32,
+    width: 72,
+    height: 72,
+    borderRadius: 36,
     backgroundColor: "#4285f4",
     justifyContent: "center",
     alignItems: "center",
     shadowColor: "#4285f4",
     shadowOffset: {
       width: 0,
-      height: 4,
+      height: 8,
     },
-    shadowOpacity: 0.4,
-    shadowRadius: 5,
-    elevation: 12,
-    borderWidth: 4,
+    shadowOpacity: 0.6,
+    shadowRadius: 12,
+    elevation: 20,
+    borderWidth: 6,
     borderColor: "#fff",
+    ...Platform.select({
+      ios: {
+        shadowColor: "#4285f4",
+      },
+      android: {
+        elevation: 22,
+      },
+    }),
   },
   scanIconContainer: {
     justifyContent: "center",
     alignItems: "center",
   },
+  cameraBody: {
+    width: 36,
+    height: 28,
+    backgroundColor: "#ffffff",
+    borderRadius: 6,
+    justifyContent: "center",
+    alignItems: "center",
+    position: "relative",
+  },
+  cameraLens: {
+    width: 18,
+    height: 18,
+    borderRadius: 9,
+    backgroundColor: "#4285f4",
+    borderWidth: 2,
+    borderColor: "#ffffff",
+  },
+  cameraFlash: {
+    position: "absolute",
+    top: 4,
+    right: 6,
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    backgroundColor: "#fbbc04",
+  },
   scanIconText: {
-    fontSize: 28,
+    fontSize: 32,
   },
   tabsContainer: {
     position: "absolute",
     bottom: 0,
     left: 0,
     right: 0,
-    height: 70,
+    height: 75,
     flexDirection: "row",
     justifyContent: "space-around",
     alignItems: "center",
     paddingHorizontal: 20,
-    paddingBottom: 12,
+    paddingBottom: Platform.OS === "ios" ? 22 : 16,
   },
   tabButton: {
     alignItems: "center",
     justifyContent: "center",
-    paddingVertical: 8,
-    paddingHorizontal: 12,
-    minWidth: 50,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    minWidth: 65,
+    borderRadius: 14,
+  },
+  tabButtonActive: {
+    backgroundColor: "#f0f7ff",
+    shadowColor: "#4285f4",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  iconWrapper: {
+    alignItems: "center",
+    justifyContent: "center",
   },
   iconText: {
     fontSize: 26,
     color: "#9ca3af",
+    ...Platform.select({
+      ios: {
+        textShadowColor: "rgba(0, 0, 0, 0.08)",
+        textShadowOffset: { width: 0, height: 1 },
+        textShadowRadius: 2,
+      },
+    }),
   },
   activeIconText: {
     color: "#4285f4",
+    transform: [{ scale: 1.15 }],
   },
-  activeDot: {
-    width: 4,
-    height: 4,
-    borderRadius: 2,
-    backgroundColor: "#4285f4",
-    marginTop: 4,
+  iconLabel: {
+    fontSize: 10,
+    color: "#4285f4",
+    fontWeight: "700",
+    marginTop: 3,
+    letterSpacing: 0.4,
   },
   spacer: {
-    width: 64,
+    width: 72,
   },
 });
 

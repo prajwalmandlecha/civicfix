@@ -53,7 +53,7 @@ const BottomToolbar = ({ onTabPress }) => {
 
   const handleScanPress = () => {
     if (onTabPress) {
-      onTabPress("scan");
+      onTabPress("IssueUpload");
     }
   };
 
