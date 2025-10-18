@@ -286,7 +286,7 @@ const IssueUploadScreen = ({ navigation }) => {
           <View style={styles.checkbox}>
             {isAnonymous && <View style={styles.checkboxChecked} />}
           </View>
-          <Text style={styles.anonymousText}>🦸 Anonymous</Text>
+          <Text style={styles.anonymousText}>Anonymous</Text>
         </TouchableOpacity>
 
         {/* <View style={styles.aiSection}>

@@ -42,7 +42,7 @@ export async function getMapClusters(params) {
 
   if (filters.issue_type && filters.issue_type.length > 0) {
     mustClauses.push({
-      terms: { issue_type: filters.issue_type }
+      terms: { issue_types: filters.issue_type }
     });
   }
 
@@ -84,7 +84,7 @@ export async function getMapClusters(params) {
               },
               issue_types: {
                 terms: {
-                  field: 'issue_type',
+                  field: 'issue_types',
                   size: 20
                 }
               },
@@ -139,7 +139,7 @@ export async function getMapClusters(params) {
         _source: [
           'issue_id',
           'location',
-          'issue_type',
+          'issue_types',
           'status',
           'upvotes',
           'reported_at',
@@ -149,6 +149,8 @@ export async function getMapClusters(params) {
           'co2_kg_saved',
           'fate_risk_co2',
           'severity',
+          'severity_score',
+          'future_impact',
           'reports',
           'cross_city_fix',
         ]

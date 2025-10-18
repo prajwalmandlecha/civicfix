@@ -1,11 +1,23 @@
-import React from "react";
-import { View, Text, StyleSheet } from "react-native";
+import React, { useRef } from "react";
+import { StyleSheet, View } from "react-native";
+import MapView from "react-native-maps";
+import { SafeAreaView } from "react-native-safe-area-context";
 
 const LocationScreen = () => {
+  const mapRef = useRef(null);
+
   return (
     <View style={styles.container}>
-      <Text style={styles.title}>Location Screen</Text>
-      <Text style={styles.subtitle}>To be implemented</Text>
+      <MapView
+        ref={mapRef}
+        style={styles.map}
+        initialRegion={{
+          latitude: 12.9716,
+          longitude: 77.5946,
+          latitudeDelta: 0.5,
+          longitudeDelta: 0.5,
+        }}
+      />
     </View>
   );
 };
@@ -13,19 +25,9 @@ const LocationScreen = () => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f5f5f5",
-    justifyContent: "center",
-    alignItems: "center",
   },
-  title: {
-    fontSize: 24,
-    fontWeight: "bold",
-    color: "#333",
-    marginBottom: 8,
-  },
-  subtitle: {
-    fontSize: 16,
-    color: "#999",
+  map: {
+    flex: 1,
   },
 });
 

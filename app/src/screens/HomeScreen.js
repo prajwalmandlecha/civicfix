@@ -117,7 +117,7 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
-    paddingBottom: 100, // Account for bottom tab bar + extra spacing
+    // paddingBottom: 100, // Account for bottom tab bar + extra spacing
   },
 });
 

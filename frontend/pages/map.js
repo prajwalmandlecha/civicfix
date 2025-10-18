@@ -195,7 +195,7 @@ function renderClusters(clusters) {
 
       const popupHTML = `
         <div class="cluster-popup">
-          <h3>Cluster: ${props.count} Issues</h3>
+          <h3>Cluster: ${props.count} Individual Issues</h3>
           <div class="popup-section">
             <h4>Issue Types:</h4>
             ${issueTypesList}
@@ -275,13 +275,14 @@ function renderPoints(points) {
       source: 'points-source',
       paint: {
         'circle-color': [
-          'match',
-          ['get', 'issue_type'],
-          'Pothole', ISSUE_TYPE_COLORS.Pothole,
-          'Streetlight', ISSUE_TYPE_COLORS.Streetlight,
-          'Garbage', ISSUE_TYPE_COLORS.Garbage,
-          'Graffiti', ISSUE_TYPE_COLORS.Graffiti,
-          ISSUE_TYPE_COLORS.Other
+          'interpolate',
+          ['linear'],
+          ['coalesce', ['get', 'severity_score'], 5],
+          0, '#22C55E',
+          3, '#EAB308',
+          5, '#F97316',
+          7, '#EF4444',
+          10, '#991B1B'
         ],
         'circle-radius': 8,
         'circle-stroke-width': 2,
@@ -305,11 +306,46 @@ function renderPoints(points) {
         statusBadge = `<span class="status-badge unsolved">⚠️ ${props.status || 'Unknown'}</span>`;
       }
 
+      // Parse issue_types if it's a string
+      let issueTypesArray = [];
+      try {
+        issueTypesArray = typeof props.issue_types === 'string' 
+          ? JSON.parse(props.issue_types) 
+          : (Array.isArray(props.issue_types) ? props.issue_types : []);
+      } catch (e) {
+        issueTypesArray = [];
+      }
+
+      // Parse severity if it's a string
+      let severityObj = {};
+      try {
+        severityObj = typeof props.severity === 'string' 
+          ? JSON.parse(props.severity) 
+          : (props.severity || {});
+      } catch (e) {
+        severityObj = {};
+      }
+
+      // Display issue types with color dots
+      const issueTypesHTML = issueTypesArray.length > 0
+        ? issueTypesArray.map(type => {
+            const color = ISSUE_TYPE_COLORS[type] || ISSUE_TYPE_COLORS.Other;
+            const sev = severityObj[type] || 'N/A';
+            return `<div class="issue-type-badge" style="background: ${color}20; border-left: 3px solid ${color}; padding: 4px 8px; margin: 2px 0; border-radius: 4px; font-size: 12px;">
+              <strong>${type}</strong> <span style="color: #666;">(Severity: ${sev})</span>
+            </div>`;
+          }).join('')
+        : '<div class="issue-type-badge">No issue types specified</div>';
+
       const popupHTML = `
         <div class="issue-popup">
           ${props.photo_url ? `<img src="${props.photo_url}" alt="Issue photo" class="popup-image" onerror="this.style.display='none'">` : ''}
-          <h3>${props.issue_type}</h3>
+          <h3>Issue Report</h3>
           ${statusBadge}
+          <div class="popup-section">
+            <h4 style="font-size: 13px; margin: 8px 0 4px 0; color: #666;">Issue Types:</h4>
+            ${issueTypesHTML}
+          </div>
           <div class="popup-section">
             <p class="popup-description">${props.description || 'No description available'}</p>
           </div>
@@ -319,8 +355,8 @@ function renderPoints(points) {
               <span class="stat-value">${props.upvotes}</span>
             </div>
             <div class="stat-item">
-              <span class="stat-label">Severity:</span>
-              <span class="stat-value">${props.severity}</span>
+              <span class="stat-label">Severity Score:</span>
+              <span class="stat-value">${props.severity_score || 'N/A'}</span>
             </div>
             <div class="stat-item">
               <span class="stat-label">Reports:</span>
