@@ -1,4 +1,3 @@
-import { useEffect } from "react";
 import { NavigationContainer } from "@react-navigation/native";
 import { createBottomTabNavigator } from "@react-navigation/bottom-tabs";
 import { StatusBar } from "expo-status-bar";
@@ -9,13 +8,12 @@ import LocationScreen from "./screens/LocationScreen";
 import LeaderboardScreen from "./screens/LeaderboardScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import IssueUploadScreen from "./screens/IssueUploadScreen";
-import CustomTabBar from "./components/CustomTabBar";
-import { onAuthStateChanged, signInAnonymously } from "firebase/auth";
 import { createStackNavigator } from "@react-navigation/stack";
 import LoginScreen from "./screens/LoginScreen";
-
-import { auth } from "./services/firebase";
+import SignupScreen from "./screens/SignupScreen";
 import { ActionSheetProvider } from "@expo/react-native-action-sheet";
+import { KeyboardProvider } from "react-native-keyboard-controller";
+import subscribeToAuthState from "./hooks/subscribeToAuthState";
 
 const Tab = createBottomTabNavigator();
 
@@ -42,6 +40,11 @@ const StackNav = () => (
     <Stack.Screen
       name="Login"
       component={LoginScreen}
+      options={{ headerShown: false }}
+    />
+    <Stack.Screen
+      name="Signup"
+      component={SignupScreen}
       options={{ headerShown: false }}
     />
   </Stack.Navigator>
@@ -119,39 +122,18 @@ const TabNav = () => (
   </Tab.Navigator>
 );
 
-const signIn = async () => {
-  try {
-    await signInAnonymously(auth);
-    console.log("User signed in anonymously");
-  } catch (error) {
-    console.error("Error signing in anonymously:", error);
-  }
-};
-
 export default function App() {
-  useEffect(() => {
-    const unsubscribe = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        console.log("User is signed in:", user.uid);
-      } else {
-        console.log("No user is signed in, signing in anonymously...");
-        signIn();
-      }
-      console.log("Verifying user token...");
-    });
-
-    return () => unsubscribe();
-  }, []);
-
-  const user = "";
+  const user = subscribeToAuthState();
 
   return (
     <SafeAreaProvider>
       <ActionSheetProvider>
-        <NavigationContainer>
-          <StatusBar style="dark" />
-          {user ? <TabNav /> : <StackNav />}
-        </NavigationContainer>
+        <KeyboardProvider>
+          <NavigationContainer>
+            <StatusBar style="dark" />
+            {user ? <TabNav /> : <StackNav />}
+          </NavigationContainer>
+        </KeyboardProvider>
       </ActionSheetProvider>
     </SafeAreaProvider>
   );

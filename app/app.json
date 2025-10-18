@@ -20,7 +20,13 @@
         "foregroundImage": "./assets/adaptive-icon.png",
         "backgroundColor": "#ffffff"
       },
-      "edgeToEdgeEnabled": true
+      "edgeToEdgeEnabled": true,
+      "permissions": [
+        "android.permission.RECORD_AUDIO",
+        "android.permission.ACCESS_COARSE_LOCATION",
+        "android.permission.ACCESS_FINE_LOCATION"
+      ],
+      "package": "com.prajwal32.CivicFix"
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -38,7 +44,18 @@
         {
           "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to tag the issue."
         }
-      ]
+      ],
+      ["expo-maps", {
+            "requestLocationPermission": true,
+          "locationPermission": "Allow $(PRODUCT_NAME) to use your location"
+
+      }
     ]
+    ],
+    "extra": {
+      "eas": {
+        "projectId": "c7f67732-3e2d-4455-8baf-3b30337961d3"
+      }
+    }
   }
 }

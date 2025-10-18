@@ -14,6 +14,7 @@ import * as ImagePicker from "expo-image-picker";
 import { useActionSheet } from "@expo/react-native-action-sheet";
 import * as Location from "expo-location";
 import api from "../services/api";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 const IssueUploadScreen = ({ navigation }) => {
   const [image, setImage] = useState(null);
@@ -211,7 +212,7 @@ const IssueUploadScreen = ({ navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container}>
+    <KeyboardAwareScrollView style={styles.container} bottomOffset={250}>
       <View style={styles.formContainer}>
         <TouchableOpacity style={styles.uploadContainer} onPress={pickImage}>
           {image ? (
@@ -327,7 +328,7 @@ const IssueUploadScreen = ({ navigation }) => {
           )}
         </TouchableOpacity>
       </View>
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 };
 

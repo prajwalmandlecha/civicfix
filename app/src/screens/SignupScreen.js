@@ -1,27 +1,58 @@
-import { StyleSheet, Text, View, TouchableOpacity } from "react-native";
 import React, { useState } from "react";
+import {
+  StyleSheet,
+  Text,
+  View,
+  TouchableOpacity,
+  Keyboard,
+} from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
+import { LinearGradient } from "expo-linear-gradient";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { MaterialIcons } from "@expo/vector-icons";
+import { useActionSheet } from "@expo/react-native-action-sheet";
+import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
+import { auth } from "../services/firebase";
 import CustomTextInput from "../components/CustomTextInput";
 import Button from "../components/Button";
 import Card from "../components/Card";
 import Logo from "../components/Logo";
-import { LinearGradient } from "expo-linear-gradient";
-import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { auth } from "../services/firebase";
-import { signInWithEmailAndPassword } from "firebase/auth";
 
-const LoginScreen = ({ navigation }) => {
+const SignupScreen = ({ navigation }) => {
+  const { showActionSheetWithOptions } = useActionSheet();
+  const [name, setName] = useState("");
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [userType, setUserType] = useState("");
   const [loading, setLoading] = useState(false);
 
-  const handleLogin = async () => {
+  const openUserTypePicker = () => {
+    Keyboard.dismiss();
+    const options = ["Citizen", "Volunteer", "Cancel"];
+    const cancelButtonIndex = 2;
+    showActionSheetWithOptions(
+      { options, cancelButtonIndex },
+      (selectedIndex) => {
+        if (selectedIndex === 0) setUserType("Citizen");
+        if (selectedIndex === 1) setUserType("Volunteer");
+      }
+    );
+  };
+
+  const handleSignup = async () => {
+    if (!name || !email || !password || !userType) {
+      alert("Please fill in all fields.");
+      return;
+    }
     setLoading(true);
     try {
-      await signInWithEmailAndPassword(auth, email, password);
+      const cred = await createUserWithEmailAndPassword(auth, email, password);
+      if (cred.user) {
+        await updateProfile(cred.user, { displayName: name });
+      }
+      
     } catch (error) {
-      console.error("Error signing in:", error);
+      console.error("Error signing up:", error);
     } finally {
       setLoading(false);
     }
@@ -36,19 +67,31 @@ const LoginScreen = ({ navigation }) => {
         style={styles.gradient}
       >
         <KeyboardAwareScrollView
-          bottomOffset={180}
+          bottomOffset={200}
           contentContainerStyle={styles.scrollContent}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.header}>
             <Logo size="large" light />
             <Text style={styles.formSubtitle}>
-              Sign in to continue improving your city
+              Create your CivicFix account
             </Text>
           </View>
+
           <View style={styles.formContainer}>
             <Card style={styles.formCard}>
               <View style={styles.formFields}>
+                <CustomTextInput
+                  label="Full Name"
+                  placeholder="Jane Doe"
+                  value={name}
+                  onChangeText={setName}
+                  autoCapitalize="words"
+                  icon={
+                    <MaterialIcons name="person" size={20} color="#9CA3AF" />
+                  }
+                />
+
                 <CustomTextInput
                   label="Email"
                   placeholder="name@example.com"
@@ -67,37 +110,49 @@ const LoginScreen = ({ navigation }) => {
                   value={password}
                   onChangeText={setPassword}
                   secureTextEntry
+                  autoCapitalize="none"
                   icon={<MaterialIcons name="lock" size={20} color="#9CA3AF" />}
                 />
 
-                <TouchableOpacity style={styles.forgotPassword}>
-                  <Text style={styles.forgotPasswordText}>
-                    Forgot password?
-                  </Text>
+                {/* User Type selector styled like an input */}
+                <TouchableOpacity
+                  onPress={openUserTypePicker}
+                  activeOpacity={0.9}
+                >
+                  <CustomTextInput
+                    label="You are a"
+                    placeholder="Select type"
+                    value={userType}
+                    editable={false}
+                    showSoftInputOnFocus={false}
+                    onPressIn={openUserTypePicker}
+                    icon={
+                      <MaterialIcons
+                        name="category"
+                        size={20}
+                        color="#9CA3AF"
+                      />
+                    }
+                  />
                 </TouchableOpacity>
               </View>
 
               <Button
-                title="Sign In"
-                onPress={handleLogin}
+                title="Create Account"
+                onPress={handleSignup}
                 variant="primary"
                 size="large"
                 loading={loading}
+                disabled={!name || !email || !password || !userType}
               />
 
               <View style={styles.signupPrompt}>
-                <Text style={styles.signupText}>Don't have an account? </Text>
-                <TouchableOpacity onPress={() => navigation.navigate("Signup")}>
-                  <Text style={styles.signupLink}>Create one</Text>
+                <Text style={styles.signupText}>Already have an account? </Text>
+                <TouchableOpacity onPress={() => navigation.replace("Login")}>
+                  <Text style={styles.signupLink}>Sign in</Text>
                 </TouchableOpacity>
               </View>
             </Card>
-
-            {/* <View style={styles.footer}>
-              <Text style={styles.footerText}>
-                By signing in, you agree to help improve your community
-              </Text>
-            </View> */}
           </View>
         </KeyboardAwareScrollView>
       </LinearGradient>
@@ -105,7 +160,7 @@ const LoginScreen = ({ navigation }) => {
   );
 };
 
-export default LoginScreen;
+export default SignupScreen;
 
 const styles = StyleSheet.create({
   container: {
@@ -119,20 +174,6 @@ const styles = StyleSheet.create({
     flexGrow: 1,
     justifyContent: "center",
     paddingVertical: 24,
-  },
-  formContainer: {
-    paddingHorizontal: 24,
-    width: "100%",
-    maxWidth: 480,
-    alignSelf: "center",
-  },
-  formCard: {
-    // Card component already has padding: 24, no need to override
-    shadowColor: "#000",
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.08,
-    shadowRadius: 16,
-    elevation: 4,
   },
   header: {
     marginBottom: 24,
@@ -148,15 +189,21 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     opacity: 0.95,
   },
-  forgotPassword: {
-    alignSelf: "flex-end",
-    marginTop: 4,
-    marginBottom: 16,
+  formContainer: {
+    paddingHorizontal: 24,
+    width: "100%",
+    maxWidth: 480,
+    alignSelf: "center",
   },
-  forgotPasswordText: {
-    color: "#4CAF79",
-    fontSize: 14,
-    fontWeight: "600",
+  formCard: {
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.08,
+    shadowRadius: 16,
+    elevation: 4,
+  },
+  formFields: {
+    marginBottom: 8,
   },
   signupPrompt: {
     flexDirection: "row",
@@ -176,17 +223,5 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#4CAF79",
     fontWeight: "600",
-  },
-  footer: {
-    marginTop: 20,
-    paddingHorizontal: 24,
-    alignItems: "center",
-  },
-  footerText: {
-    fontSize: 12,
-    color: "#FFFFFF",
-    textAlign: "center",
-    opacity: 0.85,
-    lineHeight: 18,
   },
 });
