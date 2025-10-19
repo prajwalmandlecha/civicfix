@@ -3,6 +3,7 @@ import logging
 import uuid
 import json
 import time
+import re
 from typing import List, Optional, Any, Dict
 
 from fastapi import FastAPI, HTTPException
@@ -23,6 +24,7 @@ load_dotenv()
 logger = logging.getLogger("uvicorn.error")
 API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
+EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
 
 if not API_KEY:
     logger.error("GEMINI_API_KEY missing. Set GEMINI_API_KEY (from Google AI Studio or Vertex). Requests will fail.")
@@ -63,6 +65,20 @@ CANONICAL_LABELS: List[str] = [
     "unregulated_construction_activity",
     "public_health_hazard"
 ]
+
+
+def sanitize_json_string(text: str) -> str:
+    """
+    Clean malformed JSON from Gemini responses.
+    Removes:
+    - Non-ASCII characters that commonly corrupt JSON (Hebrew, Arabic, etc.)
+    - Control characters
+    - Keeps only valid JSON characters
+    """
+    # Remove non-ASCII characters (keep ASCII 32-126 plus newlines, tabs)
+    # This handles Hebrew/Arabic/other Unicode that Gemini sometimes injects
+    cleaned = re.sub(r'[^\x20-\x7E\n\r\t]', '', text)
+    return cleaned
 
 
 def safe_float(x: Any, default: float = 0.0) -> float:
@@ -109,6 +125,60 @@ def call_gemini_with_backoff(contents: List[Any], model: str, max_attempts: int 
     raise last_exc
 
 
+def build_embedding_text(description: str, auto_caption: str, detected_issues: List[Dict[str, Any]], predicted_fix: str) -> str:
+    """
+    Build a single text blob for embedding generation.
+    Format: [Issue] -- description -- auto_caption -- detected_issues_summary -- predicted_fix
+    """
+    title = "Issue"
+    
+    # Build detected issues summary: "type (score:X.XX) severity:Y future_impact:..."
+    issues_summary_parts = []
+    for issue in detected_issues:
+        issue_type = issue.get("type", "unknown")
+        confidence = issue.get("confidence", 0.0)
+        severity = issue.get("severity", "medium")
+        future_impact = (issue.get("future_impact") or "")[:100]  # truncate for brevity
+        issues_summary_parts.append(
+            f"{issue_type} (score:{confidence:.2f}) severity:{severity} future_impact:{future_impact}"
+        )
+    
+    detected_issues_summary = " | ".join(issues_summary_parts) if issues_summary_parts else "No specific issues detected"
+    
+    # Build final text blob
+    text_blob = f"{title} -- {description or 'No description'} -- {auto_caption or 'No caption'} -- {detected_issues_summary} -- predicted_fix: {predicted_fix or 'No fix predicted'}"
+    
+    return text_blob
+
+
+def generate_embedding(text: str) -> Optional[List[float]]:
+    """
+    Generate embedding vector using gemini-embedding-001.
+    Returns a list of 3072 floats or None on failure.
+    """
+    if not client:
+        logger.warning("GenAI client not initialized; cannot generate embedding")
+        return None
+    
+    try:
+        result = client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=text
+        )
+        
+        # Extract embedding from result
+        if hasattr(result, 'embeddings') and result.embeddings:
+            embedding = result.embeddings[0]
+            if hasattr(embedding, 'values'):
+                return list(embedding.values)
+        
+        logger.warning("Embedding result has unexpected structure")
+        return None
+    except Exception as e:
+        logger.exception("Failed to generate embedding: %s", e)
+        return None
+
+
 @app.post("/analyze/", response_model=AnalyzeOut)
 def analyze(report: ReportIn):
     """
@@ -127,9 +197,35 @@ def analyze(report: ReportIn):
         logger.exception("fetch_image_bytes failed")
         raise HTTPException(status_code=400, detail=f"Could not fetch image: {e}")
 
-    # 2. evidence & weather
+    # 1.5. Generate query embedding for hybrid search (before evidence retrieval)
+    # Build a simple query text from user input
+    query_text_parts = []
+    if report.description:
+        query_text_parts.append(report.description)
+    if report.user_selected_labels:
+        query_text_parts.append(" ".join(report.user_selected_labels))
+    
+    query_embedding = None
+    if query_text_parts and client:
+        query_text = " ".join(query_text_parts)
+        try:
+            query_embedding = generate_embedding(query_text)
+            if query_embedding and len(query_embedding) != 3072:
+                logger.warning("Query embedding has unexpected dimension: %d", len(query_embedding))
+                query_embedding = None
+        except Exception as e:
+            logger.warning("Failed to generate query embedding: %s", e)
+            query_embedding = None
+
+    # 2. evidence & weather (now with query_embedding for kNN search)
     try:
-        issues_evidence = es_client.hybrid_retrieve_issues(report.location.dict(), report.user_selected_labels, days=180, size=5)
+        issues_evidence = es_client.hybrid_retrieve_issues(
+            report.location.dict(), 
+            report.user_selected_labels, 
+            days=180, 
+            size=5,
+            query_embedding=query_embedding
+        )
     except Exception:
         logger.exception("Failed to retrieve issue evidence; continuing with empty list")
         issues_evidence = []
@@ -217,6 +313,11 @@ def analyze(report: ReportIn):
             if isinstance(raw_candidate, (bytes, bytearray)):
                 raw_candidate = raw_candidate.decode("utf-8", errors="ignore")
             raw_candidate = (raw_candidate or "").strip()
+            
+            # Sanitize JSON to remove corrupted characters (Hebrew, etc.) from Gemini
+            if raw_candidate:
+                raw_candidate = sanitize_json_string(raw_candidate)
+            
             if not raw_candidate:
                 dump_obj = {
                     "response_repr": repr(response),
@@ -345,6 +446,25 @@ def analyze(report: ReportIn):
         density_norm=0.0
     )
 
+    # 8. Generate embedding for the issue
+    auto_caption = parsed.get("auto_caption", "")
+    predicted_fix_text = retained[0].predicted_fix if retained else ""
+    
+    embedding_text = build_embedding_text(
+        description=report.description,
+        auto_caption=auto_caption,
+        detected_issues=[d.dict() for d in retained],
+        predicted_fix=predicted_fix_text
+    )
+    
+    text_embedding = generate_embedding(embedding_text)
+    if text_embedding and len(text_embedding) != 3072:
+        logger.warning("Generated embedding has unexpected dimension: %d (expected 3072)", len(text_embedding))
+        text_embedding = None
+
+    # Extract evidence issue IDs from retrieved similar issues
+    evidence_issue_ids = [item.get("id") for item in issues_evidence if item.get("id")]
+
     es_doc = {
         "issue_id": issue_id,
         "reported_by": report.reported_by or "anonymous",
@@ -362,7 +482,7 @@ def analyze(report: ReportIn):
         "updated_at": report.timestamp,
         "location": {"lat": report.location.latitude, "lon": report.location.longitude},
         "description": report.description,
-        "text_embedding": None,
+        "text_embedding": text_embedding,
         "auto_caption": parsed.get("auto_caption"),
         "user_selected_labels": report.user_selected_labels,
         "photo_url": report.image_url,
@@ -374,7 +494,7 @@ def analyze(report: ReportIn):
         "co2_kg_saved": 0.0,
         "predicted_fix": retained[0].predicted_fix if retained else "",
         "predicted_fix_confidence": max((d.predicted_fix_confidence for d in retained), default=0.0),
-        "evidence_ids": parsed.get("sources", []),
+        "evidence_ids": evidence_issue_ids,
         "auto_review_flag": any(d.auto_review_flag for d in retained),
         "human_verified": False,
         "reviewed_by": None,

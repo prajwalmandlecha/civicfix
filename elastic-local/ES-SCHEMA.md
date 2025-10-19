@@ -31,9 +31,9 @@ PUT /issues
 			"location": {"type":"geo_point"},
 			"description": {"type":"text"},
 
-			"text_embedding": {"type":"dense_vector","dims":1536},  /*for hybrid retrieval */
+			"text_embedding": {"type":"dense_vector","dims":3072},  /*for hybrid retrieval (model used: gemini-embedding-001)*/
 
-			"auto_caption": {"type":"text"},			 /* gemini generated issue lables */
+			"auto_caption": {"type":"text"}, /* gemini generated description for uploaded issue image*/
 			"user_selected_labels": {"type":"keyword"},  /*array user picked from dropdown */
 			"photo_url": {"type":"keyword"},
 			"detected_issues": {
@@ -117,7 +117,7 @@ PUT /fixes
 			"success_rate": {"type":"float"},           /* 0.0-1.0 */
 			"city": {"type":"keyword"},
 			"related_issue_types": {"type":"keyword"},
-			"text_embedding": {"type":"dense_vector","dims":1536},
+			"text_embedding": {"type":"dense_vector","dims":3072}, /*for hybrid retrieval (model used: gemini-embedding-001) */
 			"source_doc_ids": {"type":"keyword"}
 		}
 	}
