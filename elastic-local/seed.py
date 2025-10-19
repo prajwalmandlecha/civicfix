@@ -13,15 +13,41 @@ import argparse
 import uuid
 import random
 import time
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from elasticsearch import Elasticsearch, helpers, exceptions
 from faker import Faker
+
+# Load environment variables from .env file
+from dotenv import load_dotenv
+load_dotenv()
+
+# Import Gemini for embeddings
+try:
+    from google import genai
+    EMBEDDING_ENABLED = True
+except ImportError:
+    print("Warning: google-genai not installed. Embeddings will be None.")
+    EMBEDDING_ENABLED = False
 
 fake = Faker("en_IN")
 
 # Config
 ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
 TEST_COUNT = 10
+API_KEY = os.environ.get("GEMINI_API_KEY")
+EMBEDDING_MODEL = os.environ.get("EMBEDDING_MODEL", "gemini-embedding-001")
+
+# Initialize Gemini client for embeddings
+gemini_client = None
+if EMBEDDING_ENABLED and API_KEY:
+    try:
+        gemini_client = genai.Client(api_key=API_KEY)
+        print(f"Gemini client initialized for embeddings using {EMBEDDING_MODEL}")
+    except Exception as e:
+        print(f"Failed to initialize Gemini client: {e}")
+        gemini_client = None
+elif EMBEDDING_ENABLED and not API_KEY:
+    print("Warning: GEMINI_API_KEY not set. Embeddings will be None.")
 
 # Use ES 8.x compatible client parameters
 es = Elasticsearch(
@@ -55,7 +81,7 @@ ISSUES_MAPPING = {
             "updated_at": {"type":"date"},
             "location": {"type":"geo_point"},
             "description": {"type":"text"},
-            "text_embedding": {"type":"dense_vector","dims":1536},
+            "text_embedding": {"type":"dense_vector","dims":3072},
             "auto_caption": {"type":"text"},
             "user_selected_labels": {"type":"keyword"},
             "photo_url": {"type":"keyword"},
@@ -131,7 +157,7 @@ FIXES_MAPPING = {
             "success_rate": {"type":"float"},
             "city": {"type":"keyword"},
             "related_issue_types": {"type":"keyword"},
-            "text_embedding": {"type":"dense_vector","dims":1536},
+            "text_embedding": {"type":"dense_vector","dims":3072},
             "source_doc_ids": {"type":"keyword"}
         }
     }
@@ -160,7 +186,7 @@ def check_es_or_exit():
 def create_indices():
     """Create issues and fixes indices if missing, using create(..., ignore=400) to be robust."""
     try:
-        resp = es.indices.create(index=ISSUES_INDEX, body=ISSUES_MAPPING, ignore=400)
+        resp = es.options(ignore_status=400).indices.create(index=ISSUES_INDEX, body=ISSUES_MAPPING)
         if isinstance(resp, dict) and resp.get("acknowledged") is True:
             print(f"Created index: {ISSUES_INDEX}")
         else:
@@ -170,7 +196,7 @@ def create_indices():
         sys.exit(1)
 
     try:
-        resp2 = es.indices.create(index=FIXES_INDEX, body=FIXES_MAPPING, ignore=400)
+        resp2 = es.options(ignore_status=400).indices.create(index=FIXES_INDEX, body=FIXES_MAPPING)
         if isinstance(resp2, dict) and resp2.get("acknowledged") is True:
             print(f"Created index: {FIXES_INDEX}")
         else:
@@ -218,6 +244,50 @@ PREDICTED_FIXES = {
 }
 
 
+def generate_embedding(text: str):
+    """Generate embedding using Gemini embedding model."""
+    if not gemini_client:
+        return None
+    
+    try:
+        result = gemini_client.models.embed_content(
+            model=EMBEDDING_MODEL,
+            contents=text
+        )
+        
+        if hasattr(result, 'embeddings') and result.embeddings:
+            embedding = result.embeddings[0]
+            if hasattr(embedding, 'values'):
+                return list(embedding.values)
+        return None
+    except Exception as e:
+        print(f"Failed to generate embedding: {e}")
+        return None
+
+
+def build_embedding_text(description: str, auto_caption: str, detected_issues: list, predicted_fix: str) -> str:
+    """Build text blob for embedding from issue components."""
+    title = "Issue"
+    
+    # Build detected issues summary
+    issues_summary_parts = []
+    for issue in detected_issues:
+        issue_type = issue.get("type", "unknown")
+        confidence = issue.get("confidence", 0.0)
+        severity = issue.get("severity", "medium")
+        future_impact = (issue.get("future_impact") or "")[:100]
+        issues_summary_parts.append(
+            f"{issue_type} (score:{confidence:.2f}) severity:{severity} future_impact:{future_impact}"
+        )
+    
+    detected_issues_summary = " | ".join(issues_summary_parts) if issues_summary_parts else "No specific issues detected"
+    
+    # Build final text blob
+    text_blob = f"{title} -- {description or 'No description'} -- {auto_caption or 'No caption'} -- {detected_issues_summary} -- predicted_fix: {predicted_fix or 'No fix predicted'}"
+    
+    return text_blob
+
+
 def make_random_issue(idx):
     """Return a single realistic issue doc (ES bulk action format)."""
     issue_type = random.choice(ISSUE_TYPES)
@@ -229,7 +299,7 @@ def make_random_issue(idx):
     lat = round(random.uniform(18.45, 18.65), 6)   # Pune latitude range
     lon = round(random.uniform(73.75, 73.95), 6)   # Pune longitude range
 
-    reported_at = (datetime.utcnow() - timedelta(days=random.uniform(0, 180))).replace(microsecond=0).isoformat() + "Z"
+    reported_at = (datetime.now(timezone.utc) - timedelta(days=random.uniform(0, 180))).replace(microsecond=0).isoformat().replace('+00:00', 'Z')
 
     up_open = random.randint(0, 25)
     up_verified = random.randint(0, 10)
@@ -276,6 +346,27 @@ def make_random_issue(idx):
         "reason_for_flag": None if confidence >= 0.85 else "medium confidence, NGO review suggested"
     }
 
+    # Generate auto_caption
+    auto_caption = f"{issue_type.replace('_', ' ').title()} detected at {fake.street_name()}, Pune. Severity: {severity}."
+    
+    # Generate description
+    description = f"{issue_type.replace('_',' ')} observed near {fake.street_name()}."
+    
+    # Build embedding text and generate embedding
+    embedding_text = build_embedding_text(
+        description=description,
+        auto_caption=auto_caption,
+        detected_issues=[detected_issue],
+        predicted_fix=detected_issue["predicted_fix"]
+    )
+    
+    text_embedding = generate_embedding(embedding_text)
+    
+    # Validate embedding dimensions
+    if text_embedding and len(text_embedding) != 3072:
+        print(f"Warning: Generated embedding has {len(text_embedding)} dims, expected 3072. Setting to None.")
+        text_embedding = None
+
     doc = {
         "_index": ISSUES_INDEX,
         "_id": str(uuid.uuid4()),
@@ -295,9 +386,9 @@ def make_random_issue(idx):
             "created_at": reported_at,
             "updated_at": reported_at,
             "location": {"lat": lat, "lon": lon},
-            "description": f"{issue_type.replace('_',' ')} observed near {fake.street_name()}.",
-            "text_embedding": None,
-            "auto_caption": None,
+            "description": description,
+            "text_embedding": text_embedding,
+            "auto_caption": auto_caption,
             "user_selected_labels": [issue_type] if random.random() < 0.6 else [],
             "photo_url": f"https://example.com/pune/{issue_type}/{idx}",
             "detected_issues": [detected_issue],
@@ -332,10 +423,15 @@ def seed(count=TEST_COUNT):
 
     # generate docs
     docs = []
+    print(f"Generating {count} documents with embeddings...")
     for i in range(count):
         # pass idx for each doc so photo_url unique
         doc = make_random_issue(i)
         docs.append(doc)
+        
+        # Show progress every 10 documents
+        if (i + 1) % 10 == 0 or (i + 1) == count:
+            print(f"  Generated {i + 1}/{count} documents...")
 
     print(f"Bulk indexing {len(docs)} documents...")
     try:

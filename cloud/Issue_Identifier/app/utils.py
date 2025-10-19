@@ -4,7 +4,8 @@ import os
 import math
 from datetime import datetime, timezone, timedelta
 
-OPEN_METEO_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_FORECAST_URL = "https://api.open-meteo.com/v1/forecast"
+OPEN_METEO_HISTORICAL_URL = "https://archive-api.open-meteo.com/v1/archive"
 
 
 def fetch_image_bytes(url: str, timeout: int = 10) -> Tuple[bytes, str]:
@@ -24,6 +25,7 @@ def get_weather_summary(location: Dict[str, float], timestamp: str) -> Dict[str,
     Query Open-Meteo for the given location and timestamp and return a compact weather object
     containing selected attributes relevant to civic issues:
     precipitation_24h_mm, temperature_c_avg, windspeed_max_ms, relative_humidity_avg, snowfall_24h_mm, weather_note.
+    Uses historical API for past dates and forecast API for future dates.
     """
     lat = location.get("latitude")
     lon = location.get("longitude")
@@ -34,21 +36,37 @@ def get_weather_summary(location: Dict[str, float], timestamp: str) -> Dict[str,
     except Exception:
         t = datetime.now(timezone.utc)
 
-    # Open-Meteo expects date strings in YYYY-MM-DDTHH:MM format; we'll request hourly for the prior 24h
-    start = (t - timedelta(hours=24)).strftime("%Y-%m-%dT%H:%M:%S")
-    end = t.strftime("%Y-%m-%dT%H:%M:%S")
+    # Determine if this is a historical request (more than 5 days ago) or forecast
+    now = datetime.now(timezone.utc)
+    is_historical = (now - t).total_seconds() > (5 * 24 * 3600)  # More than 5 days ago
+    
+    # Open-Meteo expects date strings; we'll request hourly for the prior 24h
+    start_dt = t - timedelta(hours=24)
+    end_dt = t
+    
+    # Format dates for the API (historical uses different format)
+    if is_historical:
+        # Historical API uses date format YYYY-MM-DD
+        start_date = start_dt.strftime("%Y-%m-%d")
+        end_date = end_dt.strftime("%Y-%m-%d")
+        api_url = OPEN_METEO_HISTORICAL_URL
+    else:
+        # Forecast API uses datetime format
+        start_date = start_dt.strftime("%Y-%m-%dT%H:%M")
+        end_date = end_dt.strftime("%Y-%m-%dT%H:%M")
+        api_url = OPEN_METEO_FORECAST_URL
 
     params = {
         "latitude": lat,
         "longitude": lon,
         "hourly": ",".join(["temperature_2m", "relativehumidity_2m", "windspeed_10m", "precipitation", "snowfall"]),
-        "start": start,
-        "end": end,
+        "start": start_date if is_historical else start_date,
+        "end": end_date if is_historical else end_date,
         "timezone": "UTC"
     }
 
     try:
-        r = requests.get(OPEN_METEO_URL, params=params, timeout=8)
+        r = requests.get(api_url, params=params, timeout=8)
         r.raise_for_status()
         data = r.json()
         hourly = data.get("hourly", {})
@@ -81,8 +99,12 @@ def get_weather_summary(location: Dict[str, float], timestamp: str) -> Dict[str,
             "snowfall_24h_mm": round(snow_24, 2) if snow_24 is not None else None,
             "weather_note": weather_note
         }
-    except Exception:
+    except Exception as e:
         # On failure, return empty summary (do not block main flow)
+        # Log the error for debugging
+        import logging
+        logger = logging.getLogger("uvicorn.error")
+        logger.warning(f"Weather API failed: {e}")
         return {
             "precipitation_24h_mm": None,
             "temperature_c_avg": None,
@@ -99,10 +121,15 @@ def compute_impact_and_radius(
     reports_total: int,
     reported_at_iso: str,
     density_norm: float = 0.0,
-) -> (float, int):
+) -> Tuple[float, int]:
     """
     Compute impact_score (0..100) and visibility_radius_m (meters).
-    Same formula as earlier; keeps values stable for indexing.
+    This formula balances:
+    - Severity (0-10 scale)
+    - Community engagement (upvotes)
+    - Flagging (reports reduce score)
+    - Spatial density
+    - Recency (exponential decay over 14 days)
     """
     S = max(0.0, min(10.0, severity_score))
     severity_norm = S / 10.0
@@ -120,12 +147,14 @@ def compute_impact_and_radius(
         age_days = 0.0
     recency = math.exp(-age_days / 14.0)  # 14-day timescale
 
-    # weights (tunable)
-    w_s = 35.0
-    w_u = 18.0
-    w_r = 14.0
-    w_d = 20.0
-    w_t = 13.0
+    # Adjusted weights for proper 0-100 scaling
+    # Max theoretical score with no upvotes/reports: severity(1.0)*40 + recency(1.0)*25 = 65
+    # Max with high engagement: severity(1.0)*40 + log1p(100)*12 + recency*25 + density*15 = 40+60+25+15 = 140 (normalized below)
+    w_s = 40.0  # severity weight
+    w_u = 12.0  # upvote weight (log scaled)
+    w_r = 10.0  # report penalty weight
+    w_d = 15.0  # density weight
+    w_t = 25.0  # recency weight
 
     impact_raw = (
         w_s * severity_norm
@@ -135,8 +164,10 @@ def compute_impact_and_radius(
         + w_t * recency
     )
 
-    normalization_const = 8.0
-    impact_score = max(0.0, min(100.0, (impact_raw / normalization_const) * 100.0))
+    # Normalize to 0-100 scale
+    # Typical max for new high-severity issue: 40 + 0 + 0 + 0 + 25 = 65
+    # Cap at 100 for exceptional cases with high engagement
+    impact_score = max(0.0, min(100.0, impact_raw * 100.0 / 65.0))
 
     base_radius = 100  # meters
     alpha = 0.06

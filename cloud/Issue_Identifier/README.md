@@ -188,7 +188,15 @@ $body = @{
   source = "citizen"
 } | ConvertTo-Json -Depth 5
 
-Invoke-RestMethod -Uri "http://localhost:8000/analyze/" -Method Post -ContentType "application/json" -Body $body | ConvertTo-Json -Depth 10
+Invoke-RestMethod -Uri "http://localhost:9200/issues/_search" -Method Post -ContentType "application/json" -Body '{"query": {"term": {"issue_id": "<issue_id returned from the response>"}}}' |
+ForEach-Object {
+    if ($_.hits) {
+        $_.hits.hits | ForEach-Object {
+            if ($_. _source.text_embedding) { $_._source.text_embedding = '[...]' }
+        }
+    }
+    $_
+} | ConvertTo-Json -Depth 10
 ```
 
 **cURL:**

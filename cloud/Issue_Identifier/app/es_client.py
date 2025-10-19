@@ -1,9 +1,11 @@
 from elasticsearch import Elasticsearch, NotFoundError
 import os
+import logging
 from typing import List, Dict, Any, Optional
 
 ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
 es = Elasticsearch(ES_URL, verify_certs=False, request_timeout=60)
+logger = logging.getLogger("uvicorn.error")
 
 
 def hybrid_retrieve_issues(
@@ -11,24 +13,62 @@ def hybrid_retrieve_issues(
     user_labels: List[str],
     days: int = 180,
     size: int = 5,
+    query_embedding: Optional[List[float]] = None,
 ) -> List[Dict[str, Any]]:
+    """
+    Hybrid retrieval combining:
+    - kNN vector similarity (if query_embedding provided)
+    - Geo-distance filter
+    - Time range filter
+    - Optional term matching on issue_types
+    """
     lat = location.get("latitude")
     lon = location.get("longitude")
-    body = {
-        "size": size,
-        "query": {
-            "bool": {
-                "filter": [
-                    {"geo_distance": {"distance": "500m", "location": {"lat": lat, "lon": lon}}},
-                    {"range": {"reported_at": {"gte": f"now-{days}d/d"}}}
-                ]
-            }
-        },
-        "_source": ["issue_types", "severity_score", "description"]
-    }
-
-    if user_labels:
-        body["query"]["bool"]["must"] = [{"terms": {"issue_types": user_labels}}]
+    
+    # Build filter conditions
+    filter_conditions = [
+        {"geo_distance": {"distance": "500m", "location": {"lat": lat, "lon": lon}}},
+        {"range": {"reported_at": {"gte": f"now-{days}d/d"}}}
+    ]
+    
+    # If query_embedding is provided, use kNN + filters
+    if query_embedding and len(query_embedding) == 3072:
+        logger.info("Using kNN hybrid search with vector similarity (3072 dims)")
+        body = {
+            "size": size,
+            "knn": {
+                "field": "text_embedding",
+                "query_vector": query_embedding,
+                "k": size * 2,  # retrieve more candidates for filtering
+                "num_candidates": 100,
+                "filter": {
+                    "bool": {
+                        "filter": filter_conditions
+                    }
+                }
+            },
+            "_source": ["issue_types", "severity_score", "description", "auto_caption"]
+        }
+        
+        # Add term matching if user labels provided
+        if user_labels:
+            body["knn"]["filter"]["bool"]["should"] = [{"terms": {"issue_types": user_labels}}]
+            body["knn"]["filter"]["bool"]["minimum_should_match"] = 0  # boost, not require
+    else:
+        # Fallback to traditional search if no embedding
+        logger.info("Using traditional filtered search (no query embedding provided)")
+        body = {
+            "size": size,
+            "query": {
+                "bool": {
+                    "filter": filter_conditions
+                }
+            },
+            "_source": ["issue_types", "severity_score", "description", "auto_caption"]
+        }
+        
+        if user_labels:
+            body["query"]["bool"]["must"] = [{"terms": {"issue_types": user_labels}}]
 
     try:
         resp = es.search(index="issues", body=body)
