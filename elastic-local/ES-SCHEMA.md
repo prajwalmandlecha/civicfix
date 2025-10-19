@@ -103,23 +103,33 @@ PUT /issues
 ```jsonc
 PUT /fixes
 {
-	"mappings": {
-		"properties": {
-			"fix_id": {"type":"keyword"},
-			"issue_id": {"type":"keyword"},
-			"created_by": {"type":"keyword"},
-			"created_at": {"type":"date"},
-			"title": {"type":"text"},
-			"summary": {"type":"text"},
-			"transcript": {"type":"text"},
-			"video_url": {"type":"keyword"},
-			"co2_saved": {"type":"float"},
-			"success_rate": {"type":"float"},           /* 0.0-1.0 */
-			"city": {"type":"keyword"},
-			"related_issue_types": {"type":"keyword"},
-			"text_embedding": {"type":"dense_vector","dims":3072}, /*for hybrid retrieval (model used: gemini-embedding-001) */
-			"source_doc_ids": {"type":"keyword"}
-		}
-	}
+  "mappings": {
+    "properties": {
+      "fix_id": {"type":"keyword"},
+      "issue_id": {"type":"keyword"},
+      "created_by": {"type":"keyword"},
+      "created_at": {"type":"date"},
+      "title": {"type":"text"},
+      "summary": {"type":"text"},
+      "image_urls": {"type":"keyword"},    /* array of public image urls */
+      "photo_count": {"type":"integer"},
+      "co2_saved": {"type":"float"},
+      "success_rate": {"type":"float"},    /* 0.0-1.0 */
+      "city": {"type":"keyword"},
+      "related_issue_types": {"type":"keyword"},
+      "fix_outcomes": {
+        "type":"nested",
+        "properties": {
+          "issue_type": {"type":"keyword"},
+          "fixed": {"type":"keyword"},
+          "confidence": {"type":"float"},
+          "notes": {"type":"text"}
+        }
+      },
+      "text_embedding": {"type":"dense_vector","dims":3072},  /*for hybrid retrieval (model used: gemini-embedding-001) */
+      "source_doc_ids": {"type":"keyword"}
+    }
+  }
 }
+
 ```
