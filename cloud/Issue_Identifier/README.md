@@ -153,18 +153,18 @@ $env:GEMINI_API_KEY="your_key_here"
 
 **Development mode (with auto-reload):**
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
 ```
 
 **Production mode:**
 ```bash
-uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --workers 4
 ```
 
 **Docker:**
 ```bash
 docker build -t civicfix-issue-identifier .
-docker run -e GEMINI_API_KEY=$GEMINI_API_KEY -p 8000:8000 civicfix-issue-identifier
+docker run -e GEMINI_API_KEY=$GEMINI_API_KEY -p 8000:8001 civicfix-issue-identifier
 ```
 
 **Service will be available at:** `http://localhost:8000`  
