@@ -150,7 +150,55 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 - Issue Identifier API will be available at `http://localhost:8000`
 - API docs at `http://localhost:8000/docs`
 
-### 5. Test the Issue Identifier
+### 5. Start Issue Verifier Service (Docker)
+
+Build and run the Issue Verifier container:
+
+```powershell
+# PowerShell
+cd ../Issue_Verifier
+
+# Build the Docker image
+docker build -t civicfix-issue-verifier .
+
+# Run the container on civicfix-net network
+docker run --name civicfix-issue-verifier --network civicfix-net -e GEMINI_API_KEY=your_gemini_api_key_here -e ES_URL=http://civicfix-es:9200 -p 8001:8000 civicfix-issue-verifier
+```
+
+```bash
+# Linux/macOS
+cd ../Issue_Verifier
+
+# Build the Docker image
+docker build -t civicfix-issue-verifier .
+
+# Run the container on civicfix-net network
+docker run --name civicfix-issue-verifier --network civicfix-net -e GEMINI_API_KEY=your_gemini_api_key_here -e ES_URL=http://civicfix-es:9200 -p 8001:8000 civicfix-issue-verifier
+```
+
+**Alternative: Run Locally (without Docker)**
+
+If you prefer to run the service locally:
+
+```powershell
+# PowerShell
+cd cloud/Issue_Verifier
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install -r requirements.txt
+
+# Create .env file with:
+# GEMINI_API_KEY=your_key_here
+# ES_URL=http://localhost:9200
+
+# Start the service
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+```
+
+- Issue Verifier API will be available at `http://localhost:8001`
+- API docs at `http://localhost:8001/docs`
+
+### 6. Test the Issue Identifier
 
 Test the service with a sample request:
 
@@ -188,7 +236,7 @@ curl -X POST http://localhost:8000/analyze/ \
   }'
 ```
 
-### 6. Start the Backend Server (API)
+### 7. Start the Backend Server (API)
 
 Navigate to the backend server directory:
 
@@ -200,7 +248,7 @@ npm start
 
 - This will start the backend API (typically on `http://localhost:3001`)
 
-### 7. Start the Frontend
+### 8. Start the Frontend
 
 Open a new terminal and run:
 
@@ -219,16 +267,16 @@ npm run dev
 **Stop all Docker containers:**
 ```powershell
 # PowerShell
-docker stop civicfix-issue-identifier civicfix-es
-docker rm civicfix-issue-identifier
+docker stop civicfix-issue-verifier civicfix-issue-identifier civicfix-es
+docker rm civicfix-issue-verifier civicfix-issue-identifier
 cd elastic-local
 docker-compose down
 ```
 
 ```bash
 # Linux/macOS
-docker stop civicfix-issue-identifier civicfix-es
-docker rm civicfix-issue-identifier
+docker stop civicfix-issue-verifier civicfix-issue-identifier civicfix-es
+docker rm civicfix-issue-verifier civicfix-issue-identifier
 cd elastic-local
 docker-compose down
 ```
@@ -242,23 +290,25 @@ docker-compose down
 
 1. **Elasticsearch**: `http://localhost:9200` (should return cluster info)
 2. **Issue Identifier**: `http://localhost:8000/docs` (Swagger UI)
-3. **Backend API**: `http://localhost:3001` (API endpoints)
-4. **Frontend**: `http://localhost:5173` (Web UI)
+3. **Issue Verifier**: `http://localhost:8001/docs` (Swagger UI)
+4. **Backend API**: `http://localhost:3001` (API endpoints)
+5. **Frontend**: `http://localhost:5173` (Web UI)
 
 **Check Docker network:**
 ```powershell
 docker network inspect civicfix-net
 ```
-You should see both `civicfix-es` and `civicfix-issue-identifier` listed.
+You should see `civicfix-es`, `civicfix-issue-identifier`, and `civicfix-issue-verifier` listed.
 
 ---
 
 ## 📝 Notes
 
-- **Docker network**: Both Elasticsearch and Issue Identifier must be on `civicfix-net` for communication
-- **Seeding data**: Run `seed.py` to populate Elasticsearch with test issues
+- **Docker network**: All services (Elasticsearch, Issue Identifier, Issue Verifier) must be on `civicfix-net` for communication
+- **Seeding data**: Run `seed.py` to populate Elasticsearch with test issues and fixes
 - **ES_URL**: Use `http://civicfix-es:9200` for Docker containers, `http://localhost:9200` for local scripts
 - **Gemini API limits**: Free tier has ~15 RPM, 1M tokens/day
+- **Fix documents**: seed.py generates fixes for ~30% of issues by default (configurable with `--fixes-ratio`)
 
 ---
 
@@ -267,6 +317,11 @@ You should see both `civicfix-es` and `civicfix-issue-identifier` listed.
 **Issue Identifier can't connect to Elasticsearch:**
 - Verify both containers are on `civicfix-net`: `docker network inspect civicfix-net`
 - Check ES_URL is set to `http://civicfix-es:9200` for Docker containers
+
+**Issue Verifier can't find fix documents:**
+- Make sure you ran seed.py after creating the fixes index
+- Verify fixes exist: `curl http://localhost:9200/fixes/_count`
+- Re-run seed.py if needed to generate fix documents with embeddings
 
 **Seed script can't connect:**
 - Use `ES_URL=http://localhost:9200` for host-based scripts

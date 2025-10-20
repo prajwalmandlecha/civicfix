@@ -14,6 +14,7 @@ import uuid
 import random
 import time
 from datetime import datetime, timedelta, timezone
+from typing import Dict, Any, List
 from elasticsearch import Elasticsearch, helpers, exceptions
 from faker import Faker
 
@@ -424,31 +425,161 @@ def make_random_issue(idx):
     return doc
 
 
-def seed(count=TEST_COUNT):
+def build_fix_embedding_text(fix_doc: Dict[str, Any]) -> str:
+    """Build text blob for fix embedding."""
+    parts = [
+        f"Fix: {fix_doc.get('title', '')}",
+        f"Summary: {fix_doc.get('summary', '')}",
+        f"Related issues: {', '.join(fix_doc.get('related_issue_types', []))}",
+        f"CO2 saved: {fix_doc.get('co2_saved', 0)} kg"
+    ]
+    return " -- ".join(parts)
+
+
+def make_fix_for_issue(issue_doc: Dict[str, Any]) -> Dict[str, Any]:
+    """Generate a fix document for a given issue with embedding."""
+    issue_id = issue_doc["_source"]["issue_id"]
+    issue_types = issue_doc["_source"].get("issue_types", [])
+    main_issue_type = issue_types[0] if issue_types else "unknown"
+    
+    fix_id = str(uuid.uuid4())
+    created_at = datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z')
+    
+    # Generate fix details based on issue type
+    fix_title = f"Resolution for {main_issue_type.replace('_', ' ').title()}"
+    fix_summary = PREDICTED_FIXES.get(main_issue_type, "Standard civic issue resolution applied.")
+    
+    # Simulate fix outcomes
+    fix_outcomes = []
+    for itype in issue_types:
+        fix_outcomes.append({
+            "issue_type": itype,
+            "fixed": random.choice(["yes", "partial", "no"]),
+            "confidence": round(random.uniform(0.7, 0.95), 2),
+            "notes": f"Applied standard fix for {itype}"
+        })
+    
+    # Build fix document
+    fix_doc = {
+        "fix_id": fix_id,
+        "issue_id": issue_id,
+        "created_by": f"ngo:org_{random.randint(1, 10)}",
+        "created_at": created_at,
+        "title": fix_title,
+        "summary": fix_summary,
+        "image_urls": [f"https://example.com/fixes/{fix_id}_{i}.jpg" for i in range(random.randint(1, 3))],
+        "photo_count": random.randint(1, 3),
+        "co2_saved": round(random.uniform(0.5, 15.0), 2),
+        "success_rate": round(random.uniform(0.65, 0.98), 2),
+        "city": "Pune",
+        "related_issue_types": issue_types,
+        "fix_outcomes": fix_outcomes,
+        "source_doc_ids": [issue_id]
+    }
+    
+    # Generate embedding for fix
+    embedding_text = build_fix_embedding_text(fix_doc)
+    fix_embedding = generate_embedding(embedding_text)
+    fix_doc["text_embedding"] = fix_embedding
+    
+    return {
+        "_index": FIXES_INDEX,
+        "_id": fix_id,
+        "_source": fix_doc
+    }
+
+
+def seed(count=TEST_COUNT, fixes_ratio=0.3):
+    """
+    Seed issues and fixes.
+    fixes_ratio: proportion of issues that should have corresponding fixes (0.0 to 1.0)
+    """
     check_es_or_exit()
 
     # create indices (robust)
     create_indices()
 
-    # generate docs
-    docs = []
-    print(f"Generating {count} documents with embeddings...")
+    # generate issue docs
+    issue_docs = []
+    print(f"Generating {count} issue documents with embeddings...")
     for i in range(count):
         # pass idx for each doc so photo_url unique
         doc = make_random_issue(i)
-        docs.append(doc)
+        issue_docs.append(doc)
         
         # Show progress every 10 documents
         if (i + 1) % 10 == 0 or (i + 1) == count:
-            print(f"  Generated {i + 1}/{count} documents...")
+            print(f"  Generated {i + 1}/{count} issue documents...")
 
-    print(f"Bulk indexing {len(docs)} documents...")
+    print(f"Bulk indexing {len(issue_docs)} issue documents...")
     try:
-        success, failures = helpers.bulk(es, docs, stats_only=False)
-        print("Bulk insert completed. inserter returned:", success)
+        success, failures = helpers.bulk(es, issue_docs, stats_only=False)
+        print(f"Bulk insert completed for issues. Inserted: {success}")
     except Exception as e:
         print("Bulk insert failed:", repr(e))
         sys.exit(1)
+    
+    # Generate fixes for a subset of issues
+    num_fixes = int(count * fixes_ratio)
+    if num_fixes > 0:
+        print(f"\nGenerating {num_fixes} fix documents (linked to random issues)...")
+        
+        # Fetch random issues to create fixes for
+        try:
+            search_body = {
+                "size": num_fixes,
+                "query": {"match_all": {}},
+                "_source": ["issue_id", "issue_types", "status"]
+            }
+            result = es.search(index=ISSUES_INDEX, body=search_body)
+            issues = result.get("hits", {}).get("hits", [])
+            
+            if not issues:
+                print("No issues found to create fixes for.")
+                return
+            
+            fix_docs = []
+            issue_updates = []
+            for idx, issue in enumerate(issues):
+                # Create fix for this issue
+                fix_doc = make_fix_for_issue(issue)
+                fix_docs.append(fix_doc)
+                
+                # Prepare update to mark issue as having a fix (update status and evidence_ids)
+                issue_id = issue["_source"]["issue_id"]
+                fix_id = fix_doc["_source"]["fix_id"]
+                
+                # Update issue with fix evidence
+                issue_updates.append({
+                    "_op_type": "update",
+                    "_index": ISSUES_INDEX,
+                    "_id": issue["_id"],
+                    "doc": {
+                        "evidence_ids": [fix_id],
+                        "status": random.choice(["verified", "closed"]),
+                        "verified_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z') if random.random() > 0.5 else None,
+                        "closed_at": datetime.now(timezone.utc).isoformat().replace('+00:00', 'Z') if random.random() > 0.3 else None
+                    }
+                })
+                
+                # Show progress
+                if (idx + 1) % 10 == 0 or (idx + 1) == num_fixes:
+                    print(f"  Generated {idx + 1}/{num_fixes} fix documents...")
+            
+            # Bulk index fixes
+            print(f"Bulk indexing {len(fix_docs)} fix documents...")
+            success, failures = helpers.bulk(es, fix_docs, stats_only=False)
+            print(f"Bulk insert completed for fixes. Inserted: {success}")
+            
+            # Bulk update issues with fix evidence
+            print(f"Updating {len(issue_updates)} issues with fix evidence...")
+            success, failures = helpers.bulk(es, issue_updates, stats_only=False)
+            print(f"Bulk update completed for issues. Updated: {success}")
+            
+        except Exception as e:
+            print(f"Failed to generate fixes: {repr(e)}")
+            import traceback
+            traceback.print_exc()
 
 
 if __name__ == "__main__":
