@@ -19,7 +19,8 @@ from app import es_client
 from google import genai
 from google.genai import types
 
-load_dotenv()
+# Explicitly load .env file (not .env.example)
+load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'), override=True)
 
 logger = logging.getLogger("uvicorn.error")
 API_KEY = os.getenv("GEMINI_API_KEY")
@@ -46,6 +47,18 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+@app.on_event("startup")
+async def startup_event():
+    """Log configuration on startup for debugging"""
+    logger.info("=" * 60)
+    logger.info("STARTUP CONFIGURATION:")
+    logger.info(f"API_KEY present: {bool(API_KEY)}")
+    logger.info(f"API_KEY (masked): {API_KEY[:10]}...{API_KEY[-4:] if API_KEY and len(API_KEY) > 14 else 'N/A'}")
+    logger.info(f"GEMINI_MODEL: {GEMINI_MODEL}")
+    logger.info(f"EMBEDDING_MODEL: {EMBEDDING_MODEL}")
+    logger.info(f"Client initialized: {client is not None}")
+    logger.info("=" * 60)
 
 # canonical label set (bounded)
 CANONICAL_LABELS: List[str] = [

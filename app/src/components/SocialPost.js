@@ -8,12 +8,13 @@ import {
   Dimensions,
   Animated,
 } from "react-native";
-
-const { width } = Dimensions.get("window");
+import Ionicons from "@expo/vector-icons/Ionicons";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { getIssueDisplayName } from "../utils/issueTypeMapping";
 
 const SocialPost = ({
   postId,
-  issueType,
+  issueTypes,
   location,
   postImage,
   impactLevel,
@@ -23,9 +24,13 @@ const SocialPost = ({
   onLike,
   onFixToggle,
   onSameIssue,
+  onPress,
+  detailedData,
 }) => {
   const [isLiked, setIsLiked] = useState(false);
   const [scaleValue] = useState(new Animated.Value(1));
+  const [isReported, setIsReported] = useState(false);
+  console.log("Issue Types in SocialPost:", issueTypes);
 
   const handleLike = () => {
     // Toggle liked state
@@ -50,26 +55,51 @@ const SocialPost = ({
   };
 
   const getImpactColor = () => {
-    if (impactLevel === "High") return "#FFF3CD";
-    if (impactLevel === "Medium") return "#FFF3CD";
-    return "#FFF3CD";
+    if (impactLevel === "High") return "#ffebee"; // Light red
+    if (impactLevel === "Medium") return "#fff3e0"; // Light orange
+    return "#e8f5e9"; // Light green for Low
   };
 
   const getTagColor = () => {
-    if (issueType === "Pothole") return "#FFF9E6";
-    if (issueType === "Streetlight") return "#FFF9E6";
-    if (issueType === "Garbage") return "#FFF9E6";
+    // if (issueType === "Pothole") return "#FFF9E6";
+    // if (issueType === "Streetlight") return "#FFF9E6";
+    // if (issueType === "Garbage") return "#FFF9E6";
     return "#FFF9E6";
   };
 
-  return (
-    <View style={styles.container}>
-      {/* Post Image */}
-      <Image source={postImage} style={styles.postImage} />
+  const handleReport = () => {
+    setIsReported(!isReported);
+  };
 
-      {/* Issue Type Tag */}
-      <View style={[styles.issueTag, { backgroundColor: getTagColor() }]}>
-        <Text style={styles.issueTagText}>{issueType}</Text>
+  return (
+    <TouchableOpacity
+      style={[styles.container, { backgroundColor: getImpactColor() }]}
+      onPress={onPress}
+      activeOpacity={0.95}
+    >
+      {/* Post Image Container */}
+      <View style={styles.imageContainer}>
+        <Image source={postImage} style={styles.postImage} />
+
+        {/* Issue Type Tags Row */}
+        <View style={styles.issueTagsContainer}>
+          {issueTypes &&
+            issueTypes.slice(0, 3).map((type, index) => (
+              <View
+                key={index}
+                style={[styles.issueTag, { backgroundColor: getTagColor() }]}
+              >
+                <Text style={styles.issueTagText}>
+                  {getIssueDisplayName(type.type)}
+                </Text>
+              </View>
+            ))}
+        </View>
+
+        {/* Impact Level Badge */}
+        <View style={styles.impactBadge}>
+          <Text style={styles.impactBadgeText}>{impactLevel} Impact</Text>
+        </View>
       </View>
 
       {/* Content Section */}
@@ -78,16 +108,6 @@ const SocialPost = ({
         <View style={styles.locationRow}>
           <Text style={styles.locationIcon}>📍</Text>
           <Text style={styles.locationText}>{location}</Text>
-        </View>
-
-        {/* Impact Warning */}
-        <View
-          style={[styles.impactWarning, { backgroundColor: getImpactColor() }]}
-        >
-          <Text style={styles.warningIcon}>⚠️</Text>
-          <Text style={styles.impactText}>
-            <Text style={styles.impactLevel}>{impactLevel}</Text> - {co2Impact}
-          </Text>
         </View>
 
         {/* Actions Row */}
@@ -100,20 +120,52 @@ const SocialPost = ({
               activeOpacity={0.7}
               hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
             >
-              <Animated.Text
-                style={[
-                  styles.heartIcon,
-                  { transform: [{ scale: scaleValue }] },
-                ]}
+              <Animated.View
+                style={{
+                  transform: [{ scale: scaleValue }],
+                  alignItems: "center",
+                  justifyContent: "center",
+                }}
               >
-                {isLiked ? "❤️" : "🤍"}
-              </Animated.Text>
+                
+                {isLiked ? (
+                  <FontAwesome name="thumbs-up" size={24} color="#0d6efd" />
+                ) : (
+                  <FontAwesome name="thumbs-o-up" size={24
+                    
+                  } color="#6c757d" />
+                )}
+              </Animated.View>
             </TouchableOpacity>
             <Text style={styles.likesCount}>{likes}</Text>
           </View>
 
-          {/* Status Button */}
           <TouchableOpacity
+            style={[
+              styles.reportButton,
+              isReported && styles.reportButtonReported,
+            ]}
+            onPress={handleReport}
+          >
+            <Ionicons
+              name={isReported ? "flag" : "flag-outline"}
+              size={16}
+              color={isReported ? "#fff" : "#dc3545"}
+              style={{ marginRight: 6 }}
+            />
+            <Text
+              style={[
+                styles.reportButtonText,
+                isReported && styles.reportButtonTextReported,
+              ]}
+            >
+              {isReported ? "Reported" : "Report"}
+            </Text>
+          </TouchableOpacity>
+        </View>
+
+        {/* Status Button */}
+        {/* <TouchableOpacity
             style={[
               styles.statusButton,
               status === "resolved" && styles.statusButtonResolved,
@@ -129,21 +181,20 @@ const SocialPost = ({
               {status === "resolved" ? "✓ Fixed" : "I fixed it"}
             </Text>
           </TouchableOpacity>
-        </View>
+        </View> */}
 
-        {/* Same Issue Link */}
+        {/* Same Issue Link
         <TouchableOpacity onPress={onSameIssue} style={styles.sameIssueButton}>
           <Text style={styles.linkIcon}>🔗</Text>
           <Text style={styles.sameIssueText}>Same issue elsewhere?</Text>
-        </TouchableOpacity>
+        </TouchableOpacity> */}
       </View>
-    </View>
+    </TouchableOpacity>
   );
 };
 
 const styles = StyleSheet.create({
   container: {
-    backgroundColor: "#fff",
     marginBottom: 20,
     borderRadius: 15,
     overflow: "hidden",
@@ -156,24 +207,58 @@ const styles = StyleSheet.create({
     shadowRadius: 3.84,
     elevation: 5,
   },
-  postImage: {
+  imageContainer: {
+    position: "relative",
     width: "100%",
     height: 250,
+  },
+  postImage: {
+    width: "100%",
+    height: "100%",
     resizeMode: "cover",
   },
-  issueTag: {
+  issueTagsContainer: {
     position: "absolute",
     top: 15,
     left: 15,
-    paddingHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 20,
+    right: 15,
+    flexDirection: "row",
+    flexWrap: "wrap",
     zIndex: 1,
+    gap: 8,
+  },
+  issueTag: {
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 16,
   },
   issueTagText: {
-    fontSize: 14,
+    fontSize: 12,
     fontWeight: "600",
     color: "#856404",
+  },
+  impactBadge: {
+    position: "absolute",
+    bottom: 10,
+    right: 10,
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    zIndex: 2,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 1,
+    },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
+  },
+  impactBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#333",
   },
   content: {
     padding: 16,
@@ -190,27 +275,6 @@ const styles = StyleSheet.create({
   locationText: {
     fontSize: 14,
     color: "#666",
-  },
-  impactWarning: {
-    flexDirection: "row",
-    alignItems: "center",
-    padding: 12,
-    borderRadius: 8,
-    marginBottom: 16,
-    borderLeftWidth: 3,
-    borderLeftColor: "#FFC107",
-  },
-  warningIcon: {
-    fontSize: 16,
-    marginRight: 8,
-  },
-  impactText: {
-    fontSize: 13,
-    color: "#856404",
-    flex: 1,
-  },
-  impactLevel: {
-    fontWeight: "600",
   },
   actionsRow: {
     flexDirection: "row",
@@ -234,25 +298,47 @@ const styles = StyleSheet.create({
     fontWeight: "500",
     color: "#333",
   },
-  statusButton: {
-    paddingHorizontal: 20,
+  // statusButton: {
+  //   paddingHorizontal: 20,
+  //   paddingVertical: 10,
+  //   borderRadius: 20,
+  //   borderWidth: 1.5,
+  //   borderColor: "#28a745",
+  //   backgroundColor: "#fff",
+  // },
+  // statusButtonResolved: {
+  //   backgroundColor: "#d4edda",
+  //   borderColor: "#28a745",
+  // },
+  // statusButtonText: {
+  //   fontSize: 14,
+  //   fontWeight: "600",
+  //   color: "#28a745",
+  // },
+  // statusButtonTextResolved: {
+  //   color: "#155724",
+  // },
+  reportButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
     paddingVertical: 10,
     borderRadius: 20,
     borderWidth: 1.5,
-    borderColor: "#28a745",
+    borderColor: "#dc3545",
     backgroundColor: "#fff",
   },
-  statusButtonResolved: {
-    backgroundColor: "#d4edda",
-    borderColor: "#28a745",
+  reportButtonReported: {
+    backgroundColor: "#dc3545",
+    borderColor: "#c82333",
   },
-  statusButtonText: {
-    fontSize: 14,
+  reportButtonText: {
+    fontSize: 13,
     fontWeight: "600",
-    color: "#28a745",
+    color: "#dc3545",
   },
-  statusButtonTextResolved: {
-    color: "#155724",
+  reportButtonTextReported: {
+    color: "#fff",
   },
   sameIssueButton: {
     flexDirection: "row",

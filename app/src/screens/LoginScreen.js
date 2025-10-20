@@ -20,6 +20,7 @@ const LoginScreen = ({ navigation }) => {
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
+      
     } catch (error) {
       console.error("Error signing in:", error);
     } finally {

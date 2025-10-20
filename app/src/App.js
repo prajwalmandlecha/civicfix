@@ -14,6 +14,9 @@ import SignupScreen from "./screens/SignupScreen";
 import { ActionSheetProvider } from "@expo/react-native-action-sheet";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import subscribeToAuthState from "./hooks/subscribeToAuthState";
+import { ActivityIndicator } from "react-native";
+import LogoutButton from "./components/LogoutButton";
+import { UserProvider } from "./context/UserContext";
 
 const Tab = createBottomTabNavigator();
 
@@ -67,6 +70,7 @@ const TabNav = () => (
       },
       tabBarActiveTintColor: "#6FCF97",
       headerTintColor: "#4285f4",
+      headerRight: () => <LogoutButton />,
     }}
   >
     <Tab.Screen
@@ -123,16 +127,22 @@ const TabNav = () => (
 );
 
 export default function App() {
-  const user = subscribeToAuthState();
+  const { user, loading } = subscribeToAuthState();
+
+  if (loading) {
+    return <ActivityIndicator size="large" color="#6FCF97" />;
+  }
 
   return (
     <SafeAreaProvider>
       <ActionSheetProvider>
         <KeyboardProvider>
-          <NavigationContainer>
-            <StatusBar style="dark" />
-            {user ? <TabNav /> : <StackNav />}
-          </NavigationContainer>
+          <UserProvider>
+            <NavigationContainer>
+              <StatusBar style="dark" />
+              {user ? <TabNav /> : <StackNav />}
+            </NavigationContainer>
+          </UserProvider>
         </KeyboardProvider>
       </ActionSheetProvider>
     </SafeAreaProvider>

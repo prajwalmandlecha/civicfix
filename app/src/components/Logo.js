@@ -5,7 +5,7 @@ const Logo = ({ light = false }) => {
   return (
     <View style={styles.container}>
       <Image
-        source={require("../../assets/iconblue.png")}
+        source={require("../../assets/icon.jpg")}
         style={styles.icon}
         resizeMode="contain"
       />
@@ -19,8 +19,8 @@ const styles = StyleSheet.create({
     alignItems: "center",
   },
   icon: {
-    width: 60,
-    height: 60,
+    width: 200,
+    height: 100,
   },
   text: {
     fontSize: 32,

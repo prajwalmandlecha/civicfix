@@ -1,47 +1,22 @@
-import React, { useState } from "react";
+import React, { useState, useEffect, useLayoutEffect } from "react";
 import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
 import SocialPost from "../components/SocialPost";
+import IssueDetailModal from "../components/IssueDetailModal";
+import api from "../services/api";
+import { useUserContext } from "../context/UserContext";
+import * as Location from "expo-location";
 
 const HomeScreen = () => {
   const [refreshing, setRefreshing] = useState(false);
-  const [posts, setPosts] = useState([
-    {
-      id: 1,
-      issueType: "Pothole",
-      location: "Main St & 5th Ave",
-      postImage: {
-        uri: "https://images.unsplash.com/photo-1615671524827-c1fe3973b648?w=400&h=300&fit=crop",
-      },
-      impactLevel: "High",
-      co2Impact: "45kg CO₂ if unresolved",
-      likes: 127,
-      status: "unresolved",
-    },
-    {
-      id: 2,
-      issueType: "Streetlight",
-      location: "Park Avenue",
-      postImage: {
-        uri: "https://images.unsplash.com/photo-1473186578172-c141e6798cf4?w=400&h=300&fit=crop",
-      },
-      impactLevel: "Medium",
-      co2Impact: "28kg CO₂ if unresolved",
-      likes: 89,
-      status: "unresolved",
-    },
-    {
-      id: 3,
-      issueType: "Garbage",
-      location: "Central Park West",
-      postImage: {
-        uri: "https://images.unsplash.com/photo-1473186578172-c141e6798cf4?w=400&h=300&fit=crop",
-      },
-      impactLevel: "Low",
-      co2Impact: "12kg CO₂ saved",
-      likes: 156,
-      status: "resolved",
-    },
-  ]);
+  const [posts, setPosts] = useState([]);
+  const [selectedIssue, setSelectedIssue] = useState(null);
+  const [modalVisible, setModalVisible] = useState(false);
+
+  const { lastLocation } = useUserContext();
+
+  useEffect(() => {
+    getPosts();
+  }, [lastLocation]);
 
   const handleLike = (postId) => {
     setPosts(
@@ -49,6 +24,69 @@ const HomeScreen = () => {
         post.id === postId ? { ...post, likes: post.likes + 1 } : post
       )
     );
+  };
+
+  const formatLocation = async (location) => {
+    if (!location) return "Unknown location";
+    try {
+      const addressParts = await Location.reverseGeocodeAsync({
+        latitude: location.lat,
+        longitude: location.lon,
+      });
+      console.log(
+        "Reverse geocode result for location:",
+        location,
+        addressParts
+      );
+      if (addressParts.length > 0) {
+        const { name, street } = addressParts[0];
+        return [name, street].filter(Boolean).join(", ");
+      }
+    } catch (e) {
+      console.log("Error formatting location:", e);
+    }
+    return "Unknown location";
+  };
+
+  const getPosts = async () => {
+    if (!lastLocation || !lastLocation.coords) {
+      setPosts([]);
+      return;
+    }
+    console.log("Fetching posts for location:", lastLocation);
+    const response = await api.get("/issues/", {
+      params: {
+        latitude: lastLocation.coords.latitude,
+        longitude: lastLocation.coords.longitude,
+        limit: 20,
+      },
+    });
+    console.log("API Response:", response.data);
+    // Format locations asynchronously for all issues
+    const issues = await Promise.all(
+      response.data.issues.map(async (issue) => ({
+        id: issue.issue_id,
+        issueTypes: issue.detected_issues,
+        location: await formatLocation(issue.location),
+        postImage: {
+          uri: issue.photo_url,
+        },
+        impactLevel:
+          issue.severity_score > 7
+            ? "High"
+            : issue.severity_score > 4
+            ? "Medium"
+            : "Low",
+        co2Impact: issue.co2Impact,
+        likes: issue.upvotes.open,
+        status: issue.status,
+        detailedData: issue, // Store the complete issue data
+      }))
+    );
+    console.log("Fetched Issues", issues);
+    setPosts(issues);
+    // console.log("Issues", response.data);
+    console.dir(response.data.issues, { depth: null });
   };
 
   const handleFixToggle = (postId) => {
@@ -68,12 +106,21 @@ const HomeScreen = () => {
     console.log(`Same issue elsewhere for post ${postId}`);
   };
 
-  const onRefresh = React.useCallback(() => {
+  const handlePostPress = (post) => {
+    setSelectedIssue(post);
+    setModalVisible(true);
+  };
+
+  const handleCloseModal = () => {
+    setModalVisible(false);
+    setSelectedIssue(null);
+  };
+
+  const onRefresh = async () => {
     setRefreshing(true);
-    setTimeout(() => {
-      setRefreshing(false);
-    }, 1500);
-  }, []);
+    await getPosts();
+    setRefreshing(false);
+  };
 
   return (
     <View style={styles.container}>
@@ -82,16 +129,18 @@ const HomeScreen = () => {
         renderItem={({ item }) => (
           <SocialPost
             postId={item.id}
-            issueType={item.issueType}
+            issueTypes={item.issueTypes}
             location={item.location}
             postImage={item.postImage}
             impactLevel={item.impactLevel}
             co2Impact={item.co2Impact}
             likes={item.likes}
             status={item.status}
+            detailedData={item.detailedData}
             onLike={() => handleLike(item.id)}
             onFixToggle={() => handleFixToggle(item.id)}
             onSameIssue={() => handleSameIssue(item.id)}
+            onPress={() => handlePostPress(item)}
           />
         )}
         keyExtractor={(item) => item.id.toString()}
@@ -105,6 +154,12 @@ const HomeScreen = () => {
             colors={["#4285f4"]}
           />
         }
+      />
+
+      <IssueDetailModal
+        visible={modalVisible}
+        onClose={handleCloseModal}
+        issueData={selectedIssue}
       />
     </View>
   );

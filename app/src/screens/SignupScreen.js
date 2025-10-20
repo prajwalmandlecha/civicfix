@@ -12,7 +12,8 @@ import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { MaterialIcons } from "@expo/vector-icons";
 import { useActionSheet } from "@expo/react-native-action-sheet";
 import { createUserWithEmailAndPassword, updateProfile } from "firebase/auth";
-import { auth } from "../services/firebase";
+import { auth, firestore } from "../services/firebase";
+import { doc, setDoc } from "firebase/firestore";
 import CustomTextInput from "../components/CustomTextInput";
 import Button from "../components/Button";
 import Card from "../components/Card";
@@ -33,8 +34,8 @@ const SignupScreen = ({ navigation }) => {
     showActionSheetWithOptions(
       { options, cancelButtonIndex },
       (selectedIndex) => {
-        if (selectedIndex === 0) setUserType("Citizen");
-        if (selectedIndex === 1) setUserType("Volunteer");
+        if (selectedIndex === 0) setUserType("citizen");
+        if (selectedIndex === 1) setUserType("volunteer");
       }
     );
   };
@@ -50,7 +51,12 @@ const SignupScreen = ({ navigation }) => {
       if (cred.user) {
         await updateProfile(cred.user, { displayName: name });
       }
-      
+      await setDoc(doc(firestore, "users", cred.user.uid), {
+        name,
+        email,
+        userType,
+        createdAt: new Date(),
+      });
     } catch (error) {
       console.error("Error signing up:", error);
     } finally {

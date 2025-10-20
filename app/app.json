@@ -26,7 +26,12 @@
         "android.permission.ACCESS_COARSE_LOCATION",
         "android.permission.ACCESS_FINE_LOCATION"
       ],
-      "package": "com.prajwal32.CivicFix"
+      "package": "com.prajwal32.CivicFix",
+      "config": {
+        "googleMaps": {
+          "apiKey": ""
+        }
+      }
     },
     "web": {
       "favicon": "./assets/favicon.png"
@@ -45,12 +50,13 @@
           "locationWhenInUsePermission": "Allow $(PRODUCT_NAME) to use your location to tag the issue."
         }
       ],
-      ["expo-maps", {
-            "requestLocationPermission": true,
+      [
+        "expo-maps",
+        {
+          "requestLocationPermission": true,
           "locationPermission": "Allow $(PRODUCT_NAME) to use your location"
-
-      }
-    ]
+        }
+      ]
     ],
     "extra": {
       "eas": {

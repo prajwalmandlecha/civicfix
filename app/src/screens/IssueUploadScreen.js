@@ -6,7 +6,6 @@ import {
   StyleSheet,
   TouchableOpacity,
   TextInput,
-  ScrollView,
   ActivityIndicator,
   Alert,
 } from "react-native";
@@ -15,6 +14,12 @@ import { useActionSheet } from "@expo/react-native-action-sheet";
 import * as Location from "expo-location";
 import api from "../services/api";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { auth } from "../services/firebase";
+import { getCurrentLocation } from "../services/getLocation";
+import GooglePlacesTextInput from "react-native-google-places-textinput";
+import "react-native-get-random-values";
+import { getIssueTypesWithNames } from "../utils/issueTypeMapping";
+import { Dropdown } from "react-native-element-dropdown";
 
 const IssueUploadScreen = ({ navigation }) => {
   const [image, setImage] = useState(null);
@@ -24,59 +29,23 @@ const IssueUploadScreen = ({ navigation }) => {
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [uploading, setUploading] = useState(false);
+  const [issueTypes, setIssueTypes] = useState([]);
   const { showActionSheetWithOptions } = useActionSheet();
 
-  useEffect(() => {
-    getPermissions();
-  }, []);
-
-  const getPermissions = async () => {
-    let { status } = await Location.requestForegroundPermissionsAsync();
-    if (status !== "granted") {
-      alert("Permission to access location was denied");
-      return false;
-    }
-    return true;
-  };
+  const issueTypesData = getIssueTypesWithNames();
+  const dropdownData = Object.entries(issueTypesData).map(([key, value]) => ({
+    label: value,
+    value: key,
+  }));
 
   const getLocation = async () => {
-    try {
-      setLoadingLocation(true);
-
-      let location = await Location.getCurrentPositionAsync({});
-      console.log("📍 Current location:", location);
-      setLocation(location);
-
-      // Reverse geocoding
-      let geocode = await Location.reverseGeocodeAsync({
-        latitude: location.coords.latitude,
-        longitude: location.coords.longitude,
-      });
-
-      console.log("📫 Geocode result:", geocode);
-
-      if (geocode.length > 0) {
-        const place = geocode[0];
-        if (place.formattedAddress) {
-          setAddress(place.formattedAddress);
-        } else {
-          const addressParts = [
-            place.streetNumber,
-            place.street,
-            place.district,
-            place.city,
-            place.region,
-            place.postalCode,
-          ];
-          const constructedAddress = addressParts.filter(Boolean).join(", ");
-          setAddress(constructedAddress);
-        }
-      }
-      setLoadingLocation(false);
-    } catch (error) {
-      console.error("❌ Location error:", error);
-      alert("Error getting location: " + error.message);
-      setLoadingLocation(false);
+    const { addressParts, location } = await getCurrentLocation(
+      setLoadingLocation
+    );
+    setLocation(location);
+    if (addressParts) {
+      const addr = `${addressParts.street}, ${addressParts.city}, ${addressParts.region}, ${addressParts.country}`;
+      setAddress(addr);
     }
   };
 
@@ -170,11 +139,15 @@ const IssueUploadScreen = ({ navigation }) => {
         "locationstr",
         JSON.stringify({
           ...location.coords,
-          timestamp: location.timestamp,
         })
       );
       formData.append("description", description);
-      // formData.append("is_anonymous", isAnonymous);
+      formData.append("labels", JSON.stringify(issueTypes));
+      formData.append("timestamp", new Date().toISOString());
+      formData.append(
+        "reported_by",
+        isAnonymous ? "anonymous" : auth.currentUser.uid
+      );
       const response = await api.post("/submit-issue", formData, {
         headers: {
           "Content-Type": "multipart/form-data",
@@ -185,6 +158,10 @@ const IssueUploadScreen = ({ navigation }) => {
 
       // add to db
 
+      if (response.data.no_issues_found) {
+        Alert.alert("Notice", "No issues were detected in the uploaded image.");
+        return;
+      }
       Alert.alert("Success", "Issue reported successfully!", [
         {
           text: "OK",
@@ -193,6 +170,7 @@ const IssueUploadScreen = ({ navigation }) => {
             setDescription("");
             setAddress("");
             setLocation(null);
+            setIssueTypes([]);
             setIsAnonymous(false);
           },
         },
@@ -212,7 +190,12 @@ const IssueUploadScreen = ({ navigation }) => {
   };
 
   return (
-    <KeyboardAwareScrollView style={styles.container} bottomOffset={250}>
+    <KeyboardAwareScrollView
+      style={styles.container}
+      bottomOffset={250}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
       <View style={styles.formContainer}>
         <TouchableOpacity style={styles.uploadContainer} onPress={pickImage}>
           {image ? (
@@ -229,7 +212,57 @@ const IssueUploadScreen = ({ navigation }) => {
         </TouchableOpacity>
 
         <View style={styles.inputGroup}>
-          <Text style={styles.label}>📝 Description</Text>
+          <Text style={styles.label}>Issue Types (Optional)</Text>
+          <Dropdown
+            style={styles.dropdown}
+            placeholderStyle={styles.placeholderStyle}
+            selectedTextStyle={styles.selectedTextStyle}
+            inputSearchStyle={styles.inputSearchStyle}
+            iconStyle={styles.iconStyle}
+            data={dropdownData}
+            search
+            maxHeight={300}
+            labelField="label"
+            valueField="value"
+            placeholder="Select issue types (Gemini will add more)"
+            searchPlaceholder="Search..."
+            value={issueTypes[0] || null}
+            onChange={(item) => {
+              if (issueTypes.includes(item.value)) {
+                setIssueTypes(issueTypes.filter((type) => type !== item.value));
+              } else {
+                setIssueTypes([...issueTypes, item.value]);
+              }
+            }}
+            renderLeftIcon={() => null}
+            flatListProps={{
+              nestedScrollEnabled: true,
+            }}
+            containerStyle={styles.dropdownContainer}
+          />
+          {issueTypes.length > 0 && (
+            <View style={styles.selectedTypesContainer}>
+              {issueTypes.map((type) => (
+                <View key={type} style={styles.selectedTypeChip}>
+                  <Text style={styles.selectedTypeText}>
+                    {issueTypesData[type]}
+                  </Text>
+                  <TouchableOpacity
+                    onPress={() => {
+                      setIssueTypes(issueTypes.filter((t) => t !== type));
+                    }}
+                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                  >
+                    <Text style={styles.removeTypeText}>✕</Text>
+                  </TouchableOpacity>
+                </View>
+              ))}
+            </View>
+          )}
+        </View>
+
+        <View style={styles.inputGroup}>
+          <Text style={styles.label}>Description</Text>
           <TextInput
             style={styles.textArea}
             placeholder="Describe the issue in detail..."
@@ -249,7 +282,7 @@ const IssueUploadScreen = ({ navigation }) => {
               alignItems: "center",
             }}
           >
-            <Text style={styles.label}>📍 Location</Text>
+            <Text style={styles.label}>Location</Text>
             <TouchableOpacity
               onPress={getLocation}
               disabled={loadingLocation}
@@ -265,17 +298,54 @@ const IssueUploadScreen = ({ navigation }) => {
             </TouchableOpacity>
           </View>
 
-          <TextInput
-            style={styles.textInput}
-            placeholder="e.g., Main St & 5th Ave"
+          <GooglePlacesTextInput
+            apiKey=""
+            placeHolderText="Search for a location"
             value={address}
-            onChangeText={setAddress}
+            fetchDetails={true}
+            detailsFields={[
+              "formattedAddress",
+              "location",
+              "displayName",
+              "id",
+            ]}
+            onPlaceSelect={(place) => {
+              console.log("Place selected:", place);
+              if (place.details) {
+                const newAddress = place.details.formattedAddress;
+                console.log("Setting address:", newAddress);
+                setAddress(newAddress);
+                setLocation({
+                  coords: {
+                    latitude: place.details.location.latitude,
+                    longitude: place.details.location.longitude,
+                  },
+                });
+              }
+            }}
+            onTextChange={(text) => {
+              setAddress(text);
+              if (!text) {
+                setLocation(null);
+              }
+            }}
+            languageCode="en"
+            debounceDelay={300}
+            minCharsToFetch={2}
+            listViewDisplayed="auto"
+            enablePoweredByContainer={false}
+            keyboardShouldPersistTaps="handled"
+            style={{
+              input: styles.textInput,
+              container: { marginBottom: 8, zIndex: 1 },
+              listView: styles.listView,
+            }}
           />
 
           {location && (
             <Text style={styles.coordinatesText}>
-              📌 Coordinates: {location.coords.latitude.toFixed(6)},{" "}
-              {location.coords.longitude.toFixed(6)}
+              Coordinates: {location?.coords?.latitude?.toFixed(6)},{" "}
+              {location?.coords?.longitude?.toFixed(6)}
             </Text>
           )}
         </View>
@@ -289,15 +359,6 @@ const IssueUploadScreen = ({ navigation }) => {
           </View>
           <Text style={styles.anonymousText}>Anonymous</Text>
         </TouchableOpacity>
-
-        {/* <View style={styles.aiSection}>
-          <Text style={styles.aiLabel}>🤖 AI-Detected Issue Types:</Text>
-          <View style={styles.tagContainer}>
-            <View style={styles.tag}>
-              <Text style={styles.tagText}>pothole</Text>
-            </View>
-          </View>
-        </View> */}
 
         <TouchableOpacity
           style={[
@@ -369,6 +430,36 @@ const styles = StyleSheet.create({
   uploadSubtext: {
     fontSize: 14,
     color: "#888",
+  },
+  dropdown: {
+    height: 50,
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    paddingHorizontal: 12,
+  },
+  dropdownContainer: {
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+  },
+  placeholderStyle: {
+    fontSize: 14,
+    color: "#999",
+  },
+  selectedTextStyle: {
+    fontSize: 14,
+    color: "#333",
+  },
+  iconStyle: {
+    width: 20,
+    height: 20,
+  },
+  inputSearchStyle: {
+    height: 40,
+    fontSize: 14,
+    borderRadius: 8,
   },
   uploadedImage: {
     width: "100%",
@@ -472,6 +563,39 @@ const styles = StyleSheet.create({
   },
   submitButtonTextActive: {
     color: "#fff",
+  },
+  listView: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    marginTop: 4,
+    maxHeight: 200,
+  },
+  selectedTypesContainer: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    marginTop: 8,
+    gap: 8,
+  },
+  selectedTypeChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#e3f2fd",
+    borderRadius: 16,
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    gap: 6,
+  },
+  selectedTypeText: {
+    fontSize: 13,
+    color: "#1976d2",
+    fontWeight: "500",
+  },
+  removeTypeText: {
+    fontSize: 16,
+    color: "#1976d2",
+    fontWeight: "600",
   },
 });
 

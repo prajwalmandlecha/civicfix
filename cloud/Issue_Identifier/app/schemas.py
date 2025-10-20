@@ -5,6 +5,7 @@ from typing import Literal, List, Optional, Dict, Any
 class Location(BaseModel):
     latitude: float
     longitude: float
+    timestamp: Optional[str] = None
 
 
 class ReportIn(BaseModel):
