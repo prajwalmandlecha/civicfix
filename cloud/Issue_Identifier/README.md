@@ -106,9 +106,177 @@ AI-powered civic infrastructure issue detection and analysis using Google Gemini
 ## 🚀 Setup & Installation
 
 ### Prerequisites
+- Docker Desktop installed and running
 - Python 3.10+
-- Elasticsearch 8.11 running on `localhost:9200`
 - Google Gemini API key ([Get one here](https://aistudio.google.com/apikey))
+- Elasticsearch 8.11 (see deployment options below)
+
+---
+
+## 🐳 Docker Deployment (Recommended)
+
+### Step 1: Create Docker Network
+
+Create a shared network for Elasticsearch and Issue Identifier to communicate:
+
+```powershell
+# PowerShell
+docker network create civicfix-net
+```
+
+```bash
+# Linux/macOS
+docker network create civicfix-net
+```
+
+### Step 2: Start Elasticsearch
+
+Navigate to the project root and start Elasticsearch:
+
+```powershell
+# PowerShell
+cd ../../elastic-local
+docker-compose up -d
+```
+
+```bash
+# Linux/macOS
+cd ../../elastic-local
+docker-compose up -d
+```
+
+**Verify Elasticsearch is running:**
+```powershell
+Invoke-RestMethod -Uri "http://localhost:9200" -Method Get
+```
+
+```bash
+curl http://localhost:9200
+```
+
+### Step 3: Seed Test Data (Optional)
+
+Navigate to `elastic-local` and seed Elasticsearch with test issues:
+
+```powershell
+# PowerShell
+cd elastic-local
+python -m venv .venv
+.venv\Scripts\Activate.ps1
+pip install elasticsearch faker python-dotenv google-genai
+
+# Set environment variables
+$env:GEMINI_API_KEY="your_gemini_api_key_here"
+$env:ES_URL="http://localhost:9200"
+
+# Seed 300 documents
+python seed.py --count 300
+```
+
+```bash
+# Linux/macOS
+cd elastic-local
+python3 -m venv .venv
+source .venv/bin/activate
+pip install elasticsearch faker python-dotenv google-genai
+
+# Set environment variables
+export GEMINI_API_KEY="your_gemini_api_key_here"
+export ES_URL="http://localhost:9200"
+
+# Seed 300 documents
+python seed.py --count 300
+```
+
+### Step 4: Build and Run Issue Identifier Container
+
+Navigate to the Issue Identifier directory:
+
+```powershell
+# PowerShell
+cd ../cloud/Issue_Identifier
+
+# Build the Docker image
+docker build -t civicfix-issue-identifier .
+
+# Run the container on civicfix-net network
+docker run --name civicfix-issue-identifier `
+  --network civicfix-net `
+  -e GEMINI_API_KEY=your_gemini_api_key_here `
+  -e ES_URL=http://civicfix-es:9200 `
+  -p 8000:8000 `
+  civicfix-issue-identifier
+```
+
+```bash
+# Linux/macOS
+cd ../cloud/Issue_Identifier
+
+# Build the Docker image
+docker build -t civicfix-issue-identifier .
+
+# Run the container on civicfix-net network
+docker run --name civicfix-issue-identifier \
+  --network civicfix-net \
+  -e GEMINI_API_KEY=your_gemini_api_key_here \
+  -e ES_URL=http://civicfix-es:9200 \
+  -p 8000:8000 \
+  civicfix-issue-identifier
+```
+
+**Service will be available at:**
+- API: `http://localhost:8000`
+- Swagger UI: `http://localhost:8000/docs`
+
+### Step 5: Test the Service
+
+Test with a sample issue report:
+
+```powershell
+# PowerShell
+$body = @{
+  image_url = "https://storage.googleapis.com/civicfix_issues_bucket/uploads/251fd6d5887a40c38fffc4bd7d260873.jpg"
+  description = "roadside garbage"
+  location = @{ latitude = 18.5223; longitude = 73.8571 }
+  timestamp = "2025-10-19T16:00:00+05:30"
+  user_selected_labels = @()
+  reported_by = "user:test"
+  source = "citizen"
+} | ConvertTo-Json
+
+$response = Invoke-RestMethod -Uri "http://localhost:8000/analyze/" -Method Post -ContentType "application/json" -Body $body
+$response | ConvertTo-Json -Depth 10
+
+# Verify in Elasticsearch
+Invoke-RestMethod -Uri "http://localhost:9200/issues/_search" -Method Post -ContentType "application/json" -Body "{`"query`": {`"term`": {`"issue_id`": `"$($response.issue_id)`"}}}" | 
+ForEach-Object {
+    if ($_.hits) {
+        $_.hits.hits | ForEach-Object {
+            if ($_._source.text_embedding) { $_._source.text_embedding = '[...]' }
+        }
+    }
+    $_
+} | ConvertTo-Json -Depth 10
+```
+
+```bash
+# Linux/macOS
+curl -X POST http://localhost:8000/analyze/ \
+  -H "Content-Type: application/json" \
+  -d '{
+    "image_url": "https://storage.googleapis.com/civicfix_issues_bucket/uploads/251fd6d5887a40c38fffc4bd7d260873.jpg",
+    "description": "roadside garbage",
+    "location": {"latitude": 18.5223, "longitude": 73.8571},
+    "timestamp": "2025-10-19T16:00:00+05:30",
+    "user_selected_labels": [],
+    "reported_by": "user:test",
+    "source": "citizen"
+  }'
+```
+
+---
+
+## 💻 Local Development (without Docker)
 
 ### 1. Environment Setup
 
@@ -137,17 +305,11 @@ pip install -r requirements.txt
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
+EMBEDDING_MODEL=gemini-embedding-001
 ES_URL=http://localhost:9200
 ```
 
-**Or set environment variables directly:**
-```bash
-# Linux/macOS/WSL:
-export GEMINI_API_KEY="your_key_here"
-
-# Windows PowerShell:
-$env:GEMINI_API_KEY="your_key_here"
-```
+**Note:** For local development, use `ES_URL=http://localhost:9200` (not `civicfix-es`).
 
 ### 3. Run the Service
 
@@ -161,14 +323,59 @@ uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
 
-**Docker:**
-```bash
-docker build -t civicfix-issue-identifier .
-docker run -e GEMINI_API_KEY=$GEMINI_API_KEY -p 8000:8000 civicfix-issue-identifier
-```
-
 **Service will be available at:** `http://localhost:8000`  
 **API docs (Swagger UI):** `http://localhost:8000/docs`
+
+---
+
+## 🛑 Stopping Services
+
+**Stop Docker containers:**
+```powershell
+# PowerShell
+docker stop civicfix-issue-identifier civicfix-es
+docker rm civicfix-issue-identifier
+cd ../../elastic-local
+docker-compose down
+```
+
+```bash
+# Linux/macOS
+docker stop civicfix-issue-identifier civicfix-es
+docker rm civicfix-issue-identifier
+cd ../../elastic-local
+docker-compose down
+```
+
+**Remove Docker network (optional):**
+```bash
+docker network rm civicfix-net
+```
+
+---
+
+## 🔍 Verifying Your Setup
+
+**Check Docker network:**
+```bash
+docker network inspect civicfix-net
+```
+Both `civicfix-es` and `civicfix-issue-identifier` should be listed.
+
+**Check Elasticsearch:**
+```bash
+curl http://localhost:9200/_cat/indices?v
+```
+
+**Check Issue Identifier logs:**
+```bash
+docker logs civicfix-issue-identifier
+```
+
+You should see:
+```
+INFO:     Using kNN hybrid search with vector similarity (3072 dims)
+```
 
 ---
 
@@ -188,6 +395,9 @@ $body = @{
   source = "citizen"
 } | ConvertTo-Json -Depth 5
 
+Invoke-RestMethod -Uri "http://localhost:8000/analyze/" -Method Post -ContentType "application/json" -Body $body
+
+# Check the entire content of issue
 Invoke-RestMethod -Uri "http://localhost:9200/issues/_search" -Method Post -ContentType "application/json" -Body '{"query": {"term": {"issue_id": "<issue_id returned from the response>"}}}' |
 ForEach-Object {
     if ($_.hits) {

@@ -6,19 +6,26 @@ services:
     container_name: civicfix-es
     restart: unless-stopped
     ports:
-      - "127.0.0.1:9200:9200"
+      - "127.0.0.1:9200:9200"   # Expose ES only to localhost for safety
     environment:
       - discovery.type=single-node
-      - xpack.security.enabled=false          # ← local only, no auth
-      - xpack.security.http.ssl.enabled=false
+      - xpack.security.enabled=false           # No auth for local dev
+      - xpack.security.http.ssl.enabled=false  # No SSL for local dev
       - xpack.license.self_generated.type=basic
-      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m         # Lower memory for dev
       - cluster.routing.allocation.disk.threshold_enabled=false
     volumes:
       - es-data:/usr/share/elasticsearch/data
     ulimits:
-      memlock: { soft: -1, hard: -1 }
-
+      memlock:
+        soft: -1
+        hard: -1
+    networks:
+      - civicfix-net
 
 volumes:
   es-data:
+
+networks:
+  civicfix-net:
+    external: true
