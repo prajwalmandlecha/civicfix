@@ -1,0 +1,217 @@
+{
+  "DRAIN_BLOCKAGE": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/DRAIN_BLOCKAGE/5d63c969e1564213a3d175e4ffba15c6.jpeg"
+    ],
+    "fixes": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/DRAIN_BLOCKAGE/74b9e08cbe734465ae45b18fbe7018b5.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/DRAIN_BLOCKAGE/8a92446782db4060a8849efeffb64321.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/DRAIN_BLOCKAGE/b7dc995461b7463cb16ce43b6044ee38.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/DRAIN_BLOCKAGE/d7bcf691d2764d4ea3477b7cc92041e9.jpg"
+    ]
+  },
+  "FALLEN_TREE": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/FALLEN_TREE/a9b16786d5a24802b0cd5e81d0cf624b.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/FALLEN_TREE/261ab980e1324962aaa76b7791ccb9f7.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/FALLEN_TREE/30703e13b3004e7198e3b6af64b89935.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/FALLEN_TREE/ddb503a38d424e7babd915bf62e4c1e3.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/FALLEN_TREE/e360cedf438944baa5579df85d59321e.jpg"
+    ],
+    "fixes": []
+  },
+  "FLOODING_SURFACE": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/FLOODING_SURFACE/563150b4dd724d25b73f112080b93da2.jpg"
+    ],
+    "fixes": []
+  },
+  "GRAFFITI_VANDALISM": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/GRAFFITI_VANDALISM/f67988c81e204cadbac32f16a9f44710.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/GRAFFITI_VANDALISM/cc2db8ade0254160b2d2765221734b21.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/GRAFFITI_VANDALISM/8e3c0910468644d38aaf85eb6758992d.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/GRAFFITI_VANDALISM/02dc23b95aba420c8c30ff225d1ff5f2.jpg"
+    ],
+    "fixes": []
+  },
+  "GREENSPACE_MAINTENANCE": {
+    "issues": [],
+    "fixes": []
+  },
+  "ILLEGAL_CONSTRUCTION_DEBRIS": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/ILLEGAL_CONSTRUCTION_DEBRIS/58a4d330ec504a478073fd2fb32d654b.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/ILLEGAL_CONSTRUCTION_DEBRIS/d2478d04762744d5b3bd842e44d45148.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/ILLEGAL_CONSTRUCTION_DEBRIS/88a95dcc6c064e73b4547eced4cac99b.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/ILLEGAL_CONSTRUCTION_DEBRIS/b58d57c0014d4d26a6b549e6ddea8a4e.jpg"
+    ],
+    "fixes": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ILLEGAL_CONSTRUCTION_DEBRIS/87f9a613674a4f47bdb64a9137a16a6f.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ILLEGAL_CONSTRUCTION_DEBRIS/f59a548cf2464e1e867ec80e82c58301.jpg"
+    ]
+  },
+  "MANHOLE_MISSING_OR_DAMAGED": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/MANHOLE_MISSING_OR_DAMAGED/b3bcddfb54734534a8eee5ce197133e5.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/MANHOLE_MISSING_OR_DAMAGED/746d6f6655ed49e79881e0fee252b1a9.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/MANHOLE_MISSING_OR_DAMAGED/d8f67778c9634acdbf49d0708bbdd924.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/MANHOLE_MISSING_OR_DAMAGED/148a26eeba1349eaa25d33e4c21cd7c9.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/MANHOLE_MISSING_OR_DAMAGED/95f3545a202c401d94f7135a3b41df72.jpg"
+    ],
+    "fixes": []
+  },
+  "POWER_POLE_LINE_DAMAGE": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/POWER_POLE_LINE_DAMAGE/7b8f6d4ac67e409991257591bc483b7b.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/POWER_POLE_LINE_DAMAGE/43015c8c100d4184977713e5809d9f7a.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/POWER_POLE_LINE_DAMAGE/805fac45685b44e4bfc4f616e13e52de.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/POWER_POLE_LINE_DAMAGE/ff468f87dc534ad08b960d9d9106fbca.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/POWER_POLE_LINE_DAMAGE/5968f00ed0a34943a214e245bfbe55a5.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/POWER_POLE_LINE_DAMAGE/774881a9d5b44f8ebe16e97b67f39136.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/POWER_POLE_LINE_DAMAGE/201ec65faf604434aa29d7e784b30e3b.jpg"
+    ],
+    "fixes": []
+  },
+  "PUBLIC_INFRASTRUCTURE_DAMAGED": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/PUBLIC_INFRASTRUCTURE_DAMAGED/5ef99e134393455486d0529900023722.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/PUBLIC_INFRASTRUCTURE_DAMAGED/38c68283aacb4489b4f2cb07f5e467a5.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/PUBLIC_INFRASTRUCTURE_DAMAGED/c35eb45dabd8429dbde94abbfdf9bdc6.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/PUBLIC_INFRASTRUCTURE_DAMAGED/cf5af0fb01f4451092dd805760251e54.jpg"
+    ],
+    "fixes": []
+  },
+  "PUBLIC_TOILET_UNSANITARY": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/PUBLIC_TOILET_UNSANITARY/86526fe206db45b1880e3c964d8fdc3b.jpg"
+    ],
+    "fixes": []
+  },
+  "ROAD_POTHOLE": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/ROAD_POTHOLE/e5d89f4386b34a238a0c8380fae61248.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/ROAD_POTHOLE/d85161d0811d4982a7ff73b79e0230de.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/ROAD_POTHOLE/84fa548cfe254b56a153cc6e0c720661.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/ROAD_POTHOLE/e72d85fc8d7745e09e19e06219d93641.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/ROAD_POTHOLE/1aca4920fea24d2699d340ef3063146f.jpg"
+    ],
+    "fixes": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/134329d5cce84aa6b517c792e811ee2d.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/3b22c13947b24773963b7d8c575c5b01.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/56531565ea3f426fa96d4c6594f60f65.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/1dfa8436ceb74a34ac293d9e9bcc5bf4.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/ae5cca57988d47729362e72a5936d9ae.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/139c9e201fba4949a73d78b9cf707638.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/ee6313e480ba4823ac006051b6e67379.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/0444959df05d46c294018479d40bac8c.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/13503ec35d9c47218cfa60c1518c18ef.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/d446cc0b54c3427d8d855363059b70c2.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/ROAD_POTHOLE/8a67a37a6d5e42e8b65d05b25aa681f7.jpg"
+    ]
+  },
+  "SIDEWALK_DAMAGE": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/SIDEWALK_DAMAGE/e186c1dd654449018cd591260e6f4503.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/SIDEWALK_DAMAGE/4fa4203710624305b0956a6a9514cb00.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/SIDEWALK_DAMAGE/a546161a00e94dc1a7ea7ddd859e3f95.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/SIDEWALK_DAMAGE/799308564c4a40db965cad513faa5279.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/SIDEWALK_DAMAGE/9621783ba6f14441a402685cb5cea672.jpg"
+    ],
+    "fixes": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/SIDEWALK_DAMAGE/d5a7220ebd5c4c02966b915d3c2ef1cf.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/SIDEWALK_DAMAGE/265f7fa11b654c90948190f5ea7bb897.jpg"
+    ]
+  },
+  "SMALL_FIRE_HAZARD": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/SMALL_FIRE_HAZARD/532b7cfa67e6403c8274dbeb5684571e.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/SMALL_FIRE_HAZARD/a7061d26681e48448459c5b37746b789.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/SMALL_FIRE_HAZARD/8d07fe6607584162a084068c3c9c71bb.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/SMALL_FIRE_HAZARD/95e6c048165240129e2d9b585734fabe.jpg"
+    ],
+    "fixes": []
+  },
+  "STRAY_ANIMALS": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/STRAY_ANIMALS/eb0cbea8a0cd4143b7f0a0b57c168051.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/STRAY_ANIMALS/676b254a0e9b4e2ab50efae3a38952dc.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/STRAY_ANIMALS/d3616d94e8dc42ee892170a3446c47fc.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/STRAY_ANIMALS/85205587330d49ebb9f0da32f23f8b75.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/STRAY_ANIMALS/ed05b1505beb447e89c236daf478d683.jpg"
+    ],
+    "fixes": []
+  },
+  "STREETLIGHT_OUTAGE": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/STREETLIGHT_OUTAGE/1a8687f5e6704ea4969070372aac520c.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/STREETLIGHT_OUTAGE/17bb1f2359f540f0bf782d334fdbd6c9.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/STREETLIGHT_OUTAGE/baf15920bde14ad9a35f404d14cf6e7f.jpg"
+    ],
+    "fixes": []
+  },
+  "TRAFFIC_OBSTRUCTION": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/TRAFFIC_OBSTRUCTION/1e190e8522ff4801a5a6fcb80edc5b72.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/TRAFFIC_OBSTRUCTION/334132b7667f4aee9e46e537d0a30659.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/TRAFFIC_OBSTRUCTION/c65b66081f664d65b7faf7395e3371bd.jpg"
+    ],
+    "fixes": []
+  },
+  "TRAFFIC_SIGN_DAMAGE": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/TRAFFIC_SIGN_DAMAGE/098a9f5cd09a42bb9800c4f98f944091.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/TRAFFIC_SIGN_DAMAGE/58ff173a5b164034bcdfd55a843d3b3e.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/TRAFFIC_SIGN_DAMAGE/5cb2228c1f804d21b522ca335a54de59.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/TRAFFIC_SIGN_DAMAGE/3cc2d22f205b4c9989bdf2700bfbcd87.jpg"
+    ],
+    "fixes": []
+  },
+  "WASTE_BULKY_DUMP": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_BULKY_DUMP/b80236a7a8844b48afdf2691bbb69db5.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_BULKY_DUMP/88dcdfeeeedf462d8fd0f51ad3e4db16.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_BULKY_DUMP/ba46b43f05ea4c7ea039b137a97e62c7.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_BULKY_DUMP/78f4899b06604454b29842526587c91b.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_BULKY_DUMP/bca5bb3029474739b38d42f65bca9527.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_BULKY_DUMP/748e2556449d4f4db37829b8f5d1f5b7.jpg"
+    ],
+    "fixes": []
+  },
+  "WASTE_LITTER_SMALL": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_LITTER_SMALL/c2f7cee87e854a7b8598df5fb7d632dd.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_LITTER_SMALL/899ca9e873094034bfef401a5ac1a237.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_LITTER_SMALL/569dc0f6b4ff44f5b984a77018f39bc6.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_LITTER_SMALL/ef855711c8a746bbb805adc5131d1c69.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WASTE_LITTER_SMALL/2202771c340f477683b5047763adb976.jpg"
+    ],
+    "fixes": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WASTE_LITTER_SMALL/7c319d500655457bba796a493efe1c15.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WASTE_LITTER_SMALL/18bb62d56f144e8585c73b7607e5e5de.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WASTE_LITTER_SMALL/17fb57bd494e49eba9a21ac152509115.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WASTE_LITTER_SMALL/e4f8c82d3b4f4d0fb5eec6cb8f63f484.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WASTE_LITTER_SMALL/a6956bf8722745be82d58a70ab2bc255.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WASTE_LITTER_SMALL/a59a679c9fe34a3191d37791300e734b.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WASTE_LITTER_SMALL/2f7c7efa603141b280fd8795fe3bb6e2.jpg"
+    ]
+  },
+  "WATER_LEAK_SURFACE": {
+    "issues": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WATER_LEAK_SURFACE/12376d8838a04e6c8dfb5f9b2ab123b9.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WATER_LEAK_SURFACE/558cf855e78041d4a880eb7d6132f438.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WATER_LEAK_SURFACE/21eda90b95364d06acc8b0cd738683dc.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WATER_LEAK_SURFACE/106d0848aed14c11ab8fa150e6bdb0bc.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/issues/WATER_LEAK_SURFACE/d1e8fcccd9884fa787b675562420eafd.jpg"
+    ],
+    "fixes": [
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WATER_LEAK_SURFACE/e4e24cae6c234cf78a9ce09733e963eb.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WATER_LEAK_SURFACE/cee73c2f61e64a5aacccdc093633e3bf.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WATER_LEAK_SURFACE/93db0185139e4d5090550b6c92585e75.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WATER_LEAK_SURFACE/59a0321f5b094ca18451c4bcd8d6b8d0.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WATER_LEAK_SURFACE/53c542efbc1740269cb0bbd2f92316bd.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WATER_LEAK_SURFACE/71c35c29663b474b8169e86559cf72fb.jpg",
+      "https://storage.googleapis.com/civicfix_issues_bucket/civicfix/fixes/WATER_LEAK_SURFACE/447a1601db9a45d681a37e3d48ea588f.jpg"
+    ]
+  }
+}

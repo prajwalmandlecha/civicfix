@@ -1,6 +1,7 @@
 import os
 import logging
 import json
+import re
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from dotenv import load_dotenv
@@ -28,14 +29,59 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
 EMBED_MODEL = os.getenv("EMBED_MODEL", "gemini-embedding-001")
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
-ISSUES_INDEX = os.getenv("ISSUES_INDEX", "issues")
-FIXES_INDEX = os.getenv("FIXES_INDEX", "fixes")
+ES_USER = os.getenv("ES_USER", "elastic")
+ES_PASSWORD = os.getenv("ES_PASSWORD", "")
+ISSUES_INDEX = "issues"
+FIXES_INDEX = "fixes"
 
 if not GEMINI_API_KEY:
     logger.warning("GEMINI_API_KEY not set; ensure you export your Google AI Studio key in env")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
-es = Elasticsearch(ES_URL)
+
+# Initialize Elasticsearch with optional authentication
+es_config = {
+    "hosts": [ES_URL],
+}
+
+# Add HTTPS authentication if credentials are provided
+if ES_PASSWORD:
+    es_config["basic_auth"] = (ES_USER, ES_PASSWORD)
+    logger.info("Elasticsearch client initialized with authentication")
+    
+# Disable SSL verification if using HTTPS (for self-signed certs)
+if ES_URL.startswith("https://"):
+    es_config["verify_certs"] = False
+    es_config["ssl_show_warn"] = False
+    logger.info("SSL verification disabled for HTTPS connection")
+
+es = Elasticsearch(**es_config)
+
+
+def repair_json(text: str) -> str:
+    """
+    Attempt to repair common JSON formatting errors from LLM responses.
+    Specifically fixes missing closing braces in arrays.
+    """
+    # Fix pattern: `null\n    ,` -> `null\n    },`
+    # This handles missing } before comma in array elements
+    text = re.sub(r'(null|true|false|"\w+"|\d+)\s*\n\s*,', r'\1\n    },', text)
+    return text
+
+
+def sanitize_json_string(text: str) -> str:
+    """
+    Clean malformed JSON from Gemini responses.
+    Removes:
+    - Non-ASCII characters that commonly corrupt JSON (Hebrew, Arabic, etc.)
+    - Control characters
+    - Keeps only valid JSON characters
+    """
+    # Remove non-ASCII characters (keep ASCII 32-126 plus newlines, tabs)
+    # This handles Hebrew/Arabic/other Unicode that Gemini sometimes injects
+    cleaned = re.sub(r'[^\x20-\x7E\n\r\t]', '', text)
+    return cleaned
+
 
 app = FastAPI(title="Issue Verifier")
 
@@ -45,6 +91,30 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# canonical label set (bounded) - 19 issue types
+CANONICAL_LABELS: List[str] = [
+    "DRAIN_BLOCKAGE",
+    "FALLEN_TREE",
+    "FLOODING_SURFACE",
+    "GRAFFITI_VANDALISM",
+    "GREENSPACE_MAINTENANCE",
+    "ILLEGAL_CONSTRUCTION_DEBRIS",
+    "MANHOLE_MISSING_OR_DAMAGED",
+    "POWER_POLE_LINE_DAMAGE",
+    "PUBLIC_INFRASTRUCTURE_DAMAGED",
+    "PUBLIC_TOILET_UNSANITARY",
+    "ROAD_POTHOLE",
+    "SIDEWALK_DAMAGE",
+    "SMALL_FIRE_HAZARD",
+    "STRAY_ANIMALS",
+    "STREETLIGHT_OUTAGE",
+    "TRAFFIC_OBSTRUCTION",
+    "TRAFFIC_SIGN_DAMAGE",
+    "WASTE_BULKY_DUMP",
+    "WASTE_LITTER_SMALL",
+    "WATER_LEAK_SURFACE"
+]
 
 def get_issue(issue_id: str) -> Dict[str, Any]:
     """
@@ -212,6 +282,11 @@ def call_gemini_with_images(issue_doc: Dict[str, Any],
                 raw = resp.text
             else:
                 raw = str(resp)
+            
+            # Clean and repair JSON
+            raw = sanitize_json_string(raw)
+            raw = repair_json(raw)
+            
             # find first brace
             start = raw.find("{")
             if start >= 0:

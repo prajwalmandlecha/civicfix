@@ -15,6 +15,7 @@ def build_prompt(issue_json: Dict[str, Any],
         "auto_caption": issue_json.get("auto_caption"),
         "severity_score": issue_json.get("severity_score"),
         "reported_at": issue_json.get("reported_at"),
+        "created_at": issue_json.get("created_at"),
         "location": issue_json.get("location")
     }
 
