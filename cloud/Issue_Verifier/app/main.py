@@ -366,6 +366,7 @@ def verify_fix(payload: VerifyIn):
     # 6. store fix doc into ES
     fix_id = make_fix_id(payload.issue_id, payload.ngo_id)
     created_at = now_iso()
+    co2_saved = issue.get("fate_risk_co2", 0.0)
 
     fix_doc = {
         "fix_id": fix_id,
@@ -373,10 +374,10 @@ def verify_fix(payload: VerifyIn):
         "created_by": payload.ngo_id,
         "created_at": created_at,
         "title": fix_summary,
-        "summary": payload.fix_description or fix_summary,
+        "description": payload.fix_description or fix_summary,
         "image_urls": payload.image_urls,
         "photo_count": len(payload.image_urls),
-        "co2_saved": 0.0,
+        "co2_saved": co2_saved,
         "success_rate": suggested_success_rate,
         "city": issue.get("location", {}).get("city") if isinstance(issue.get("location"), dict) else None,
         "related_issue_types": issue.get("issue_types", []),
@@ -409,16 +410,21 @@ def verify_fix(payload: VerifyIn):
                 update_fields = {
                     "status": new_status,
                     "closed_by": payload.ngo_id,
-                    "closed_at": created_at
+                    "closed_at": created_at,
+                    "updated_at": created_at,
+                    "co2_kg_saved": co2_saved
                 }
             elif overall_outcome == "partially_closed":
                 new_status = "verified"
                 update_fields = {
-                    "status": new_status
+                    "status": new_status,
+                    "updated_at": created_at,
+                    "co2_kg_saved": co2_saved 
                 }
             else:
                 update_fields = {
-                    "status": issue_source.get("status", "open")
+                    "status": issue_source.get("status", "open"),
+                    "updated_at": created_at
                 }
 
             # append evidence_ids

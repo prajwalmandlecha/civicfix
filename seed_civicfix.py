@@ -733,7 +733,8 @@ def generate_fix_document(
         "issue_id": issue_id,
         "created_by": created_by,
         "created_at": created_at.isoformat(),
-        "description": description,
+        "title": f"Fixed {', '.join(related_issue_types)} issue successfully",  # Short title
+        "description": description,  # Full description (user input style)
         "image_urls": fix_image_urls,
         "photo_count": photo_count,
         "co2_saved": co2_saved,

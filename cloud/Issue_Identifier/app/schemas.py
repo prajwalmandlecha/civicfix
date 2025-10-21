@@ -13,9 +13,9 @@ class ReportIn(BaseModel):
     location: Location
     timestamp: str
     user_selected_labels: List[str] = []
-    reported_by: Optional[str] = None
-    uploader_display_name: Optional[str] = None
-    source: Optional[str] = "citizen"  # citizen | anonymous
+    reported_by: Optional[str] = "anonymous"
+    uploader_display_name: Optional[str] = "anonymous"
+    source: Optional[str] = "anonymous"  # citizen | anonymous
 
 
 class DetectedIssue(BaseModel):

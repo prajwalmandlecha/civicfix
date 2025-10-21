@@ -202,15 +202,6 @@ def generate_embedding(text: str) -> Optional[List[float]]:
 
 @app.post("/analyze/", response_model=AnalyzeOut)
 def analyze(report: ReportIn):
-    """
-    Full analyze flow (real Gemini):
-     1. fetch image bytes
-     2. get local evidence + weather snapshot
-     3. build strict prompt
-     4. call Gemini (image+prompt when possible)
-     5. robustly parse JSON and validate items
-     6. compute impact + radius and index doc to ES
-    """
     # 1. fetch image
     try:
         image_bytes, mime_type = fetch_image_bytes(report.image_url)
@@ -218,7 +209,7 @@ def analyze(report: ReportIn):
         logger.exception("fetch_image_bytes failed")
         raise HTTPException(status_code=400, detail=f"Could not fetch image: {e}")
 
-    # 1.5. Generate query embedding for hybrid search (before evidence retrieval)
+    # 2. Generate query embedding for hybrid search (before evidence retrieval)
     # Build a simple query text from user input
     query_text_parts = []
     if report.description:
@@ -238,7 +229,7 @@ def analyze(report: ReportIn):
             logger.warning("Failed to generate query embedding: %s", e)
             query_embedding = None
 
-    # 2. evidence retrieval and weather (parallel execution)
+    # 3. evidence retrieval and weather (parallel execution)
     # Run ES queries and weather API in parallel since they're independent
     issues_evidence = []
     fixes_evidence = []
@@ -275,7 +266,7 @@ def analyze(report: ReportIn):
                 elif future == future_weather:
                     logger.exception("Failed to retrieve weather data; continuing without weather context")
 
-    # 2.5. Build weather summary string
+    # 4.. Build weather summary string
     weather_summary_str = (
         f"Precipitation (24h): {weather_obj.get('precipitation_24h_mm', 0)}mm, "
         f"Avg Temperature: {weather_obj.get('temperature_c_avg')}°C, "
@@ -284,7 +275,7 @@ def analyze(report: ReportIn):
         f"Note: {weather_obj.get('weather_note', '')}"
     )
 
-    # 3. build prompt
+    # 5. build prompt
     prompt_str = build_prompt(
         description=report.description,
         location=report.location.dict(),
@@ -296,7 +287,7 @@ def analyze(report: ReportIn):
         canonical_labels=CANONICAL_LABELS
     )
 
-    # 4. call Gemini (image+prompt preferred)
+    # 6. call Gemini (image+prompt)
     if client is None:
         logger.error("genai client not initialized (GEMINI_API_KEY missing/invalid)")
         raise HTTPException(status_code=500, detail="GenAI client not initialized; ensure GEMINI_API_KEY is set")
@@ -323,7 +314,7 @@ def analyze(report: ReportIn):
         logger.exception("Gemini final call failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Model call failed; see {debug_dump_path}")
 
-    # 5. robust parse
+    # 7. robust parse
     parsed: Optional[Dict[str, Any]] = None
     try:
         if hasattr(response, "parsed") and response.parsed is not None:
@@ -411,7 +402,7 @@ def analyze(report: ReportIn):
             timestamp=report.timestamp
         )
 
-    # 6. validate detected_issues list
+    # 8. validate detected_issues list
     raw_detected = parsed.get("detected_issues") or []
     if not isinstance(raw_detected, list):
         # try tolerant conversion if it's a single dict
@@ -481,7 +472,7 @@ def analyze(report: ReportIn):
             timestamp=report.timestamp
         )
 
-    # 6.5. Enforce maximum 5 issues (sort by severity_score, keep top 5)
+    # 9. Enforce maximum 5 issues (sort by severity_score, keep top 5)
     if len(retained) > 5:
         logger.warning("Gemini returned %d issues, limiting to top 5 by severity", len(retained))
         retained = sorted(retained, key=lambda x: x.severity_score, reverse=True)[:5]
@@ -489,12 +480,12 @@ def analyze(report: ReportIn):
         seen_types = {d.type for d in retained}
         label_confidences = {d.type: d.confidence for d in retained}
 
-    # 7. aggregate & prepare document
+    # 10. aggregate & prepare document
     issue_id = str(uuid.uuid4())
     doc_severity_score = max((d.severity_score for d in retained), default=0.0)
     fate_risk_co2 = safe_float(parsed.get("fate_risk_co2"), 0.0)
 
-    # 8. Generate embedding for the issue
+    # 11. Generate embedding for the issue
     auto_caption = parsed.get("auto_caption", "")
     predicted_fix_text = retained[0].predicted_fix if retained else ""
     
@@ -510,14 +501,14 @@ def analyze(report: ReportIn):
         logger.warning("Generated embedding has unexpected dimension: %d (expected 3072)", len(text_embedding))
         text_embedding = None
 
-    # Extract evidence issue IDs from retrieved similar issues
+    # 12. Extract evidence issue IDs from retrieved similar issues
     evidence_issue_ids = [item.get("id") for item in issues_evidence if item.get("id")]
     if evidence_issue_ids:
         logger.info("Found %d evidence issues: %s", len(evidence_issue_ids), evidence_issue_ids[:3])
     else:
         logger.info("No evidence issues found nearby")
 
-    # Build ES document according to updated schema
+    # 13. Build ES document 
     es_doc = {
         "issue_id": issue_id,
         "reported_by": report.reported_by or "anonymous123",
