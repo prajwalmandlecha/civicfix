@@ -478,7 +478,7 @@ curl -k -u elastic:your_password https://your-vm-ip:9200
 
 **Development mode (with auto-reload):**
 ```bash
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 **Production mode:**

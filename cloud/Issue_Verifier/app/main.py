@@ -11,7 +11,7 @@ from uuid import uuid4
 
 from app.schemas import VerifyIn, VerifyOut, PerIssueResult
 from app.prompt_template import build_prompt
-from app.utils import fetch_image_bytes, now_iso, make_fix_id
+from app.utils import fetch_image_bytes, make_fix_id
 
 # Gemini SDK
 from google import genai
@@ -83,7 +83,7 @@ def sanitize_json_string(text: str) -> str:
     return cleaned
 
 
-app = FastAPI(title="Issue Verifier")
+app = FastAPI(title="CivicFix — Issue Verifier")
 
 app.add_middleware(
     CORSMiddleware,
@@ -92,7 +92,7 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# canonical label set (bounded) - 19 issue types
+# canonical label set (bounded) - 20 issue types
 CANONICAL_LABELS: List[str] = [
     "DRAIN_BLOCKAGE",
     "FALLEN_TREE",
@@ -143,7 +143,7 @@ def hybrid_retrieve_context(issue_doc: Dict[str, Any], fix_description: str, top
         parts.append(issue_doc["description"])
     if fix_description:
         parts.append(fix_description)
-    context_text = " -- ".join(parts)[:12000]
+    context_text = "[Fixes]" + " -- ".join(parts)[:12000]
 
     # Get issue types from issue doc for filtering
     issue_types = issue_doc.get("issue_types", [])
@@ -186,7 +186,7 @@ def hybrid_retrieve_context(issue_doc: Dict[str, Any], fix_description: str, top
                 "k": top_k * 2,  # Fetch more candidates for filtering
                 "num_candidates": 100
             },
-            "_source": ["fix_id", "title", "summary", "related_issue_types", "co2_saved", "success_rate", "fix_outcomes"]
+            "_source": ["fix_id", "title", "description", "related_issue_types", "co2_saved", "success_rate", "fix_outcomes"]
         }
         
         # Add filters if we have any
@@ -221,14 +221,14 @@ def hybrid_retrieve_context(issue_doc: Dict[str, Any], fix_description: str, top
                     "minimum_should_match": 1
                 }
             },
-            "_source": ["fix_id", "title", "summary", "related_issue_types", "co2_saved", "success_rate", "fix_outcomes"]
+            "_source": ["fix_id", "title", "description", "related_issue_types", "co2_saved", "success_rate", "fix_outcomes"]
         }
     else:
         # No filters available, just match_all
         fallback_body = {
             "size": top_k,
             "query": {"match_all": {}},
-            "_source": ["fix_id", "title", "summary", "related_issue_types", "co2_saved", "success_rate", "fix_outcomes"]
+            "_source": ["fix_id", "title", "description", "related_issue_types", "co2_saved", "success_rate", "fix_outcomes"]
         }
     
     try:
@@ -365,24 +365,52 @@ def verify_fix(payload: VerifyIn):
 
     # 6. store fix doc into ES
     fix_id = make_fix_id(payload.issue_id, payload.ngo_id)
-    created_at = now_iso()
+    
+    # Use timestamp from payload (user-provided or current time from schema default)
+    created_at = payload.timestamp
+    
+    # Get CO2 saved from issue's fate_risk_co2
     co2_saved = issue.get("fate_risk_co2", 0.0)
+    
+    # Build embedding text: [Fixes] -- title -- description -- related_issue_types -- fix_outcomes -- success_rate
+    fix_outcomes_text = " | ".join([
+        f"{r.issue_type}:{r.fixed}" for r in per_results
+    ])
+    embedding_text = (
+        f"[Fixes] -- {fix_summary} -- {payload.fix_description or ''} -- "
+        f"{', '.join(issue.get('issue_types', []))} -- {fix_outcomes_text} -- "
+        f"success_rate:{suggested_success_rate}"
+    )[:12000]  # Limit to 12k chars
+    
+    # Generate embedding for fix document
+    text_embedding = None
+    try:
+        emb_resp = client.models.embed_content(
+            model=EMBED_MODEL,
+            contents=embedding_text
+        )
+        if hasattr(emb_resp, 'embeddings') and emb_resp.embeddings:
+            embedding = emb_resp.embeddings[0]
+            if hasattr(embedding, 'values'):
+                text_embedding = list(embedding.values)
+        logger.info("Generated embedding for fix document")
+    except Exception as e:
+        logger.exception("Failed to generate embedding for fix document")
 
     fix_doc = {
         "fix_id": fix_id,
         "issue_id": payload.issue_id,
         "created_by": payload.ngo_id,
         "created_at": created_at,
-        "title": fix_summary,
-        "description": payload.fix_description or fix_summary,
+        "title": fix_summary,  # Gemini-generated auto-caption/summary
+        "description": payload.fix_description,  # User-provided text
         "image_urls": payload.image_urls,
         "photo_count": len(payload.image_urls),
         "co2_saved": co2_saved,
         "success_rate": suggested_success_rate,
-        "city": issue.get("location", {}).get("city") if isinstance(issue.get("location"), dict) else None,
         "related_issue_types": issue.get("issue_types", []),
         "fix_outcomes": [r.dict() for r in per_results],
-        "text_embedding": None,  # optional: you can embed summary here
+        "text_embedding": text_embedding,
         "source_doc_ids": [payload.issue_id]
     }
 
@@ -390,7 +418,6 @@ def verify_fix(payload: VerifyIn):
         es.index(index=FIXES_INDEX, id=fix_id, document=fix_doc)
     except Exception:
         logger.exception("Failed to index fix doc")
-        # still continue but warn
         raise HTTPException(status_code=500, detail="Failed to index fix doc into ES")
 
     # 7. update issues doc: append evidence_ids and set status/flags as simple mapping
@@ -410,21 +437,14 @@ def verify_fix(payload: VerifyIn):
                 update_fields = {
                     "status": new_status,
                     "closed_by": payload.ngo_id,
-                    "closed_at": created_at,
-                    "updated_at": created_at,
+                    "closed_at": payload.timestamp,
+                    "updated_at": payload.timestamp,
                     "co2_kg_saved": co2_saved
-                }
-            elif overall_outcome == "partially_closed":
-                new_status = "verified"
-                update_fields = {
-                    "status": new_status,
-                    "updated_at": created_at,
-                    "co2_kg_saved": co2_saved 
                 }
             else:
                 update_fields = {
                     "status": issue_source.get("status", "open"),
-                    "updated_at": created_at
+                    "updated_at": payload.timestamp
                 }
 
             # append evidence_ids
@@ -442,7 +462,7 @@ def verify_fix(payload: VerifyIn):
         per_issue_results=per_results,
         overall_outcome=overall_outcome,
         suggested_success_rate=suggested_success_rate,
-        created_at=created_at
+        created_at=payload.timestamp
     )
 
     return out

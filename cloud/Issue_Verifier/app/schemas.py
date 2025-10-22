@@ -1,13 +1,13 @@
 from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
-from datetime import datetime
+from datetime import datetime, timezone
 
 class VerifyIn(BaseModel):
     issue_id: str
     ngo_id: str
     image_urls: List[str]
     fix_description: Optional[str] = ""
-    timestamp: Optional[str] = None
+    timestamp: Optional[str] = datetime.now(timezone.utc).isoformat()
 
 class PerIssueResult(BaseModel):
     issue_type: str
@@ -21,6 +21,6 @@ class VerifyOut(BaseModel):
     fix_id: str
     issue_id: str
     per_issue_results: List[PerIssueResult]
-    overall_outcome: str  # closed | partially_closed | rejected 
+    overall_outcome: str  # closed | rejected 
     suggested_success_rate: float = Field(..., ge=0.0, le=1.0)
     created_at: Optional[str] = None

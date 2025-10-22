@@ -17,12 +17,6 @@ def fetch_image_bytes(url: str, timeout: int = 10) -> Tuple[bytes, str]:
     resp.raise_for_status()
     content_type = resp.headers.get("Content-Type", "image/jpeg")
     mime = content_type.split(";")[0].strip()
-    
-    # Normalize MIME type for Gemini compatibility
-    # Gemini doesn't accept 'image/jpg', only 'image/jpeg'
-    if mime == "image/jpg":
-        mime = "image/jpeg"
-    
     return resp.content, mime
 
 

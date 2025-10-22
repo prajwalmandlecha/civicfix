@@ -20,8 +20,7 @@ from app import es_client
 from google import genai
 from google.genai import types
 
-# Explicitly load .env file (not .env.example)
-load_dotenv(dotenv_path=os.path.join(os.path.dirname(os.path.dirname(__file__)), '.env'), override=True)
+load_dotenv()
 
 logger = logging.getLogger("uvicorn.error")
 API_KEY = os.getenv("GEMINI_API_KEY")
@@ -63,18 +62,6 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
-
-@app.on_event("startup")
-async def startup_event():
-    """Log configuration on startup for debugging"""
-    logger.info("=" * 60)
-    logger.info("STARTUP CONFIGURATION:")
-    logger.info(f"API_KEY present: {bool(API_KEY)}")
-    logger.info(f"API_KEY (masked): {API_KEY[:10]}...{API_KEY[-4:] if API_KEY and len(API_KEY) > 14 else 'N/A'}")
-    logger.info(f"GEMINI_MODEL: {GEMINI_MODEL}")
-    logger.info(f"EMBEDDING_MODEL: {EMBEDDING_MODEL}")
-    logger.info(f"Client initialized: {client is not None}")
-    logger.info("=" * 60)
 
 # canonical label set (bounded)
 CANONICAL_LABELS: List[str] = [
@@ -259,7 +246,13 @@ def analyze(report: ReportIn):
                 query_embedding=query_embedding
             )
         )
-        future_fixes = executor.submit(lambda: es_client.hybrid_retrieve_fixes(size=5))
+        future_fixes = executor.submit(
+            lambda: es_client.hybrid_retrieve_fixes(
+                issue_types=report.user_selected_labels,
+                size=5,
+                query_embedding=query_embedding
+            )
+        )
         future_weather = executor.submit(get_weather_summary, report.location.dict(), report.timestamp)
         
         # Collect results as they complete (non-blocking)

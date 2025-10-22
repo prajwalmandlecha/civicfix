@@ -1,7 +1,6 @@
 from elasticsearch import Elasticsearch, NotFoundError
 import os
 import logging
-import ssl
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
@@ -10,32 +9,10 @@ from cloud.Issue_Verifier.app.main import ES_PASSWORD, ES_URL
 # Load environment variables before reading them
 load_dotenv()
 
-# ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
-# es = Elasticsearch(ES_URL, verify_certs=False, request_timeout=60)
-ES_HOST = os.getenv("ES_URL", "http://localhost:9200")
-ES_INDEX = os.getenv("ES_INDEX", "issues")
-ES_USER = os.getenv("ES_USER")
-ES_PASS = os.getenv("ES_PASS")
-ES_VERIFY_CERTS = os.getenv("ES_VERIFY_CERTS", "true").lower() in ("1", "true", "yes")
-ES_CA_CERT = os.getenv("ES_CA_CERT")
+ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
+ES_USER = os.environ.get("ES_USER")
+ES_PASSWORD = os.environ.get("ES_PASSWORD")
 
-es_kwargs = {}
-if ES_USER and ES_PASS:
-    es_kwargs["basic_auth"] = (ES_USER, ES_PASS)
-
-if not ES_VERIFY_CERTS:
-    # Disable certificate verification for environments with self-signed certs.
-    insecure_context = ssl.create_default_context()
-    insecure_context.check_hostname = False
-    insecure_context.verify_mode = ssl.CERT_NONE
-    es_kwargs.update({
-        "verify_certs": False,
-        "ssl_context": insecure_context,
-    })
-elif ES_CA_CERT:
-    es_kwargs["ca_certs"] = ES_CA_CERT
-
-es = Elasticsearch(ES_HOST, **es_kwargs)
 logger = logging.getLogger("uvicorn.error")
 
 # Initialize Elasticsearch client with authentication and SSL support
@@ -136,16 +113,80 @@ def hybrid_retrieve_issues(
     return snippets
 
 
-def hybrid_retrieve_fixes(size: int = 5) -> List[Dict[str, Any]]:
-    body = {
-        "size": size,
-        "query": {"match_all": {}},
-        "_source": ["fix_id", "related_issue_types", "summary", "co2_saved"]
-    }
-    try:
-        resp = es.search(index="fixes", body=body)
-    except Exception:
-        return []
+def hybrid_retrieve_fixes(
+    issue_types: List[str],
+    size: int = 5,
+    query_embedding: Optional[List[float]] = None
+) -> List[Dict[str, Any]]:
+    """
+    Hybrid retrieval for fixes combining:
+    - kNN vector similarity (if query_embedding provided)
+    - Term matching on related_issue_types
+    """
+    
+    # If query_embedding is provided, use kNN + filters
+    if query_embedding and len(query_embedding) == 3072:
+        logger.info("Using kNN hybrid search for fixes with vector similarity (3072 dims)")
+        
+        # Build filter for related issue types
+        filter_conditions = []
+        if issue_types:
+            filter_conditions.append({
+                "terms": {"related_issue_types": issue_types}
+            })
+        
+        body = {
+            "size": size,
+            "knn": {
+                "field": "text_embedding",
+                "query_vector": query_embedding,
+                "k": size * 2,  # retrieve more candidates for filtering
+                "num_candidates": 100
+            },
+            "_source": ["fix_id", "related_issue_types", "title", "description", "co2_saved", "success_rate", "fix_outcomes"]
+        }
+        
+        # Add filters if we have any
+        if filter_conditions:
+            body["knn"]["filter"] = {"bool": {"should": filter_conditions, "minimum_should_match": 1}}
+        
+        try:
+            resp = es.search(index="fixes", body=body)
+            logger.info(f"kNN search returned {len(resp.get('hits', {}).get('hits', []))} fixes")
+        except Exception as e:
+            logger.exception("kNN search failed for fixes: %s", e)
+            return []
+    else:
+        # Fallback to traditional filtered search if no embedding
+        logger.info("Using traditional filtered search for fixes (no query embedding provided)")
+        
+        # Build filter query
+        if issue_types:
+            body = {
+                "size": size,
+                "query": {
+                    "bool": {
+                        "should": [{"terms": {"related_issue_types": issue_types}}],
+                        "minimum_should_match": 1
+                    }
+                },
+                "_source": ["fix_id", "related_issue_types", "title", "description", "co2_saved", "success_rate", "fix_outcomes"]
+            }
+        else:
+            # No filters, just match_all
+            body = {
+                "size": size,
+                "query": {"match_all": {}},
+                "_source": ["fix_id", "related_issue_types", "title", "description", "co2_saved", "success_rate", "fix_outcomes"]
+            }
+        
+        try:
+            resp = es.search(index="fixes", body=body)
+            logger.info(f"Traditional search returned {len(resp.get('hits', {}).get('hits', []))} fixes")
+        except Exception as e:
+            logger.exception("Traditional search failed for fixes: %s", e)
+            return []
+    
     hits = resp.get("hits", {}).get("hits", [])
     snippets = []
     for h in hits:
@@ -153,8 +194,10 @@ def hybrid_retrieve_fixes(size: int = 5) -> List[Dict[str, Any]]:
         snippets.append({
             "fix_id": h.get("_id"),
             "related_issue_types": s.get("related_issue_types", []),
-            "summary": (s.get("summary") or "")[:160],
-            "co2_saved": s.get("co2_saved")
+            "title": s.get("title", ""),
+            "description": (s.get("description") or "")[:160],
+            "co2_saved": s.get("co2_saved"),
+            "success_rate": s.get("success_rate")
         })
     return snippets
 
