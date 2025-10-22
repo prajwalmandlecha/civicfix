@@ -1,0 +1,74 @@
+<!doctype html>
+<html lang="en">
+
+<head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Login NGO - CivicFix</title>
+    <link rel="stylesheet" href="/style.css">
+    <style>
+        .auth-page .container {
+            max-width: 500px;
+            padding-top: 40px;
+            padding-bottom: 40px;
+        }
+
+        .auth-card {
+            background: var(--white);
+            padding: 30px;
+            border-radius: 16px;
+            box-shadow: 0 4px 16px var(--shadow);
+        }
+
+        .auth-card h1 {
+            text-align: center;
+            margin-bottom: 25px;
+        }
+    </style>
+</head>
+
+<body>
+    <nav class="navbar">
+        <div class="container"> <a href="/" class="nav-logo">🏙️ CivicFix</a> </div>
+    </nav>
+
+    <section class="page-content auth-page">
+        <div class="container">
+            <div class="auth-card">
+                <h1>Login</h1>
+                <form id="login-form" novalidate>
+                    <div class="form-group">
+                        <label for="email" class="form-label">Email</label>
+                        <input type="email" id="email" class="form-input" required autocomplete="email">
+                    </div>
+                    <div class="form-group">
+                        <label for="password" class="form-label">Password</label>
+                        <input type="password" id="password" class="form-input" required
+                            autocomplete="current-password">
+                    </div>
+                    <button type="submit" class="cta-button primary" style="width: 100%;">Login</button>
+                    <p id="error-message" style="color: red; margin-top: 10px; text-align: center; min-height: 1.2em;">
+                    </p>
+                    <p style="text-align: center; margin-top: 15px;">
+                        Don't have a NGO account? <a href="/ngo_signup.html">Sign Up</a>
+                    </p>
+                    <p style="text-align: center; margin-top: 15px;">
+                        Don't have a citizen account? <a href="/signup.html">Sign Up</a>
+                    </p>
+                </form>
+            </div>
+        </div>
+    </section>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-bottom">
+                <p>&copy; 2025 CivicFix.</p>
+            </div>
+        </div>
+    </footer>
+    <div id="toast" class="toast"></div>
+    <script type="module" src="/pages/ngo_login.js"></script>
+</body>
+
+</html>

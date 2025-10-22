@@ -1,0 +1,100 @@
+// frontend/pages/ngo_signup.js
+
+import { auth, db } from '../firebaseConfig.js';
+import { createUserWithEmailAndPassword } from "firebase/auth";
+import { doc, setDoc, serverTimestamp } from "firebase/firestore";
+// --- Import all shared functions ---
+import { showToast, initThemeToggle, initMobileMenu } from './shared.js';
+// --- Import the main auth router ---
+import { initializeAuthListener } from './auth.js';
+
+const signupForm = document.getElementById('signup-form');
+const nameInput = document.getElementById('name'); // This is "Organization Name"
+const emailInput = document.getElementById('email');
+const passwordInput = document.getElementById('password');
+const confirmPasswordInput = document.getElementById('confirm-password');
+const errorMessageElement = document.getElementById('error-message');
+
+if (signupForm) {
+    signupForm.addEventListener('submit', async (e) => {
+        e.preventDefault();
+        errorMessageElement.textContent = '';
+
+        const name = nameInput.value.trim();
+        const email = emailInput.value.trim();
+        const password = passwordInput.value;
+        const confirmPassword = confirmPasswordInput.value;
+
+        // --- Validation ---
+        if (!name || !email) {
+             errorMessageElement.textContent = 'Please fill out all fields.';
+             return;
+        }
+        if (password.length < 6) {
+            errorMessageElement.textContent = 'Password must be at least 6 characters long.';
+            return;
+        }
+        if (password !== confirmPassword) {
+            errorMessageElement.textContent = 'Passwords do not match.';
+            return;
+        }
+
+        const submitButton = signupForm.querySelector('button[type="submit"]');
+        submitButton.disabled = true;
+        submitButton.textContent = 'Creating account...';
+
+        try {
+            // --- Step 1: Create user in Firebase Auth ---
+            const userCredential = await createUserWithEmailAndPassword(auth, email, password);
+            const user = userCredential.user;
+            console.log('Auth NGO user created:', user.uid);
+
+            // --- Step 2: Create user document in Firestore ---
+            const userDocRef = doc(db, "users", user.uid);
+
+            const newUserDoc = {
+                name: name,
+                email: email,
+                // --- THIS IS THE FIX ---
+                userType: "ngo", // Set userType to "ngo"
+                // ---------------------
+                createdAt: serverTimestamp(),
+                karma: 0,
+                lastLocation: null
+            };
+
+            await setDoc(userDocRef, newUserDoc);
+            console.log('Firestore NGO user document created:', user.uid);
+
+            showToast('✅ NGO Account created! Please log in.');
+            setTimeout(() => {
+                // --- Redirect to the NGO login page ---
+                window.location.href = '/ngo_login.html';
+            }, 1500);
+
+        } catch (error) {
+            console.error('NGO Signup failed:', error);
+            let message = 'Signup failed. Please try again.';
+            if (error.code === 'auth/email-already-in-use') {
+                message = 'This email is already registered.';
+            } else if (error.code === 'auth/invalid-email') {
+                message = 'Please enter a valid email address.';
+            } else if (error.code === 'auth/weak-password') {
+                message = 'Password is too weak.';
+            }
+            errorMessageElement.textContent = message;
+            showToast(`❌ ${message}`);
+            submitButton.disabled = false;
+            submitButton.textContent = 'Create Account';
+        }
+    });
+} else {
+    console.error("NGO Signup form (id='signup-form') not found!");
+}
+
+// --- ADD THIS AT THE BOTTOM ---
+document.addEventListener('DOMContentLoaded', () => {
+    initializeAuthListener(); // Handles redirects if already logged in + navbar
+    initThemeToggle();
+    initMobileMenu();
+});
