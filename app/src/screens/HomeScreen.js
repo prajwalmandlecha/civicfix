@@ -1,5 +1,14 @@
 import React, { useState, useEffect, useLayoutEffect } from "react";
-import { View, Text, StyleSheet, FlatList, RefreshControl } from "react-native";
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  RefreshControl,
+  TouchableOpacity,
+  Modal,
+  ScrollView,
+} from "react-native";
 import SocialPost from "../components/SocialPost";
 import IssueDetailModal from "../components/IssueDetailModal";
 import api from "../services/api";
@@ -11,12 +20,75 @@ const HomeScreen = () => {
   const [posts, setPosts] = useState([]);
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [filters, setFilters] = useState({
+    status: "all", // all, open, verified, closed
+    severity: "all", // all, high, medium, low
+    sortBy: "severity", // severity, date, likes
+  });
 
   const { lastLocation } = useUserContext();
 
   useEffect(() => {
     getPosts();
-  }, [lastLocation]);
+  }, [lastLocation, filters]);
+
+  // Apply filters to posts
+  const getFilteredPosts = () => {
+    let filteredPosts = [...posts];
+
+    // Filter by status
+    if (filters.status !== "all") {
+      filteredPosts = filteredPosts.filter(
+        (post) => post.status?.toLowerCase() === filters.status
+      );
+    }
+
+    // Filter by severity
+    if (filters.severity !== "all") {
+      filteredPosts = filteredPosts.filter((post) => {
+        switch (filters.severity) {
+          case "high":
+            return post.severityScore > 7;
+          case "medium":
+            return post.severityScore > 4 && post.severityScore <= 7;
+          case "low":
+            return post.severityScore <= 4;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Sort posts
+    filteredPosts.sort((a, b) => {
+      switch (filters.sortBy) {
+        case "date":
+          return new Date(b.createdAt) - new Date(a.createdAt);
+        case "likes":
+          return b.likes - a.likes;
+        case "severity":
+        default:
+          return b.severityScore - a.severityScore;
+      }
+    });
+
+    return filteredPosts;
+  };
+
+  // Handle filter changes
+  const updateFilter = (filterType, value) => {
+    setFilters((prev) => ({ ...prev, [filterType]: value }));
+  };
+
+  // Reset filters
+  const resetFilters = () => {
+    setFilters({
+      status: "all",
+      severity: "all",
+      sortBy: "severity",
+    });
+  };
 
   const handleLike = (postId) => {
     setPosts(
@@ -62,7 +134,6 @@ const HomeScreen = () => {
       },
     });
     console.log("API Response:", response.data);
-    // Format locations asynchronously for all issues
     const issues = await Promise.all(
       response.data.issues.map(async (issue) => ({
         id: issue.issue_id,
@@ -80,13 +151,20 @@ const HomeScreen = () => {
         co2Impact: issue.co2Impact,
         likes: issue.upvotes.open,
         status: issue.status,
-        detailedData: issue, // Store the complete issue data
+        description: issue.description,
+        createdAt: issue.created_at,
+        severityScore: issue.severity_score,
+        distanceKm: issue.distance_km,
+        detailedData: issue,
       }))
     );
+
+    issues.sort((a, b) => b.severityScore - a.severityScore);
+
     console.log("Fetched Issues", issues);
     setPosts(issues);
     // console.log("Issues", response.data);
-    console.dir(response.data.issues, { depth: null });
+    console.dir(response.data, { depth: null });
   };
 
   const handleFixToggle = (postId) => {
@@ -124,8 +202,21 @@ const HomeScreen = () => {
 
   return (
     <View style={styles.container}>
+      {/* Filter Button */}
+      <View style={styles.filterBar}>
+        <TouchableOpacity
+          style={styles.filterButton}
+          onPress={() => setFiltersVisible(true)}
+        >
+          <Text style={styles.filterButtonText}>Filters</Text>
+        </TouchableOpacity>
+        <Text style={styles.filterSummary}>
+          {getFilteredPosts().length} of {posts.length} issues
+        </Text>
+      </View>
+
       <FlatList
-        data={posts}
+        data={getFilteredPosts()}
         renderItem={({ item }) => (
           <SocialPost
             postId={item.id}
@@ -136,6 +227,10 @@ const HomeScreen = () => {
             co2Impact={item.co2Impact}
             likes={item.likes}
             status={item.status}
+            description={item.description}
+            createdAt={item.createdAt}
+            severityScore={item.severityScore}
+            distanceKm={item.distanceKm}
             detailedData={item.detailedData}
             onLike={() => handleLike(item.id)}
             onFixToggle={() => handleFixToggle(item.id)}
@@ -156,6 +251,129 @@ const HomeScreen = () => {
         }
       />
 
+      {/* Filter Modal */}
+      <Modal
+        visible={filtersVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setFiltersVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.filterModal}>
+            <View style={styles.filterHeader}>
+              <Text style={styles.filterTitle}>Filters</Text>
+              <TouchableOpacity
+                onPress={() => setFiltersVisible(false)}
+                style={styles.closeButton}
+              >
+                <Text style={styles.closeButtonText}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.filterContent}>
+              {/* Status Filter */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Status</Text>
+                <View style={styles.filterOptions}>
+                  {["all", "open", "closed"].map((status) => (
+                    <TouchableOpacity
+                      key={status}
+                      style={[
+                        styles.filterOption,
+                        filters.status === status &&
+                          styles.filterOptionSelected,
+                      ]}
+                      onPress={() => updateFilter("status", status)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterOptionText,
+                          filters.status === status &&
+                            styles.filterOptionTextSelected,
+                        ]}
+                      >
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Severity Filter */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Severity</Text>
+                <View style={styles.filterOptions}>
+                  {["all", "high", "medium", "low"].map((severity) => (
+                    <TouchableOpacity
+                      key={severity}
+                      style={[
+                        styles.filterOption,
+                        filters.severity === severity &&
+                          styles.filterOptionSelected,
+                      ]}
+                      onPress={() => updateFilter("severity", severity)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterOptionText,
+                          filters.severity === severity &&
+                            styles.filterOptionTextSelected,
+                        ]}
+                      >
+                        {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Sort By */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Sort By</Text>
+                <View style={styles.filterOptions}>
+                  {["severity", "date", "likes"].map((sort) => (
+                    <TouchableOpacity
+                      key={sort}
+                      style={[
+                        styles.filterOption,
+                        filters.sortBy === sort && styles.filterOptionSelected,
+                      ]}
+                      onPress={() => updateFilter("sortBy", sort)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterOptionText,
+                          filters.sortBy === sort &&
+                            styles.filterOptionTextSelected,
+                        ]}
+                      >
+                        {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.filterActions}>
+                <TouchableOpacity
+                  style={styles.resetButton}
+                  onPress={resetFilters}
+                >
+                  <Text style={styles.resetButtonText}>Reset</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.applyButton}
+                  onPress={() => setFiltersVisible(false)}
+                >
+                  <Text style={styles.applyButtonText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       <IssueDetailModal
         visible={modalVisible}
         onClose={handleCloseModal}
@@ -173,6 +391,128 @@ const styles = StyleSheet.create({
   listContent: {
     padding: 16,
     // paddingBottom: 100, // Account for bottom tab bar + extra spacing
+  },
+  filterBar: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#e1e5e9",
+  },
+  filterButton: {
+    backgroundColor: "#4285f4",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 20,
+  },
+  filterButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 14,
+  },
+  filterSummary: {
+    color: "#666",
+    fontSize: 14,
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  filterModal: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "80%",
+  },
+  filterHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e1e5e9",
+  },
+  filterTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  closeButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f0f0f0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  closeButtonText: {
+    fontSize: 18,
+    color: "#666",
+    fontWeight: "bold",
+  },
+  filterContent: {
+    padding: 16,
+  },
+  filterSection: {
+    marginBottom: 24,
+  },
+  filterSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 12,
+  },
+  filterOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+  },
+  filterOption: {
+    backgroundColor: "#f0f0f0",
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 16,
+    marginRight: 8,
+    marginBottom: 8,
+  },
+  filterOptionSelected: {
+    backgroundColor: "#4285f4",
+  },
+  filterOptionText: {
+    color: "#666",
+    fontSize: 14,
+  },
+  filterOptionTextSelected: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  filterActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 24,
+  },
+  resetButton: {
+    backgroundColor: "#f0f0f0",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  resetButtonText: {
+    color: "#666",
+    fontWeight: "600",
+  },
+  applyButton: {
+    backgroundColor: "#4285f4",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+  },
+  applyButtonText: {
+    color: "#fff",
+    fontWeight: "600",
   },
 });
 

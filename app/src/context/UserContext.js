@@ -10,6 +10,7 @@ export const UserProvider = ({ children }) => {
   const [profile, setProfile] = useState(null);
   const [lastLocation, setLastLocation] = useState(null);
   const [loading, setLoading] = useState(true);
+  const [userType, setUserType] = useState(null);
 
   const fetchUserProfile = async (uid) => {
     try {

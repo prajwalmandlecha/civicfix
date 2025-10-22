@@ -3,6 +3,10 @@ import os
 import logging
 import ssl
 from typing import List, Dict, Any, Optional
+from dotenv import load_dotenv
+
+# Load environment variables before reading them
+load_dotenv()
 
 # ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
 # es = Elasticsearch(ES_URL, verify_certs=False, request_timeout=60)
@@ -32,6 +36,19 @@ elif ES_CA_CERT:
 es = Elasticsearch(ES_HOST, **es_kwargs)
 logger = logging.getLogger("uvicorn.error")
 
+# Initialize Elasticsearch client with authentication and SSL support
+if ES_USER and ES_PASSWORD:
+    es = Elasticsearch(
+        ES_URL,
+        basic_auth=(ES_USER, ES_PASSWORD),
+        verify_certs=False,  # Set to True in production with valid certificates
+        request_timeout=60
+    )
+    logger.info(f"Elasticsearch client initialized with authentication for {ES_URL}")
+else:
+    es = Elasticsearch(ES_URL, verify_certs=False, request_timeout=60)
+    logger.info(f"Elasticsearch client initialized without authentication for {ES_URL}")
+
 
 def hybrid_retrieve_issues(
     location: Dict[str, float],
@@ -52,13 +69,13 @@ def hybrid_retrieve_issues(
     
     # Build filter conditions
     filter_conditions = [
-        {"geo_distance": {"distance": "500m", "location": {"lat": lat, "lon": lon}}},
-        {"range": {"reported_at": {"gte": f"now-{days}d/d"}}}
+        {"geo_distance": {"distance": "5km", "location": {"lat": lat, "lon": lon}}},
+        {"range": {"created_at": {"gte": f"now-{days}d/d"}}} 
     ]
     
     # If query_embedding is provided, use kNN + filters
     if query_embedding and len(query_embedding) == 3072:
-        logger.info("Using kNN hybrid search with vector similarity (3072 dims)")
+        logger.info("Using kNN hybrid search with vector similarity (3072 dims) for lat=%s, lon=%s", lat, lon)
         body = {
             "size": size,
             "knn": {
@@ -72,7 +89,7 @@ def hybrid_retrieve_issues(
                     }
                 }
             },
-            "_source": ["issue_types", "severity_score", "description", "auto_caption"]
+            "_source": ["issue_types", "severity_score", "description", "auto_caption", "created_at", "location"]
         }
         
         # Add term matching if user labels provided
@@ -81,7 +98,7 @@ def hybrid_retrieve_issues(
             body["knn"]["filter"]["bool"]["minimum_should_match"] = 0  # boost, not require
     else:
         # Fallback to traditional search if no embedding
-        logger.info("Using traditional filtered search (no query embedding provided)")
+        logger.info("Using traditional filtered search (no query embedding provided) for lat=%s, lon=%s", lat, lon)
         body = {
             "size": size,
             "query": {
@@ -89,7 +106,7 @@ def hybrid_retrieve_issues(
                     "filter": filter_conditions
                 }
             },
-            "_source": ["issue_types", "severity_score", "description", "auto_caption"]
+            "_source": ["issue_types", "severity_score", "description", "auto_caption", "created_at", "location"]
         }
         
         if user_labels:
@@ -97,7 +114,10 @@ def hybrid_retrieve_issues(
 
     try:
         resp = es.search(index="issues", body=body)
-    except Exception:
+        hits_count = len(resp.get("hits", {}).get("hits", []))
+        logger.info("ES returned %d evidence issues within 5km and %d days", hits_count, days)
+    except Exception as e:
+        logger.exception("ES search failed: %s", e)
         return []
 
     hits = resp.get("hits", {}).get("hits", [])
@@ -105,10 +125,11 @@ def hybrid_retrieve_issues(
     for h in hits:
         s = h.get("_source", {})
         snippets.append({
-            "id": h.get("_id"),
+            "id": h.get("_id"),  # This is the actual document ID
             "issue_types": s.get("issue_types", []),
             "severity_score": s.get("severity_score"),
-            "short": (s.get("description") or "")[:160]
+            "short": (s.get("description") or s.get("auto_caption") or "")[:160],
+            "created_at": s.get("created_at")
         })
     return snippets
 

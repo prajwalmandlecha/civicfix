@@ -10,6 +10,7 @@
     "server": "cd server && npm start"
   },
   "dependencies": {
+    "firebase": "^12.4.0",
     "maplibre-gl": "^4.7.1"
   },
   "devDependencies": {

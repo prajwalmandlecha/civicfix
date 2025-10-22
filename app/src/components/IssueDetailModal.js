@@ -63,7 +63,7 @@ const IssueDetailModal = ({ visible, onClose, issueData }) => {
               </View>
             </View>
 
-            {/* Status & Severity */}
+            {/* Status & Severity & CO2 Saved */}
             <View style={styles.section}>
               <View style={styles.statsRow}>
                 <View style={styles.statItem}>
@@ -74,6 +74,15 @@ const IssueDetailModal = ({ visible, onClose, issueData }) => {
                   <Text style={styles.statLabel}>Severity</Text>
                   <Text style={styles.statValue}>
                     {issueData.detailedData?.severity_score || "N/A"}
+                  </Text>
+                </View>
+                <View style={styles.statItem}>
+                  <Text style={styles.statLabel}>CO₂ Risk</Text>
+                  <Text style={styles.statValue}>
+                    {issueData.detailedData?.fate_risk_co2
+                      ? Math.round(issueData.detailedData.fate_risk_co2)
+                      : 0}{" "}
+                    kg
                   </Text>
                 </View>
               </View>

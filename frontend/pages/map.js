@@ -1,6 +1,9 @@
-import { initThemeToggle, initMobileMenu, showToast } from './shared.js'
+// import { initThemeToggle, initMobileMenu, showToast } from './shared.js'
+import { initThemeToggle, initMobileMenu, showToast, protectPage } from './shared.js';
 import maplibregl from 'maplibre-gl'
 import 'maplibre-gl/dist/maplibre-gl.css'
+
+protectPage();
 
 const API_BASE = 'http://localhost:3001';
 let map = null;

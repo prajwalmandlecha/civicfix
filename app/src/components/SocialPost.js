@@ -26,11 +26,15 @@ const SocialPost = ({
   onSameIssue,
   onPress,
   detailedData,
+  description,
+  createdAt,
+  severityScore,
+  distanceKm,
 }) => {
   const [isLiked, setIsLiked] = useState(false);
   const [scaleValue] = useState(new Animated.Value(1));
   const [isReported, setIsReported] = useState(false);
-  console.log("Issue Types in SocialPost:", issueTypes);
+  // console.log("Issue Types in SocialPost:", issueTypes);
 
   const handleLike = () => {
     // Toggle liked state
@@ -104,11 +108,23 @@ const SocialPost = ({
 
       {/* Content Section */}
       <View style={styles.content}>
-        {/* Location */}
+        {/* Location and Distance */}
         <View style={styles.locationRow}>
           <Text style={styles.locationIcon}>📍</Text>
           <Text style={styles.locationText}>{location}</Text>
+          {distanceKm !== undefined && (
+            <Text style={styles.distanceText}>
+              • {distanceKm.toFixed(1)} km
+            </Text>
+          )}
         </View>
+
+        {/* Description */}
+        {description && (
+          <Text style={styles.descriptionText} numberOfLines={2}>
+            {description}
+          </Text>
+        )}
 
         {/* Actions Row */}
         <View style={styles.actionsRow}>
@@ -127,17 +143,16 @@ const SocialPost = ({
                   justifyContent: "center",
                 }}
               >
-                
                 {isLiked ? (
                   <FontAwesome name="thumbs-up" size={24} color="#0d6efd" />
                 ) : (
-                  <FontAwesome name="thumbs-o-up" size={24
-                    
-                  } color="#6c757d" />
+                  <FontAwesome name="thumbs-o-up" size={24} color="#6c757d" />
                 )}
               </Animated.View>
             </TouchableOpacity>
-            <Text style={styles.likesCount}>{likes}</Text>
+            <View style={styles.likesCountContainer}>
+              <Text style={styles.likesCount}>{likes}</Text>
+            </View>
           </View>
 
           <TouchableOpacity
@@ -275,6 +290,19 @@ const styles = StyleSheet.create({
   locationText: {
     fontSize: 14,
     color: "#666",
+    flex: 1,
+  },
+  distanceText: {
+    fontSize: 13,
+    color: "#999",
+    marginLeft: 8,
+    fontWeight: "500",
+  },
+  descriptionText: {
+    fontSize: 14,
+    color: "#444",
+    lineHeight: 20,
+    marginBottom: 12,
   },
   actionsRow: {
     flexDirection: "row",
@@ -293,31 +321,15 @@ const styles = StyleSheet.create({
   heartIcon: {
     fontSize: 24,
   },
+  likesCountContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+  },
   likesCount: {
     fontSize: 16,
     fontWeight: "500",
     color: "#333",
   },
-  // statusButton: {
-  //   paddingHorizontal: 20,
-  //   paddingVertical: 10,
-  //   borderRadius: 20,
-  //   borderWidth: 1.5,
-  //   borderColor: "#28a745",
-  //   backgroundColor: "#fff",
-  // },
-  // statusButtonResolved: {
-  //   backgroundColor: "#d4edda",
-  //   borderColor: "#28a745",
-  // },
-  // statusButtonText: {
-  //   fontSize: 14,
-  //   fontWeight: "600",
-  //   color: "#28a745",
-  // },
-  // statusButtonTextResolved: {
-  //   color: "#155724",
-  // },
   reportButton: {
     flexDirection: "row",
     alignItems: "center",

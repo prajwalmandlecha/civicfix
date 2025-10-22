@@ -1,447 +1,636 @@
-# CivicFix Issue Verifier
+# Issue Verifier Service
 
-The **Issue Verifier** service validates fix submissions by analyzing evidence images and comparing them against original issue reports. It uses Google Gemini's multimodal AI to assess fix quality, completeness, and authenticity.
+AI-powered fix verification service using Google Gemini 2.5 Flash vision model. Validates fix submissions by analyzing evidence images and comparing them against original issue reports.
+
+---
+
+## 📋 Table of Contents
+
+- [Overview](#overview)
+- [Prerequisites](#prerequisites)
+- [Local Development](#local-development)
+- [Docker Deployment](#docker-deployment)
+- [Cloud Run Deployment](#cloud-run-deployment)
+- [API Reference](#api-reference)
+- [Configuration](#configuration)
+- [Troubleshooting](#troubleshooting)
 
 ---
 
 ## 🎯 Overview
 
-The Issue Verifier:
-- **Validates fixes** submitted by NGOs/volunteers with photographic evidence
-- **Retrieves context** from Elasticsearch using kNN vector search + filters
-- **Analyzes images** using Google Gemini 2.5 Flash multimodal model
-- **Generates verification reports** with confidence scores and detailed assessments
-- **Stores fix documents** in Elasticsearch with embeddings for future retrieval
-- **Updates issue status** when fixes are verified
+The **Issue Verifier** service validates civic issue fixes by:
+- Analyzing evidence images using Google Gemini Vision AI
+- Comparing fix evidence against original issue reports
+- Providing confidence scores for 19 canonical issue types
+- Automatically updating issue status in Elasticsearch
+- Tracking CO2 impact savings
+
+**Key Features:**
+- ✅ Visual verification with AI-powered image analysis
+- ✅ Hybrid search (kNN vector + filtered queries)
+- ✅ Confidence Scoring: Provides granular confidence scores for each issue type
+- ✅ Automatic CO2 impact tracking
+- ✅ Robust JSON parsing with error recovery
+- ✅ Comprehensive issue status management
 
 ---
 
-## 🚀 Quick Start (Docker - Recommended)
+## 📦 Prerequisites
 
-### Prerequisites
-- Docker Desktop installed and running
-- `civicfix-net` Docker network created
-- Elasticsearch running on `civicfix-net` (container name: `civicfix-es`)
-- Google Gemini API key ([Get one here](https://aistudio.google.com/apikey))
+### Required Services
 
-### 1. Build Docker Image
+| Service | Version | Purpose |
+|---------|---------|---------|
+| Python | 3.11+ | Runtime environment |
+| Elasticsearch | 8.11+ | Data storage with vector search |
+| Google Gemini API | 2.5 Flash | Vision AI analysis |
 
-```powershell
-# PowerShell
-cd cloud/Issue_Verifier
-docker build -t civicfix-issue-verifier .
-```
+### Elasticsearch Indices
 
 ```bash
-# Linux/macOS
-cd cloud/Issue_Verifier
-docker build -t civicfix-issue-verifier .
+# Required indices
+- issues  (civic issue reports)
+- fixes   (verified fix submissions)
 ```
 
-### 2. Run Container on civicfix-net
-
-```powershell
-# PowerShell
-docker run --name civicfix-issue-verifier `
-  --network civicfix-net `
-  -e GEMINI_API_KEY=your_gemini_api_key_here `
-  -e ES_URL=http://civicfix-es:9200 `
-  -p 8001:8000 `
-  -d `
-  civicfix-issue-verifier
-```
+### API Keys
 
 ```bash
-# Linux/macOS
-docker run --name civicfix-issue-verifier \
-  --network civicfix-net \
-  -e GEMINI_API_KEY=your_gemini_api_key_here \
-  -e ES_URL=http://civicfix-es:9200 \
-  -p 8001:8000 \
-  -d \
-  civicfix-issue-verifier
+# Get your Gemini API key
+https://makersuite.google.com/app/apikey
 ```
-
-### 3. Verify Service is Running
-
-```powershell
-# PowerShell
-# Check container status
-docker ps | Select-String civicfix-issue-verifier
-
-# Check logs
-docker logs civicfix-issue-verifier
-
-# Test API
-Invoke-RestMethod -Uri "http://localhost:8001/docs" -Method Get
-```
-
-```bash
-# Linux/macOS
-# Check container status
-docker ps | grep civicfix-issue-verifier
-
-# Check logs
-docker logs civicfix-issue-verifier
-
-# Test API
-curl http://localhost:8001/docs
-```
-
-- **API Base URL**: `http://localhost:8001`
-- **Swagger UI**: `http://localhost:8001/docs`
-- **OpenAPI Schema**: `http://localhost:8001/openapi.json`
 
 ---
 
-## 🖥️ Local Development Setup (Alternative)
+## 🚀 Local Development
 
-If you prefer to run the service locally without Docker:
-
-### 1. Create Virtual Environment
-
-```powershell
-# PowerShell
-cd cloud/Issue_Verifier
-python -m venv .venv
-.venv\Scripts\Activate.ps1
-```
+### Step 1: Install Dependencies
 
 ```bash
-# Linux/macOS
 cd cloud/Issue_Verifier
-python3 -m venv .venv
-source .venv/bin/activate
-```
-
-### 2. Install Dependencies
-
-```bash
 pip install -r requirements.txt
 ```
 
-### 3. Configure Environment Variables
+### Step 2: Configure Environment
 
-Create a `.env` file in the `Issue_Verifier` directory:
+```bash
+# Copy example configuration
+cp .env.example .env
 
-```env
-GEMINI_API_KEY=your_gemini_api_key_here
+# Edit .env file
+nano .env
+```
+
+**Environment Variables:**
+
+```bash
+GEMINI_API_KEY=<your_gemini_api_key>
 GEMINI_MODEL=gemini-2.5-flash
 EMBED_MODEL=gemini-embedding-001
 ES_URL=http://localhost:9200
-ISSUES_INDEX=issues
-FIXES_INDEX=fixes
+ES_USER=<your_elastic_user>
+ES_PASSWORD=<your_password>
 ```
 
-**Important**: When running locally (not in Docker), use `ES_URL=http://localhost:9200` to connect to Elasticsearch on your host machine.
-
-### 4. Start the Service
-
-```powershell
-# PowerShell
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
-```
+### Step 3: Run Service
 
 ```bash
-# Linux/macOS
-uvicorn app.main:app --reload --host 0.0.0.0 --port 8001
+# Development mode (auto-reload)
+uvicorn app.main:app --host 0.0.0.0 --port 8001 --reload
+
+# Production mode
+uvicorn app.main:app --host 0.0.0.0 --port 8001
+```
+
+### Step 4: Verify
+
+```bash
+# Open browser
+http://localhost:8001/docs
 ```
 
 ---
 
-## 🧪 Testing the Service
+## 🐳 Docker Deployment
 
-### Test with an Existing Issue
-
-First, make sure you have seeded issues and fixes:
-
-```powershell
-# PowerShell - Seed data with fixes
-cd ../../elastic-local
-python seed.py --count 50
-```
-
-Then test the verifier with a sample fix submission:
-
-```powershell
-# PowerShell
-$body = @{
-  issue_id = "94cfc989-357b-4ab4-99e4-261cb810fdda"  # Replace with actual issue_id from your ES
-  ngo_id = "ngo:test_org"
-  image_urls = @(
-    "https://storage.googleapis.com/civicfix_issues_bucket/uploads/251fd6d5887a40c38fffc4bd7d260873.jpg"
-  )
-  fix_description = "Cleaned up the garbage pile and disposed waste properly"
-} | ConvertTo-Json
-
-$response = Invoke-RestMethod -Uri "http://localhost:8001/verify_fix/" -Method Post -ContentType "application/json" -Body $body
-$response | ConvertTo-Json -Depth 10
-```
+### Build Image
 
 ```bash
-# Linux/macOS
-curl -X POST http://localhost:8001/verify_fix/ \
+cd cloud/Issue_Verifier
+docker build -t civicfix-issue-verifier .
+```
+
+### Run Container (Linux/Mac)
+
+```bash
+docker run -d \
+  --name civicfix-issue-verifier \
+  -e GEMINI_API_KEY=<your_gemini_api_key> \
+  -e GEMINI_MODEL=gemini-2.5-flash \
+  -e EMBED_MODEL=gemini-embedding-001 \
+  -e ES_URL=<your-es-url> \
+  -e ES_USER=<your-elastic-username> \
+  -e ES_PASSWORD=<your_password> \
+  -p 8001:8001 \
+  civicfix-issue-verifier
+```
+
+### Run Container (Windows PowerShell)
+
+```powershell
+docker run -d `
+  --name civicfix-issue-verifier `
+  -e GEMINI_API_KEY=<your_gemini_api_key> `
+  -e GEMINI_MODEL=gemini-2.5-flash `
+  -e EMBED_MODEL=gemini-embedding-001 `
+  -e ES_URL=<your-es-url> `
+  -e ES_USER=<your-elastic-username> `
+  -e ES_PASSWORD=<your_password> `
+  -p 8001:8001 `
+  civicfix-issue-verifier
+```
+
+### Container Management
+
+```bash
+# View logs
+docker logs -f civicfix-issue-verifier
+
+# Stop container
+docker stop civicfix-issue-verifier
+
+# Remove container
+docker rm civicfix-issue-verifier
+
+# Restart container
+docker restart civicfix-issue-verifier
+```
+
+---
+
+## ☁️ Cloud Run Deployment
+
+### Prerequisites
+
+```bash
+# Install gcloud CLI
+https://cloud.google.com/sdk/docs/install
+
+# Authenticate
+gcloud auth login
+gcloud config set project YOUR_PROJECT_ID
+```
+
+### Step 1: Set Variables
+
+```bash
+export PROJECT_ID=your-gcp-project-id
+export REGION=us-central1
+export SERVICE_NAME=issue-verifier
+export IMAGE_TAG=gcr.io/$PROJECT_ID/$SERVICE_NAME:latest
+```
+
+### Step 2: Build & Push Image
+
+```bash
+cd cloud/Issue_Verifier
+
+# Build for Cloud Run (linux/amd64)
+docker build --platform linux/amd64 -t $IMAGE_TAG .
+
+# Configure Docker authentication
+gcloud auth configure-docker
+
+# Push to Container Registry
+docker push $IMAGE_TAG
+```
+
+### Step 3: Deploy Service
+
+```bash
+gcloud run deploy $SERVICE_NAME \
+  --image $IMAGE_TAG \
+  --platform managed \
+  --region $REGION \
+  --allow-unauthenticated \
+  --set-env-vars GEMINI_API_KEY=<your_gemini_api_key> \
+  --set-env-vars GEMINI_MODEL=gemini-2.5-flash \
+  --set-env-vars EMBED_MODEL=gemini-embedding-001 \
+  --set-env-vars ES_URL=<your-elastic-url> \
+  --set-env-vars ES_USER=<your-elastic-username> \
+  --set-env-vars ES_PASSWORD=<your_password> \
+  --memory 2Gi \
+  --cpu 2 \
+  --timeout 300 \
+  --max-instances 10 \
+  --port 8001
+```
+
+### Step 4: Get Service URL
+
+```bash
+gcloud run services describe $SERVICE_NAME \
+  --region $REGION \
+  --format 'value(status.url)'
+```
+
+### Using Secret Manager (Recommended)
+
+```bash
+# Create secrets
+echo -n "<your_gemini_api_key>" | \
+  gcloud secrets create gemini-api-key --data-file=-
+
+echo -n "<your_password>" | \
+  gcloud secrets create es-password --data-file=-
+
+# Deploy with secrets
+gcloud run deploy $SERVICE_NAME \
+  --image $IMAGE_TAG \
+  --platform managed \
+  --region $REGION \
+  --allow-unauthenticated \
+  --set-secrets GEMINI_API_KEY=gemini-api-key:latest,ES_PASSWORD=es-password:latest \
+  --set-env-vars GEMINI_MODEL=gemini-2.5-flash \
+  --set-env-vars EMBED_MODEL=gemini-embedding-001 \
+  --set-env-vars ES_URL=<your-elastic-url> \
+  --set-env-vars ES_USER=<your-elastic-username> \
+  --memory 2Gi \
+  --cpu 2 \
+  --timeout 300 \
+  --port 8001
+```
+
+### Update Deployment
+
+```bash
+# Rebuild image
+docker build --platform linux/amd64 -t $IMAGE_TAG .
+docker push $IMAGE_TAG
+
+# Redeploy
+gcloud run deploy $SERVICE_NAME --image $IMAGE_TAG --region $REGION
+```
+
+---
+
+## 📡 API Reference
+
+### Base URLs
+
+| Environment | URL |
+|-------------|-----|
+| Local | `http://localhost:8001` |
+| Cloud Run | `https://YOUR_SERVICE-XXXXXXX-uc.a.run.app` |
+
+### Interactive Documentation
+
+| Tool | URL |
+|------|-----|
+| Swagger UI | `/docs` |
+| ReDoc | `/redoc` |
+
+---
+
+### POST `/verify_fix/`
+
+**Purpose:** Verify a fix submission with evidence images
+
+#### Request
+
+```bash
+curl -X POST "http://localhost:8001/verify_fix/" \
   -H "Content-Type: application/json" \
   -d '{
-    "issue_id": "94cfc989-357b-4ab4-99e4-261cb810fdda",
-    "ngo_id": "ngo:test_org",
+    "issue_id": "1cb01e54-2403-4219-a0db-421e0086e1aa",
+    "ngo_id": "ngo123",
     "image_urls": [
-      "https://storage.googleapis.com/civicfix_issues_bucket/uploads/251fd6d5887a40c38fffc4bd7d260873.jpg"
+      "https://storage.googleapis.com/bucket/fix1.jpg",
+      "https://storage.googleapis.com/bucket/fix2.jpg"
     ],
-    "fix_description": "Cleaned up the garbage pile and disposed waste properly"
+    "fix_description": "Filled the pothole with tar and fixed it",
+    "timestamp": "2025-10-21T10:46:00Z"
   }'
 ```
 
-### Expected Response
+#### Request Schema
 
 ```json
 {
-  "fix_id": "uuid-here",
-  "issue_id": "94cfc989-357b-4ab4-99e4-261cb810fdda",
-  "overall_status": "verified",
-  "overall_confidence": 0.85,
+  "issue_id": "string (required)",
+  "ngo_id": "string (required)",
+  "image_urls": ["string (required, min 1 URL)"],
+  "fix_description": "string (optional)",
+  "timestamp": "string (ISO format)"
+}
+```
+
+#### Response (200 OK)
+
+```json
+{
+  "fix_id": "74f13c6e-87e3-4469-b43e-e2c8ef1ad0ca",
+  "issue_id": "1cb01e54-2403-4219-a0db-421e0086e1aa",
   "per_issue_results": [
     {
-      "issue_type": "overflowing_garbage_bin",
+      "issue_type": "road_pothole",
+      "original_confidence": 1.0,
       "fixed": "yes",
-      "confidence": 0.9,
-      "notes": "Area appears clean with waste properly removed"
+      "confidence": 1.0,
+      "evidence_photos": [0, 1],
+      "notes": "Pothole filled with fresh asphalt, fully resolved"
     }
   ],
-  "created_at": "2025-10-20T12:34:56Z"
+  "overall_outcome": "closed",
+  "suggested_success_rate": 1.0,
+  "created_at": "2025-10-21T16:04:11.833791+00:00"
 }
 ```
+
+#### Response Fields
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `fix_id` | string | Unique fix identifier |
+| `issue_id` | string | Original issue ID |
+| `per_issue_results` | array | Results per issue type |
+| `overall_outcome` | string | `closed`, `partially_closed`, `rejected`, `needs_manual_review` |
+| `suggested_success_rate` | float | Success rate (0.0-1.0) |
+| `created_at` | string | Timestamp (ISO format) |
+
+#### Per Issue Result
+
+| Field | Type | Description |
+|-------|------|-------------|
+| `issue_type` | string | Issue type (19 canonical types) |
+| `original_confidence` | float | Original detection confidence |
+| `fixed` | string | `yes`, `partial`, `no` |
+| `confidence` | float | Verification confidence (0.0-1.0) |
+| `evidence_photos` | array | Image indices used as evidence |
+| `notes` | string | AI explanation (≤40 words) |
+
+#### Error Responses
+
+| Code | Reason | Example |
+|------|--------|---------|
+| `400` | Bad request | Missing image_urls |
+| `404` | Issue not found | Invalid issue_id |
+| `500` | Server error | Gemini API failure |
 
 ---
 
-## 📋 API Endpoints
+## 🎯 Canonical Issue Types
 
-### `POST /verify_fix/`
-
-Submit a fix verification request with evidence images.
-
-**Request Body:**
-```json
-{
-  "issue_id": "string (UUID)",
-  "ngo_id": "string",
-  "image_urls": ["string (URL)", ...],
-  "fix_description": "string"
-}
-```
-
-**Response:**
-```json
-{
-  "fix_id": "string (UUID)",
-  "issue_id": "string (UUID)",
-  "overall_status": "verified | partial | rejected",
-  "overall_confidence": 0.0-1.0,
-  "per_issue_results": [
-    {
-      "issue_type": "string",
-      "fixed": "yes | partial | no",
-      "confidence": 0.0-1.0,
-      "notes": "string"
-    }
-  ],
-  "created_at": "ISO 8601 timestamp"
-}
-```
-
-### `GET /health`
-
-Health check endpoint.
-
-**Response:**
-```json
-{
-  "status": "healthy",
-  "service": "Issue Verifier",
-  "elasticsearch": "connected",
-  "gemini": "configured"
-}
-```
+| Type | Description |
+|------|-------------|
+| `DRAIN_BLOCKAGE` | Blocked drainage systems |
+| `FALLEN_TREE` | Fallen trees blocking paths |
+| `FLOODING_SURFACE` | Surface flooding |
+| `GRAFFITI_VANDALISM` | Vandalism and graffiti |
+| `GREENSPACE_MAINTENANCE` | Overgrown vegetation |
+| `ILLEGAL_CONSTRUCTION_DEBRIS` | Illegal construction waste |
+| `MANHOLE_MISSING_OR_DAMAGED` | Missing/damaged manholes |
+| `POWER_POLE_LINE_DAMAGE` | Electrical infrastructure damage |
+| `PUBLIC_INFRASTRUCTURE_DAMAGED` | General infrastructure damage |
+| `PUBLIC_TOILET_UNSANITARY` | Unsanitary public restrooms |
+| `ROAD_POTHOLE` | Road potholes |
+| `SIDEWALK_DAMAGE` | Damaged sidewalks |
+| `SMALL_FIRE_HAZARD` | Fire hazards |
+| `STRAY_ANIMALS` | Stray animal issues |
+| `STREETLIGHT_OUTAGE` | Non-functional streetlights |
+| `TRAFFIC_OBSTRUCTION` | Traffic obstructions |
+| `TRAFFIC_SIGN_DAMAGE` | Damaged traffic signs |
+| `WASTE_BULKY_DUMP` | Bulky waste dumping |
+| `WASTE_LITTER_SMALL` | Small litter and trash |
+| `WATER_LEAK_SURFACE` | Water pipe leaks |
 
 ---
 
-## 🔍 How It Works
-
-### 1. **Hybrid Context Retrieval**
-- Generates embedding from issue description + fix description
-- Performs **kNN vector search** with filters on the `fixes` index
-- Filters by `related_issue_types` to find relevant historical fixes
-- Falls back to traditional filtered search if embeddings are unavailable
-
-### 2. **Multimodal Analysis**
-- Fetches original issue images from storage
-- Combines issue images + fix evidence images
-- Sends all images to Google Gemini 2.5 Flash
-- Uses structured JSON prompts for consistent responses
-
-### 3. **Verification Assessment**
-- Analyzes image quality, authenticity, and completeness
-- Compares before/after states
-- Generates per-issue-type verification results
-- Calculates overall confidence scores
-
-### 4. **Data Storage**
-- Creates fix document in `fixes` index with embedding
-- Updates original issue with `evidence_ids` and status
-- Links fixes to issues for future context retrieval
-
----
-
-## 🛠️ Configuration
+## ⚙️ Configuration
 
 ### Environment Variables
 
-| Variable | Default | Description |
-|----------|---------|-------------|
-| `GEMINI_API_KEY` | **(required)** | Google AI Studio API key |
-| `GEMINI_MODEL` | `gemini-2.5-flash` | Gemini model for verification |
-| `EMBED_MODEL` | `gemini-embedding-001` | Model for text embeddings (3072 dims) |
-| `ES_URL` | `http://localhost:9200` | Elasticsearch connection URL |
-| `ISSUES_INDEX` | `issues` | Elasticsearch index for issues |
-| `FIXES_INDEX` | `fixes` | Elasticsearch index for fixes |
+| Variable | Required | Default | Description |
+|----------|----------|---------|-------------|
+| `GEMINI_API_KEY` | ✅ | - | Google Gemini API key |
+| `GEMINI_MODEL` | ❌ | `gemini-2.5-flash` | Gemini model name |
+| `EMBED_MODEL` | ❌ | `gemini-embedding-001` | Embedding model |
+| `ES_URL` | ❌ | `http://localhost:9200` | Elasticsearch URL |
+| `ES_USER` | ❌ | `elastic` | ES username |
+| `ES_PASSWORD` | ❌ | - | ES password |
 
-### Docker Network Requirements
+### Resource Recommendations
 
-The Issue Verifier must be on the same Docker network as Elasticsearch for container-to-container communication:
+| Environment | CPU | Memory | Instances |
+|-------------|-----|--------|-----------|
+| Development | 1 core | 512MB | 1 |
+| Production | 2 cores | 2GB | 5-10 |
+| High Load | 4 cores | 4GB | 10+ |
+
+---
+
+## 🔧 Troubleshooting
+
+### Issue: Cannot Connect to Elasticsearch
+
+**Symptoms:**
+```
+ConnectionError: Connection refused
+```
+
+**Solutions:**
+1. Verify ES_URL is correct
+2. Check Elasticsearch is running: `curl -k -u elastic:password https://your-es:9200`
+3. Verify network connectivity from container/service
+4. Check firewall rules
+
+---
+
+### Issue: Authentication Failed
+
+**Symptoms:**
+```
+401 Unauthorized
+```
+
+**Solutions:**
+1. Verify ES_USER and ES_PASSWORD
+2. Test credentials: `curl -k -u elastic:password https://your-es:9200/_cluster/health`
+3. Check user permissions in Elasticsearch
+
+---
+
+### Issue: Issue Not Found
+
+**Symptoms:**
+```
+404: Issue <id> not found
+```
+
+**Solutions:**
+1. Verify issue exists in `issues` index
+2. Check issue_id field matches exactly
+3. Query ES directly: `curl -k -u elastic:password https://your-es:9200/issues/_search?q=issue_id:YOUR_ID`
+
+---
+
+### Issue: Image Download Failed
+
+**Symptoms:**
+```
+400: Could not fetch image url
+```
+
+**Solutions:**
+1. Ensure image URLs are publicly accessible
+2. Test URL in browser or curl
+3. Check image format (JPEG, PNG, WebP supported)
+4. Verify no authentication required for images
+
+---
+
+### Issue: Gemini API Error
+
+**Symptoms:**
+```
+500: Model call failed
+```
+
+**Solutions:**
+1. Verify GEMINI_API_KEY is valid
+2. Check API quota: https://console.cloud.google.com/apis/api/generativelanguage.googleapis.com/quotas
+3. Ensure images are < 20MB each
+4. Check API key has Gemini API enabled
+
+---
+
+### Debug Mode
 
 ```bash
-# Verify network connectivity
-docker network inspect civicfix-net
+# Local development
+LOG_LEVEL=DEBUG uvicorn app.main:app --host 0.0.0.0 --port 8001
+
+# Docker
+docker run -e LOG_LEVEL=DEBUG ... civicfix-issue-verifier
+
+# Cloud Run (add to deployment)
+--set-env-vars LOG_LEVEL=DEBUG
 ```
 
-You should see:
-- `civicfix-es` (Elasticsearch)
-- `civicfix-issue-identifier` (optional)
-- `civicfix-issue-verifier`
-
 ---
 
-## 🐛 Troubleshooting
+## 📊 Data Flow
 
-### Issue: "Issue not found in Elasticsearch"
+### Verification Process
 
-**Solution:**
-- Verify the issue exists: `curl http://localhost:9200/issues/_doc/{issue_id}`
-- Check that issues have been seeded: `curl http://localhost:9200/issues/_count`
-- Re-run seed script if needed
-
-### Issue: "ES hybrid search failed" or "kNN vector search failed"
-
-**Causes:**
-- Fix documents don't have embeddings (text_embedding is null)
-- Fixes index is empty
-
-**Solution:**
-1. Check if fixes exist and have embeddings:
-```powershell
-Invoke-RestMethod -Uri "http://localhost:9200/fixes/_search" -Method Post -ContentType "application/json" -Body '{"size": 1, "_source": ["fix_id", "text_embedding"]}' | ConvertTo-Json -Depth 5
+```
+┌─────────────┐
+│   Client    │
+│  (Submit    │
+│   Fix)      │
+└──────┬──────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  1. Fetch Original Issue (ES)           │
+│     - Get issue details                  │
+│     - Extract fate_risk_co2              │
+└──────┬──────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  2. Download Evidence Images             │
+│     - Validate URLs                      │
+│     - Fetch image bytes                  │
+└──────┬──────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  3. Retrieve Context (Hybrid Search)     │
+│     - kNN vector search                  │
+│     - Filter by issue types              │
+│     - Get similar fixes                  │
+└──────┬──────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  4. Gemini Vision Analysis               │
+│     - Send images + context              │
+│     - Get verification results           │
+│     - Parse JSON response                │
+└──────┬──────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  5. Store Fix Document (fixes index)     │
+│     - Create fix record                  │
+│     - Set co2_saved = fate_risk_co2      │
+│     - Store fix_outcomes                 │
+└──────┬──────────────────────────────────┘
+       │
+       ▼
+┌─────────────────────────────────────────┐
+│  6. Update Issue (issues index)          │
+│     - Update status                      │
+│     - Set co2_kg_saved = fate_risk_co2   │
+│     - Add fix_id to evidence_ids         │
+│     - Update timestamps                  │
+└──────┬──────────────────────────────────┘
+       │
+       ▼
+┌─────────────┐
+│  Response   │
+│  (Results)  │
+└─────────────┘
 ```
 
-2. Re-seed with fixes:
-```bash
-cd elastic-local
-python seed.py --count 100  # This will generate fixes for ~30% of issues
+### CO2 Tracking Flow
+
+```
+Original Issue:
+  fate_risk_co2: 18.5 kg  (potential CO2 if not fixed)
+  co2_kg_saved: 0.0 kg    (not yet fixed)
+
+After Fix Verification:
+  Fix Document:
+    co2_saved: 18.5 kg    (from issue's fate_risk_co2)
+  
+  Issue Update:
+    co2_kg_saved: 18.5 kg (updated when closed)
+    status: "closed"
 ```
 
-3. The service will automatically fall back to traditional search if vector search fails
+---
 
-### Issue: "Embedding call failed"
+## 📂 Project Structure
 
-**Causes:**
-- Invalid or missing `GEMINI_API_KEY`
-- API rate limits exceeded (15 RPM for free tier)
-- Network connectivity issues
-
-**Solution:**
-- Verify your API key is correct
-- Check Gemini API quota at [Google AI Studio](https://aistudio.google.com/)
-- Add delays between requests if hitting rate limits
-
-### Issue: Container can't connect to Elasticsearch
-
-**Causes:**
-- Containers not on same Docker network
-- Incorrect `ES_URL` configuration
-
-**Solution:**
-```bash
-# Verify containers are on civicfix-net
-docker network inspect civicfix-net
-
-# Use correct ES_URL for containers
-ES_URL=http://civicfix-es:9200  # For Docker containers
-ES_URL=http://localhost:9200    # For local development
+```
+Issue_Verifier/
+├── app/
+│   ├── __init__.py
+│   ├── main.py              # FastAPI app & endpoints
+│   ├── schemas.py           # Pydantic models
+│   ├── prompt_template.py   # Gemini prompts
+│   └── utils.py             # Helper functions
+├── .env                     # Environment config (gitignored)
+├── .env.example             # Environment template
+├── Dockerfile               # Docker configuration
+├── requirements.txt         # Python dependencies
+├── README.md               # Original README
+└── DEPLOYMENT.md           # This file
 ```
 
-### Issue: "Failed to fetch image from URL"
+---
 
-**Causes:**
-- Image URLs are not publicly accessible
-- Network/firewall blocking requests
-- Invalid or expired URLs
+## 🔗 Related Documentation
 
-**Solution:**
-- Verify image URLs are accessible: `curl -I {image_url}`
-- Use publicly accessible storage (Google Cloud Storage, AWS S3, etc.)
-- Check firewall/proxy settings
+- [Elasticsearch API](https://www.elastic.co/guide/en/elasticsearch/reference/current/index.html)
+- [Google Gemini API](https://ai.google.dev/docs)
+- [FastAPI Documentation](https://fastapi.tiangolo.com/)
+- [Google Cloud Run](https://cloud.google.com/run/docs)
 
 ---
 
-## 📊 Performance Considerations
-
-- **Gemini API Limits**: Free tier has ~15 RPM, 1M tokens/day
-- **Image Size**: Keep images under 10MB for faster processing
-- **Batch Processing**: Consider rate limiting for bulk verifications
-- **Vector Search**: Requires embeddings in fix documents for optimal performance
-- **Fallback Mode**: Traditional search works without embeddings but is less accurate
-
----
-
-## 🔐 Security Notes
-
-- **API Key**: Never commit `GEMINI_API_KEY` to version control
-- **Network Isolation**: Use Docker networks for service isolation
-- **Input Validation**: All inputs are validated via Pydantic schemas
-- **Image Sources**: Verify image URLs come from trusted sources
-- **Rate Limiting**: Implement rate limiting in production environments
-
----
-
-## 📚 Related Services
-
-- **Issue Identifier** (`cloud/Issue_Identifier`): Analyzes and categorizes civic issues from images
-- **Elasticsearch** (`elastic-local`): Data storage and hybrid search
-- **seed.py** (`elastic-local/seed.py`): Generates test data including fixes with embeddings
-
----
-
-## 📖 API Documentation
-
-Once the service is running, access interactive API documentation at:
-
-- **Swagger UI**: `http://localhost:8001/docs`
-- **ReDoc**: `http://localhost:8001/redoc`
-- **OpenAPI JSON**: `http://localhost:8001/openapi.json`
-
----
-
-## 🤝 Contributing
-
-When modifying the Issue Verifier:
-
-1. Update the Dockerfile if adding new dependencies
-2. Test both Docker and local setups
-3. Update this README with any new configuration or features
-4. Ensure kNN vector search with fallback works correctly
-5. Test with various issue types and image scenarios
-
----
-
-## 📝 License
-
-Part of the CivicFix platform. See main repository for license information.
+**Last Updated:** October 21, 2025  
+**Version:** 1.0.0

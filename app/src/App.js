@@ -17,6 +17,21 @@ import subscribeToAuthState from "./hooks/subscribeToAuthState";
 import { ActivityIndicator } from "react-native";
 import LogoutButton from "./components/LogoutButton";
 import { UserProvider } from "./context/UserContext";
+import * as Updates from "expo-updates";
+import { useEffect } from "react";
+
+async function checkForUpdates() {
+  try {
+    const update = await Updates.checkForUpdateAsync();
+
+    if (update.isAvailable) {
+      await Updates.fetchUpdateAsync();
+      await Updates.reloadAsync();
+    }
+  } catch (error) {
+    console.log("Error checking for updates:", error);
+  }
+}
 
 const Tab = createBottomTabNavigator();
 
@@ -128,6 +143,10 @@ const TabNav = () => (
 
 export default function App() {
   const { user, loading } = subscribeToAuthState();
+
+  useEffect(() => {
+    checkForUpdates();
+  }, []);
 
   if (loading) {
     return <ActivityIndicator size="large" color="#6FCF97" />;

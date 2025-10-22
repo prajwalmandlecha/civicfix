@@ -39,10 +39,23 @@ const IssueUploadScreen = ({ navigation }) => {
   }));
 
   const getLocation = async () => {
-    const { addressParts, location } = await getCurrentLocation(
-      setLoadingLocation
-    );
-    setLocation(location);
+    const result = await getCurrentLocation(setLoadingLocation);
+    
+    if (!result) {
+      return;
+    }
+    
+    const { addressParts, location, error } = result;
+    
+    if (error) {
+      console.log("Location error:", error);
+      return;
+    }
+    
+    if (location) {
+      setLocation(location);
+    }
+    
     if (addressParts) {
       const addr = `${addressParts.street}, ${addressParts.city}, ${addressParts.region}, ${addressParts.country}`;
       setAddress(addr);
@@ -299,7 +312,7 @@ const IssueUploadScreen = ({ navigation }) => {
           </View>
 
           <GooglePlacesTextInput
-            apiKey=""
+            apiKey="AIzaSyCOIcuht3KsQIKVszM9xWNOKim65JopzOk"
             placeHolderText="Search for a location"
             value={address}
             fetchDetails={true}

@@ -1,22 +1,25 @@
-
 const ISSUE_TYPE_MAPPING = {
-  exposed_power_cables: "Exposed Power Cables",
-  illegal_dumping_bulky_waste: "Illegal Dumping (Bulky Waste)",
-  illegal_hoarding: "Illegal Hoarding",
-  waterlogging: "Waterlogging",
-  encroachment_public_space: "Public Space Encroachment",
-  illegal_construction_small: "Illegal Construction",
-  visible_pollution: "Visible Pollution",
-  streetlight_out: "Streetlight Out",
-  overflowing_garbage_bin: "Overflowing Garbage Bin",
-  broken_infrastructure: "Broken Infrastructure",
-  public_toilet_nonfunctional: "Non-Functional Public Toilet",
-  sewer_blockage: "Sewer Blockage",
-  uncollected_household_waste: "Uncollected Household Waste",
-  unregulated_construction_activity: "Unregulated Construction Activity",
-  public_health_hazard: "Public Health Hazard",
+  WASTE_LITTER_SMALL: "WASTE LITTER SMALL",
+  WASTE_BULKY_DUMP: "WASTE BULKY DUMP",
+  GRAFFITI_VANDALISM: "GRAFFITI VANDALISM",
+  ROAD_POTHOLE: "ROAD POTHOLE",
+  SIDEWALK_DAMAGE: "SIDEWALK DAMAGE",
+  DRAIN_BLOCKAGE: "DRAIN BLOCKAGE",
+  WATER_LEAK_SURFACE: "WATER LEAK SURFACE",
+  STREETLIGHT_OUTAGE: "STREETLIGHT OUTAGE",
+  TRAFFIC_SIGN_DAMAGE: "TRAFFIC SIGN DAMAGE",
+  PUBLIC_INFRASTRUCTURE_DAMAGED: "PUBLIC INFRASTRUCTURE DAMAGED",
+  PUBLIC_TOILET_UNSANITARY: "PUBLIC TOILET UNSANITARY",
+  FALLEN_TREE: "FALLEN TREE",
+  GREENSPACE_MAINTENANCE: "GREENSPACE MAINTENANCE",
+  STRAY_ANIMALS: "STRAY ANIMALS",
+  ILLEGAL_CONSTRUCTION_DEBRIS: "ILLEGAL CONSTRUCTION DEBRIS",
+  FLOODING_SURFACE: "FLOODING SURFACE",
+  MANHOLE_MISSING_OR_DAMAGED: "MANHOLE MISSING OR DAMAGED",
+  POWER_POLE_LINE_DAMAGE: "POWER POLE LINE DAMAGE",
+  TRAFFIC_OBSTRUCTION: "TRAFFIC OBSTRUCTION",
+  SMALL_FIRE_HAZARD: "SMALL FIRE HAZARD",
 };
-
 
 export const getIssueDisplayName = (issueType) => {
   return ISSUE_TYPE_MAPPING[issueType] || issueType;
@@ -25,7 +28,6 @@ export const getIssueDisplayName = (issueType) => {
 export const getAllIssueTypes = () => {
   return Object.keys(ISSUE_TYPE_MAPPING);
 };
-
 
 export const getIssueTypesWithNames = () => {
   return ISSUE_TYPE_MAPPING;

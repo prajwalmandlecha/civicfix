@@ -5,6 +5,7 @@ import json
 import time
 import re
 from typing import List, Optional, Any, Dict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -12,7 +13,7 @@ from dotenv import load_dotenv
 
 from app.schemas import ReportIn, AnalyzeOut, DetectedIssue
 from app.prompt_templates import build_prompt
-from app.utils import fetch_image_bytes, get_weather_summary, compute_impact_and_radius
+from app.utils import fetch_image_bytes, get_weather_summary
 from app import es_client
 
 # google genai SDK
@@ -29,6 +30,21 @@ EMBEDDING_MODEL = os.getenv("EMBEDDING_MODEL", "gemini-embedding-001")
 
 if not API_KEY:
     logger.error("GEMINI_API_KEY missing. Set GEMINI_API_KEY (from Google AI Studio or Vertex). Requests will fail.")
+
+
+def repair_json(text: str) -> str:
+    """
+    Attempt to repair common JSON formatting errors from LLM responses.
+    Specifically fixes missing closing braces in arrays.
+    """
+    # Fix pattern: `null\n    ,` -> `null\n    },`
+    # This handles missing } before comma in array elements
+    text = re.sub(r'(null|true|false|"\w+"|\d+)\s*\n\s*,', r'\1\n    },', text)
+    
+    # Fix pattern: `null\n    }` at end of array element (already correct, but ensure consistency)
+    # No change needed for this pattern
+    
+    return text
 
 # create client (works with AI Studio keys or Vertex auth)
 client: Optional[genai.Client] = None
@@ -62,21 +78,26 @@ async def startup_event():
 
 # canonical label set (bounded)
 CANONICAL_LABELS: List[str] = [
-    "exposed_power_cables",
-    "illegal_dumping_bulky_waste",
-    "illegal_hoarding",
-    "waterlogging",
-    "encroachment_public_space",
-    "illegal_construction_small",
-    "visible_pollution",
-    "streetlight_out",
-    "overflowing_garbage_bin",
-    "broken_infrastructure",
-    "public_toilet_nonfunctional",
-    "sewer_blockage",
-    "uncollected_household_waste",
-    "unregulated_construction_activity",
-    "public_health_hazard"
+    "DRAIN_BLOCKAGE",
+    "FALLEN_TREE",
+    "FLOODING_SURFACE",
+    "GRAFFITI_VANDALISM",
+    "GREENSPACE_MAINTENANCE",
+    "ILLEGAL_CONSTRUCTION_DEBRIS",
+    "MANHOLE_MISSING_OR_DAMAGED",
+    "POWER_POLE_LINE_DAMAGE",
+    "PUBLIC_INFRASTRUCTURE_DAMAGED",
+    "PUBLIC_TOILET_UNSANITARY",
+    "ROAD_POTHOLE",
+    "SIDEWALK_DAMAGE",
+    "SMALL_FIRE_HAZARD",
+    "STRAY_ANIMALS",
+    "STREETLIGHT_OUTAGE",
+    "TRAFFIC_OBSTRUCTION",
+    "TRAFFIC_SIGN_DAMAGE",
+    "WASTE_BULKY_DUMP",
+    "WASTE_LITTER_SMALL",
+    "WATER_LEAK_SURFACE"
 ]
 
 
@@ -194,15 +215,6 @@ def generate_embedding(text: str) -> Optional[List[float]]:
 
 @app.post("/analyze/", response_model=AnalyzeOut)
 def analyze(report: ReportIn):
-    """
-    Full analyze flow (real Gemini):
-     1. fetch image bytes
-     2. get local evidence + weather snapshot
-     3. build strict prompt
-     4. call Gemini (image+prompt when possible)
-     5. robustly parse JSON and validate items
-     6. compute impact + radius and index doc to ES
-    """
     # 1. fetch image
     try:
         image_bytes, mime_type = fetch_image_bytes(report.image_url)
@@ -210,7 +222,7 @@ def analyze(report: ReportIn):
         logger.exception("fetch_image_bytes failed")
         raise HTTPException(status_code=400, detail=f"Could not fetch image: {e}")
 
-    # 1.5. Generate query embedding for hybrid search (before evidence retrieval)
+    # 2. Generate query embedding for hybrid search (before evidence retrieval)
     # Build a simple query text from user input
     query_text_parts = []
     if report.description:
@@ -230,33 +242,53 @@ def analyze(report: ReportIn):
             logger.warning("Failed to generate query embedding: %s", e)
             query_embedding = None
 
-    # 2. evidence & weather (now with query_embedding for kNN search)
-    try:
-        issues_evidence = es_client.hybrid_retrieve_issues(
-            report.location.dict(), 
-            report.user_selected_labels, 
-            days=180, 
-            size=5,
-            query_embedding=query_embedding
+    # 3. evidence retrieval and weather (parallel execution)
+    # Run ES queries and weather API in parallel since they're independent
+    issues_evidence = []
+    fixes_evidence = []
+    weather_obj = {}
+    
+    with ThreadPoolExecutor(max_workers=3) as executor:
+        # Submit independent tasks
+        future_issues = executor.submit(
+            lambda: es_client.hybrid_retrieve_issues(
+                report.location.dict(), 
+                report.user_selected_labels, 
+                days=180, 
+                size=5,
+                query_embedding=query_embedding
+            )
         )
-    except Exception:
-        logger.exception("Failed to retrieve issue evidence; continuing with empty list")
-        issues_evidence = []
-    try:
-        fixes_evidence = es_client.hybrid_retrieve_fixes(size=5)
-    except Exception:
-        logger.exception("Failed to retrieve fixes evidence; continuing with empty list")
-        fixes_evidence = []
+        future_fixes = executor.submit(lambda: es_client.hybrid_retrieve_fixes(size=5))
+        future_weather = executor.submit(get_weather_summary, report.location.dict(), report.timestamp)
+        
+        # Collect results as they complete (non-blocking)
+        for future in as_completed([future_issues, future_fixes, future_weather]):
+            try:
+                if future == future_issues:
+                    issues_evidence = future.result()
+                elif future == future_fixes:
+                    fixes_evidence = future.result()
+                elif future == future_weather:
+                    weather_obj = future.result()
+            except Exception as e:
+                if future == future_issues:
+                    logger.exception("Failed to retrieve issue evidence; continuing with empty list")
+                elif future == future_fixes:
+                    logger.exception("Failed to retrieve fixes evidence; continuing with empty list")
+                elif future == future_weather:
+                    logger.exception("Failed to retrieve weather data; continuing without weather context")
 
-    weather_obj = get_weather_summary(report.location.dict(), report.timestamp)
+    # 4.. Build weather summary string
     weather_summary_str = (
-        f"precip24mm={weather_obj.get('precipitation_24h_mm')}, "
-        f"temp_avg={weather_obj.get('temperature_c_avg')}, "
-        f"wind_max={weather_obj.get('windspeed_max_ms')}, "
-        f"rh_avg={weather_obj.get('relative_humidity_avg')}"
+        f"Precipitation (24h): {weather_obj.get('precipitation_24h_mm', 0)}mm, "
+        f"Avg Temperature: {weather_obj.get('temperature_c_avg')}°C, "
+        f"Max Wind: {weather_obj.get('windspeed_max_ms')}m/s, "
+        f"Avg Humidity: {weather_obj.get('relative_humidity_avg')}%. "
+        f"Note: {weather_obj.get('weather_note', '')}"
     )
 
-    # 3. build prompt
+    # 5. build prompt
     prompt_str = build_prompt(
         description=report.description,
         location=report.location.dict(),
@@ -268,7 +300,7 @@ def analyze(report: ReportIn):
         canonical_labels=CANONICAL_LABELS
     )
 
-    # 4. call Gemini (image+prompt preferred)
+    # 6. call Gemini (image+prompt)
     if client is None:
         logger.error("genai client not initialized (GEMINI_API_KEY missing/invalid)")
         raise HTTPException(status_code=500, detail="GenAI client not initialized; ensure GEMINI_API_KEY is set")
@@ -295,7 +327,7 @@ def analyze(report: ReportIn):
         logger.exception("Gemini final call failed: %s", e)
         raise HTTPException(status_code=502, detail=f"Model call failed; see {debug_dump_path}")
 
-    # 5. robust parse
+    # 7. robust parse
     parsed: Optional[Dict[str, Any]] = None
     try:
         if hasattr(response, "parsed") and response.parsed is not None:
@@ -343,7 +375,16 @@ def analyze(report: ReportIn):
                 logger.error("Gemini returned empty raw content; debug dumped to %s", debug_dump_path)
                 raise HTTPException(status_code=502, detail=f"Model returned empty response. See {debug_dump_path}")
 
-            parsed = json.loads(raw_candidate)
+            # Attempt to repair common JSON errors before parsing
+            repaired_json = repair_json(raw_candidate)
+            
+            try:
+                parsed = json.loads(repaired_json)
+            except json.JSONDecodeError as e:
+                # If repair didn't work, log both versions and fail
+                logger.error("JSON repair failed. Original: %s", raw_candidate[:500])
+                logger.error("Repaired: %s", repaired_json[:500])
+                raise e
     except HTTPException:
         raise
     except Exception as e:
@@ -374,7 +415,7 @@ def analyze(report: ReportIn):
             timestamp=report.timestamp
         )
 
-    # 6. validate detected_issues list
+    # 8. validate detected_issues list
     raw_detected = parsed.get("detected_issues") or []
     if not isinstance(raw_detected, list):
         # try tolerant conversion if it's a single dict
@@ -444,22 +485,20 @@ def analyze(report: ReportIn):
             timestamp=report.timestamp
         )
 
-    # 7. aggregate + compute impact & store
+    # 9. Enforce maximum 5 issues (sort by severity_score, keep top 5)
+    if len(retained) > 5:
+        logger.warning("Gemini returned %d issues, limiting to top 5 by severity", len(retained))
+        retained = sorted(retained, key=lambda x: x.severity_score, reverse=True)[:5]
+        # Update seen_types and label_confidences to match retained issues
+        seen_types = {d.type for d in retained}
+        label_confidences = {d.type: d.confidence for d in retained}
+
+    # 10. aggregate & prepare document
     issue_id = str(uuid.uuid4())
     doc_severity_score = max((d.severity_score for d in retained), default=0.0)
     fate_risk_co2 = safe_float(parsed.get("fate_risk_co2"), 0.0)
 
-    upvotes_total = 0
-    reports_total = 0
-    impact_score, visibility_radius_m = compute_impact_and_radius(
-        severity_score=doc_severity_score,
-        upvotes_total=upvotes_total,
-        reports_total=reports_total,
-        reported_at_iso=report.timestamp,
-        density_norm=0.0
-    )
-
-    # 8. Generate embedding for the issue
+    # 11. Generate embedding for the issue
     auto_caption = parsed.get("auto_caption", "")
     predicted_fix_text = retained[0].predicted_fix if retained else ""
     
@@ -475,22 +514,22 @@ def analyze(report: ReportIn):
         logger.warning("Generated embedding has unexpected dimension: %d (expected 3072)", len(text_embedding))
         text_embedding = None
 
-    # Extract evidence issue IDs from retrieved similar issues
+    # 12. Extract evidence issue IDs from retrieved similar issues
     evidence_issue_ids = [item.get("id") for item in issues_evidence if item.get("id")]
+    if evidence_issue_ids:
+        logger.info("Found %d evidence issues: %s", len(evidence_issue_ids), evidence_issue_ids[:3])
+    else:
+        logger.info("No evidence issues found nearby")
 
+    # 13. Build ES document 
     es_doc = {
         "issue_id": issue_id,
-        "reported_by": report.reported_by or "anonymous",
-        "uploader_display_name": None,
-        "source": report.source or "citizen",
+        "reported_by": report.reported_by or "anonymous123",
+        "uploader_display_name": report.uploader_display_name or "anonymous",
+        "source": report.source or "anonymous",
         "status": "open",
-        "locked_by": None,
-        "locked_at": None,
-        "verified_by": None,
-        "verified_at": None,
         "closed_by": None,
         "closed_at": None,
-        "reported_at": report.timestamp,
         "created_at": report.timestamp,
         "updated_at": report.timestamp,
         "location": {"lat": report.location.latitude, "lon": report.location.longitude},
@@ -509,14 +548,9 @@ def analyze(report: ReportIn):
         "predicted_fix_confidence": max((d.predicted_fix_confidence for d in retained), default=0.0),
         "evidence_ids": evidence_issue_ids,
         "auto_review_flag": any(d.auto_review_flag for d in retained),
-        "human_verified": False,
-        "reviewed_by": None,
-        "reviewed_at": None,
-        "upvotes": {"open": 0, "verified": 0, "closed": 0},
-        "reports": {"open": 0, "verified": 0, "closed": 0},
-        "impact_score": impact_score,
-        "visibility_radius_m": visibility_radius_m,
-        "weather": weather_obj
+        "upvotes": {"open": 0, "closed": 0},
+        "reports": {"open": 0, "closed": 0},
+        "is_spam": False
     }
 
     try:
