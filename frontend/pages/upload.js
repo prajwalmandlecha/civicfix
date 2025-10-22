@@ -1,7 +1,6 @@
-// import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
-import { initThemeToggle, initMobileMenu, showToast, protectPage } from './shared.js';
-
-protectPage(); // This will check for auth and redirect if needed
+import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
+import { initializeAuthListener } from './auth.js'; // Import the main auth router
+// No need to import protectPage, initializeAuthListener handles it.
 
 let uploadedFiles = []; // Array to hold multiple files
 
@@ -11,7 +10,7 @@ function initUploadArea() {
     const previewContainer = document.getElementById('preview-container');
     const submitBtn = document.getElementById('submit-btn');
     const locationInput = document.getElementById('location-input');
-    const uploadPlaceholder = document.querySelector('.upload-placeholder'); // Get placeholder
+    const uploadPlaceholder = document.querySelector('.upload-placeholder');
 
     if (!uploadArea || !fileInput || !previewContainer || !submitBtn || !locationInput || !uploadPlaceholder) {
         console.error("One or more essential upload elements not found!");
@@ -23,13 +22,15 @@ function initUploadArea() {
     const checkSubmitButtonState = () => {
         const hasFiles = uploadedFiles.length > 0;
         const hasLocationText = locationInput.value.trim().length > 2;
-        // Optional: Add file count limit check here if needed
-        // const maxFiles = 5;
-        // if (uploadedFiles.length > maxFiles) {
-        //     showToast(`⚠️ Max ${maxFiles} images. ${uploadedFiles.length - maxFiles} removed.`);
-        //     uploadedFiles = uploadedFiles.slice(0, maxFiles); // Enforce limit
-        //     renderPreviews(); // Re-render after slicing
-        // }
+        
+        // Optional: Enforce a limit (e.g., 5 images total)
+        const maxFiles = 5;
+        if (uploadedFiles.length > maxFiles) {
+            showToast(`⚠️ Max ${maxFiles} images. ${uploadedFiles.length - maxFiles} removed.`);
+            uploadedFiles = uploadedFiles.slice(0, maxFiles); // Enforce limit
+            renderPreviews(); // Re-render after slicing
+        }
+        
         submitBtn.disabled = !(hasFiles && hasLocationText);
     };
 
@@ -62,14 +63,12 @@ function initUploadArea() {
                     preview.className = 'preview-item';
                     preview.innerHTML = `
                         <img src="${e.target.result}" alt="Preview ${index + 1}">
-                        {/* Ensure data-index corresponds to the file's index in the array */}
                         <button class="preview-remove" data-index="${index}">&times;</button>
                     `;
                     previewContainer.appendChild(preview);
                 };
                 reader.readAsDataURL(file);
             } else {
-                 // Skip non-images for multi-upload
                  console.log(`Skipping non-image file: ${file.name}`);
             }
         });
@@ -78,49 +77,46 @@ function initUploadArea() {
 
     // --- UPDATED: Handle multiple files ---
     function handleFiles(files) {
-        // Filter incoming files for images and append to existing array
         const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
         if (imageFiles.length === 0 && files.length > 0) {
-            showToast('⚠️ No valid image files selected/dropped.');
+            showToast('⚠️ No valid image files selected/dropped. Only images are allowed.');
         }
 
         // Add the new valid files to our list
         uploadedFiles.push(...imageFiles);
-
-        // Optional: Enforce a limit (e.g., 5 images total)
-        const maxFiles = 5;
-        if (uploadedFiles.length > maxFiles) {
-            showToast(`⚠️ Maximum ${maxFiles} images allowed. Keeping the first ${maxFiles}.`);
-            uploadedFiles = uploadedFiles.slice(0, maxFiles); // Keep only the first 5
-        }
-
         renderPreviews(); // Render all current previews
     }
 
     // --- UPDATED: Handle preview removal from array ---
     previewContainer.addEventListener('click', (e) => {
         if (e.target.classList.contains('preview-remove')) {
-            // Get index directly from the button attribute
             const indexToRemove = parseInt(e.target.getAttribute('data-index'));
             if (!isNaN(indexToRemove) && indexToRemove >= 0 && indexToRemove < uploadedFiles.length) {
-                uploadedFiles.splice(indexToRemove, 1); // Remove file from array at the specific index
-                renderPreviews(); // Re-render previews (indices will be updated)
+                uploadedFiles.splice(indexToRemove, 1); // Remove file from array
+                renderPreviews(); // Re-render previews to update indices
             } else {
                 console.error("Could not remove preview item, invalid index:", indexToRemove);
             }
         }
     });
 
-    // --- UPDATED: Submit Logic to send multiple files ---
+    // --- UPDATED: Submit Logic to send multiple files and auth token ---
     submitBtn.addEventListener('click', async () => {
         const isAnonymous = document.getElementById('anonymous-toggle')?.checked || false;
         const descriptionInput = document.getElementById('description-input');
         const description = descriptionInput ? descriptionInput.value : '';
         const locationText = locationInput.value.trim();
 
-        // Filter again just before upload to be sure
-        const imageFilesToUpload = uploadedFiles.filter(file => file.type.startsWith('image/'));
+        // --- Auth Check ---
+        const idToken = localStorage.getItem('firebaseIdToken');
+        if (!idToken) {
+            showToast('⚠️ Please log in to submit an issue.');
+            window.location.href = '/login.html'; // Redirect to login
+            return;
+        }
+        // --- End Auth Check ---
 
+        const imageFilesToUpload = uploadedFiles.filter(file => file.type.startsWith('image/'));
         if (imageFilesToUpload.length === 0) { showToast('⚠️ Please select at least one image.'); return; }
         if (!locationText) { showToast('⚠️ Please enter the location.'); locationInput.focus(); return; }
 
@@ -131,22 +127,30 @@ function initUploadArea() {
         const formData = new FormData();
         // --- Append MULTIPLE files under the 'files' key ---
         imageFilesToUpload.forEach((file) => {
-            formData.append('files', file, file.name); // Key MUST match backend expectation
+            formData.append('files', file, file.name); // Key MUST match backend
         });
         formData.append('description', description);
-        formData.append('location_text', locationText); // Send text location
-        // formData.append('is_anonymous', isAnonymous);
+        formData.append('location_text', locationText);
+        formData.append('is_anonymous', isAnonymous); // Send anonymous flag
 
         try {
             // --- Point to the MULTI-FILE backend endpoint ---
-            const response = await fetch('http://localhost:8000/submit-issue-multi', { // Ensure this endpoint exists
+            const response = await fetch('http://localhost:8000/submit-issue-multi', {
                 method: 'POST',
+                headers: {
+                    // NO 'Content-Type' for FormData
+                    'Authorization': `Bearer ${idToken}` // ADDED Auth Header
+                },
                 body: formData,
             });
 
             if (!response.ok) {
                 let errorDetail = `Error ${response.status}`;
-                try { const errorData = await response.json(); errorDetail = errorData.detail || errorDetail; } catch (e) { /* Ignore */ }
+                if (response.status === 401 || response.status === 403) {
+                     errorDetail = "Authentication failed. Please log in again.";
+                } else {
+                     try { const errorData = await response.json(); errorDetail = errorData.detail || errorDetail; } catch (e) { /* Ignore */ }
+                }
                 if (response.status === 400 && errorDetail.includes("Could not find coordinates")) showToast(`❌ Location Error: ${errorDetail}`);
                 else showToast(`❌ Submission failed: ${errorDetail}`);
                 throw new Error(errorDetail);
@@ -156,21 +160,23 @@ function initUploadArea() {
             console.log("Submit successful, analysis result:", result);
             const message = isAnonymous ? '✅ Submitted! Analysis running...' : '✅ Submitted! +10 karma. Analysis running...';
             showToast(message);
-            // Clear form on success before redirect
+            
+            // Clear form on success
             uploadedFiles = [];
             renderPreviews();
             if(descriptionInput) descriptionInput.value = '';
             locationInput.value = '';
-            fileInput.value = ''; // Clear file input selection
-            checkSubmitButtonState(); // Disable button
+            fileInput.value = '';
+            checkSubmitButtonState();
 
             setTimeout(() => { window.location.href = '/feed.html'; }, 1500);
 
         } catch (error) {
             console.error('Submission failed:', error);
-            if (!error.message.includes("Could not find coordinates")) showToast(`❌ Submission failed: ${error.message}`);
-            // Re-enable button only if files/location are still valid
-            checkSubmitButtonState();
+            if (!error.message.includes("Could not find coordinates") && !error.message.includes("Authentication failed")) {
+                showToast(`❌ Submission failed: ${error.message}`);
+            }
+            checkSubmitButtonState(); // Re-check button state
             submitBtn.textContent = 'Submit Issue';
         }
     });
@@ -180,6 +186,7 @@ function initUploadArea() {
 // function initVoiceRecording() { ... }
 
 document.addEventListener('DOMContentLoaded', () => {
+    initializeAuthListener(); // <-- Correct auth call
     initThemeToggle();
     initMobileMenu();
     initUploadArea();

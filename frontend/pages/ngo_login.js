@@ -1,4 +1,4 @@
-// frontend/pages/login.js
+// frontend/pages/ngo_login.js
 import { auth, db } from '../firebaseConfig.js'; // --- ADD db ---
 import { signInWithEmailAndPassword } from "firebase/auth";
 // --- ADD getDoc and doc ---
@@ -23,72 +23,63 @@ if (loginForm) {
             errorMessageElement.textContent = 'Please enter both email and password.';
             return;
         }
-
-        // --- Disable button on submit ---
+        
         const submitButton = loginForm.querySelector('button[type="submit"]');
         submitButton.disabled = true;
         submitButton.textContent = 'Logging in...';
 
         try {
-            // --- Call Firebase Auth to sign in ---
             const userCredential = await signInWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
-            console.log('Login successful:', user.uid);
+            console.log('NGO Login successful:', user.uid);
 
-            // --- Get the ID Token ---
             const idToken = await user.getIdToken();
             console.log('ID Token retrieved.');
-            
+
             // --- NEW: Get userType from Firestore ---
             const userDocRef = doc(db, "users", user.uid);
             const userDoc = await getDoc(userDocRef);
-            let userType = "citizen"; // Default
+            let userType = "ngo"; // Default
             if (userDoc.exists()) {
-                userType = userDoc.data().userType || "citizen";
+                userType = userDoc.data().userType || "ngo";
             }
             console.log('UserType found:', userType);
             // --- END NEW BLOCK ---
 
-            // --- Store the ID Token AND userType ---
             localStorage.setItem('firebaseIdToken', idToken);
             localStorage.setItem('userEmail', user.email);
             localStorage.setItem('userType', userType); // <-- ADD THIS
 
-            showToast('✅ Login successful!');
+            showToast('✅ NGO Login successful!');
 
-            // --- NEW: Check for a redirect page ---
+            // Check for a redirect page, default to feed
             const redirectUrl = localStorage.getItem('redirectAfterLogin') || '/feed.html';
-            localStorage.removeItem('redirectAfterLogin'); // Clear it after use
+            localStorage.removeItem('redirectAfterLogin'); // Clear it
 
             setTimeout(() => {
-                window.location.href = redirectUrl; // Redirect to feed or intended page
+                window.location.href = redirectUrl; // Redirect
             }, 1000);
 
         } catch (error) {
-            console.error('Login failed:', error);
+            console.error('NGO Login failed:', error);
             let message = 'Login failed. Please check your credentials.';
             if (error.code === 'auth/user-not-found' || error.code === 'auth/wrong-password' || error.code === 'auth/invalid-credential') {
                  message = 'Invalid email or password.';
-            } else if (error.code === 'auth/invalid-email') {
-                message = 'Please enter a valid email address.';
             }
             errorMessageElement.textContent = message;
             showToast(`❌ ${message}`);
             
-            // Re-enable button on failure
             submitButton.disabled = false;
             submitButton.textContent = 'Login';
         }
     });
 } else {
-    console.error("Login form not found!");
+    console.error("NGO Login form not found!");
 }
 
 // --- ADD THIS AT THE BOTTOM ---
 document.addEventListener('DOMContentLoaded', () => {
-    // This will handle redirects if user is already logged in
-    // and set up the navbar.
-    initializeAuthListener(); 
+    initializeAuthListener(); // Handles redirects if already logged in + navbar
     initThemeToggle();
     initMobileMenu();
 });

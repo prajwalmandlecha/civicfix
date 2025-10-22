@@ -1,16 +1,15 @@
-// frontend/pages/signup.js
+// frontend/pages/ngo_signup.js
 
-// --- Import db (Firestore) and auth ---
 import { auth, db } from '../firebaseConfig.js';
 import { createUserWithEmailAndPassword } from "firebase/auth";
-// --- Import Firestore functions ---
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-// --- Import shared functions AND the new auth listener ---
-import { showToast, initThemeToggle, initMobileMenu } from './shared.js'; // Added theme/menu
-import { initializeAuthListener } from './auth.js'; // <-- ADD THIS
+// --- Import all shared functions ---
+import { showToast, initThemeToggle, initMobileMenu } from './shared.js';
+// --- Import the main auth router ---
+import { initializeAuthListener } from './auth.js';
 
 const signupForm = document.getElementById('signup-form');
-const nameInput = document.getElementById('name');
+const nameInput = document.getElementById('name'); // This is "Organization Name"
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
 const confirmPasswordInput = document.getElementById('confirm-password');
@@ -48,7 +47,7 @@ if (signupForm) {
             // --- Step 1: Create user in Firebase Auth ---
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
-            console.log('Auth user created:', user.uid);
+            console.log('Auth NGO user created:', user.uid);
 
             // --- Step 2: Create user document in Firestore ---
             const userDocRef = doc(db, "users", user.uid);
@@ -56,25 +55,28 @@ if (signupForm) {
             const newUserDoc = {
                 name: name,
                 email: email,
-                userType: "citizen", // Set default userType
+                // --- THIS IS THE FIX ---
+                userType: "ngo", // Set userType to "ngo"
+                // ---------------------
                 createdAt: serverTimestamp(),
                 karma: 0,
                 lastLocation: null
             };
 
             await setDoc(userDocRef, newUserDoc);
-            console.log('Firestore user document created:', user.uid);
+            console.log('Firestore NGO user document created:', user.uid);
 
-            showToast('✅ Signup successful! Please log in.');
+            showToast('✅ NGO Account created! Please log in.');
             setTimeout(() => {
-                window.location.href = '/login.html';
+                // --- Redirect to the NGO login page ---
+                window.location.href = '/ngo_login.html';
             }, 1500);
 
         } catch (error) {
-            console.error('Signup failed:', error);
+            console.error('NGO Signup failed:', error);
             let message = 'Signup failed. Please try again.';
             if (error.code === 'auth/email-already-in-use') {
-                message = 'This email is already registered. Please login.';
+                message = 'This email is already registered.';
             } else if (error.code === 'auth/invalid-email') {
                 message = 'Please enter a valid email address.';
             } else if (error.code === 'auth/weak-password') {
@@ -87,12 +89,12 @@ if (signupForm) {
         }
     });
 } else {
-    console.error("Signup form not found!");
+    console.error("NGO Signup form (id='signup-form') not found!");
 }
 
 // --- ADD THIS AT THE BOTTOM ---
 document.addEventListener('DOMContentLoaded', () => {
-  initializeAuthListener(); // Handles redirects if already logged in + navbar
-  initThemeToggle();        // Standard setup
-  initMobileMenu();         // Standard setup
+    initializeAuthListener(); // Handles redirects if already logged in + navbar
+    initThemeToggle();
+    initMobileMenu();
 });

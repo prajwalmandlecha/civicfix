@@ -1,21 +1,36 @@
-// import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
-import { initThemeToggle, initMobileMenu, showToast, protectPage } from './shared.js';
+import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
+// --- 1. Import the new auth listener ---
+import { initializeAuthListener } from './auth.js';
 
-protectPage();
+// --- 2. REMOVED the old protectPage() call ---
+// protectPage();
 
 let currentFilter = 'all';
 let allIssues = []; // This will hold the fetched issues
-// --- REPLACE renderIssueCard with this ---
+
+// --- 3. renderIssueCard is UPDATED to use display_address ---
 function renderIssueCard(issue) {
     const card = document.createElement('div');
     const statusClass = issue.status || 'open';
     card.className = `issue-card ${statusClass}`;
     card.setAttribute('data-status', statusClass);
 
-    const statusText = statusClass === 'closed' ? '✅ Closed' :
-                       statusClass === 'verified' ? '🟡 Verified' :
-                       statusClass === 'spam' ? '🚫 Spam' :
-                       '🟠 Open';
+    let statusText = '';
+    if (statusClass === 'closed') {
+        // Check if closed_by exists and is NOT 'community_report'
+        if (issue.closed_by && issue.closed_by !== 'community_report') {
+            statusText = '✅ Fixed by NGO'; // Specific message for NGO closure
+        } else {
+            statusText = '✅ Closed'; // Closed by community reports or unknown
+        }
+    } else if (statusClass === 'verified') {
+        statusText = '🟡 Partially Closed'; // Status set by Issue Verifier if partially closed
+    } else if (statusClass === 'spam') {
+         // Handle spam if needed
+        statusText = '🚫 Spam';
+    } else { // Default to open
+        statusText = '🟠 Open';
+    }
 
     const issueTypes = Array.isArray(issue.issue_types) ? issue.issue_types : [issue.issue_types || 'unknown'];
     const primaryType = issue.detected_issues && issue.detected_issues.length > 0
@@ -25,14 +40,15 @@ function renderIssueCard(issue) {
     const severityColor = severityScore >= 7 ? '#FF6B6B' : severityScore >= 4 ? '#FFD93D' : '#6FCF97';
     const severityLabel = severityScore >= 7 ? 'high' : severityScore >= 4 ? 'medium' : 'low';
     const openUpvotes = (issue.upvotes && typeof issue.upvotes.open === 'number') ? issue.upvotes.open : 0;
-    // --- Get BOTH open and closed reports ---
     const openReports = (issue.reports && typeof issue.reports.open === 'number') ? issue.reports.open : 0;
     const closedReports = (issue.reports && typeof issue.reports.closed === 'number') ? issue.reports.closed : 0;
-    // --- Determine which report count to DISPLAY ---
     const displayReports = statusClass === 'closed' ? closedReports : openReports;
-
     const fateRisk = typeof issue.fate_risk_co2 === 'number' ? issue.fate_risk_co2 : 0;
-    const locationText = `📍 ${issue.display_address || 'Address Unavailable'}`;
+    
+    // --- THIS IS THE FIX for location ---
+    const locationText = `📍 ${issue.display_address || 'Address Unavailable'}`; 
+    // ---
+    
     const descriptionText = issue.description || issue.auto_caption || 'No description provided';
     const photoUrl = issue.photo_url || 'placeholder.png';
     const issueId = issue.issue_id || '';
@@ -86,22 +102,17 @@ async function renderIssues() {
       console.error("Element with ID 'issues-grid' not found!");
       return;
   }
-  grid.innerHTML = '<div class="loading-spinner"></div>'; // Show spinner while rendering
+  grid.innerHTML = '<div class="loading-spinner"></div>';
 
   let filtered = allIssues;
   if (currentFilter !== 'all') {
-    // Filter based on the 'status' field from the backend
     filtered = allIssues.filter(issue => issue.status === currentFilter);
   }
 
-  // Clear spinner and render
   grid.innerHTML = '';
   if (filtered.length === 0) {
     grid.innerHTML = '<p style="text-align: center; color: var(--grey-text);">No issues found matching the current filter.</p>';
   } else {
-    // Sort the filtered issues just before rendering (optional, backend should handle primary sort)
-    // filtered.sort(...); // You could add secondary frontend sort here if needed
-
     filtered.forEach(issue => {
       grid.appendChild(renderIssueCard(issue));
     });
@@ -115,68 +126,78 @@ function initFilterPills() {
     pill.addEventListener('click', () => {
       pills.forEach(p => p.classList.remove('active'));
       pill.classList.add('active');
-      currentFilter = pill.getAttribute('data-filter') || 'all'; // Get 'open', 'verified', 'closed', or 'all'
-      renderIssues(); // Re-render issues based on the new filter
+      currentFilter = pill.getAttribute('data-filter') || 'all';
+      renderIssues();
     });
   });
   const allPill = document.querySelector('.filter-pill[data-filter="all"]');
   if (allPill) allPill.classList.add('active');
 }
-// --- REPLACE initVoteButtons with this ---
+
+// --- 4. initVoteButtons UPDATED with Auth Header ---
 function initVoteButtons() {
     const grid = document.getElementById('issues-grid');
     if (!grid) return;
 
     grid.addEventListener('click', async (e) => {
-        const button = e.target.closest('.vote-button'); // Target any vote button
-        if (!button) return; // Exit if click wasn't on a vote button
+        const button = e.target.closest('.vote-button');
+        if (!button) return;
 
-        const action = button.dataset.action; // 'upvote' or 'report'
+        const action = button.dataset.action;
         const issueId = button.dataset.id;
+        if (!issueId || !action) return;
 
-        if (!issueId || !action) {
-            console.error("Button is missing data-id or data-action");
-            return;
+        // --- ADDED: Authentication Check ---
+        const idToken = localStorage.getItem('firebaseIdToken');
+        if (!idToken) {
+            showToast('⚠️ Please log in to vote or report.');
+            window.location.href = '/login.html'; // Redirect to login
+            return; // Stop the action
         }
+        // --- End Auth Check ---
 
-        // --- Find the card BEFORE making the API call ---
+        button.disabled = true;
+        button.classList.add('voted');
+
         const card = button.closest('.issue-card');
         const upvoteCountSpan = card?.querySelector('.upvote-count');
-        const reportCountSpan = card?.querySelector('.report-count'); // The one in issue-stats
-
-        button.disabled = true; // Disable button immediately
-        button.classList.add('voted'); // Add animation/feedback class
+        const reportCountSpan = card?.querySelector('.report-count');
 
         let currentUpvoteCount = 0;
         let currentReportCount = 0;
 
-        // Get current counts for potential revert on error
         if (upvoteCountSpan) currentUpvoteCount = parseInt(upvoteCountSpan.textContent) || 0;
         if (reportCountSpan) {
              const match = reportCountSpan.textContent.match(/(\d+)/);
              currentReportCount = match ? parseInt(match[1]) : 0;
         }
 
-        // Optimistic UI update (update display before API call returns)
         if (action === 'upvote' && upvoteCountSpan) {
             upvoteCountSpan.textContent = currentUpvoteCount + 1;
         } else if (action === 'report' && reportCountSpan) {
             reportCountSpan.textContent = `📊 ${currentReportCount + 1} reports`;
         }
 
-        // --- API Call ---
         try {
+            // --- ADDED: Authorization Header ---
             const response = await fetch(`http://localhost:8000/api/issues/${issueId}/${action}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    // TODO: Add Authorization header when auth is implemented
+                    'Authorization': `Bearer ${idToken}` // Send the token
                 },
             });
+            // --- End Header ---
 
             if (!response.ok) {
                 let errorMsg = `Failed to ${action}`;
-                try { const errData = await response.json(); errorMsg = errData.detail || errorMsg; } catch (e) { /* ignore */ }
+                if (response.status === 401 || response.status === 403) {
+                     errorMsg = "Authentication failed. Please log in again.";
+                     localStorage.removeItem('firebaseIdToken'); // Clear bad token
+                     window.location.href = '/login.html';
+                } else {
+                     try { const errData = await response.json(); errorMsg = errData.detail || errorMsg; } catch (e) { /* ignore */ }
+                }
                 throw new Error(errorMsg);
             }
 
@@ -184,44 +205,37 @@ function initVoteButtons() {
             console.log(`${action} successful:`, result);
             showToast(action === 'upvote' ? '👍 Upvoted!' : '👎 Reported!');
 
-            // --- Update allIssues array AND Re-render ---
             if (result.updated_issue) {
                 const issueIndex = allIssues.findIndex(issue => issue.issue_id === issueId);
                 if (issueIndex !== -1) {
                     allIssues[issueIndex] = result.updated_issue; // Update data in the main array
                     console.log(`Updated issue ${issueId} data in allIssues array.`);
-                    renderIssues(); // Re-render the entire grid based on current filter & updated data
+                    renderIssues(); // Re-render the grid
                 } else {
-                     // Fallback if not found (should not happen often)
-                     console.warn(`Issue ${issueId} not found in allIssues after update. Replacing card manually.`);
-                     const newCard = renderIssueCard(result.updated_issue);
-                     if (card && grid.contains(card)) { // Check if card still exists
-                          grid.replaceChild(newCard, card);
-                     } else {
-                          renderIssues(); // Fallback to full re-render
-                     }
+                     console.warn(`Issue ${issueId} not found in allIssues.`);
+                     renderIssues(); // Full re-render just in case
                 }
             } else {
-                 // If backend didn't return updated issue, still re-render to be safe
                  renderIssues();
             }
-            // --- End Update ---
 
         } catch (error) {
             console.error(`Error submitting ${action}:`, error);
-            showToast(`⚠️ Failed to ${action}: ${error.message}`);
-            // Revert optimistic UI update if API failed
+            showToast(`⚠️ ${error.message}`);
+            // Revert optimistic UI
             if (action === 'upvote' && upvoteCountSpan) upvoteCountSpan.textContent = currentUpvoteCount;
             if (action === 'report' && reportCountSpan) reportCountSpan.textContent = `📊 ${currentReportCount} reports`;
-             button.disabled = false; // Re-enable button on error ONLY
-             button.classList.remove('voted'); // Remove animation on error
+             button.disabled = false;
+             button.classList.remove('voted');
 
         } finally {
-             // Remove animation class after delay. Button disabled state is handled by re-rendering.
-              setTimeout(() => {
-                 // Find the potentially new button element after re-render
-                 const potentiallyNewButton = document.querySelector(`.vote-button[data-id="${issueId}"][data-action="${action}"]`);
-                 if(potentiallyNewButton) potentiallyNewButton.classList.remove('voted');
+             setTimeout(() => {
+                 const newButton = document.querySelector(`.vote-button[data-id="${issueId}"][data-action="${action}"]`);
+                 if(newButton) newButton.classList.remove('voted');
+                 const latestIssueData = allIssues.find(issue => issue.issue_id === issueId);
+                 if (latestIssueData && latestIssueData.status !== 'closed' && latestIssueData.status !== 'spam') {
+                     if(newButton) newButton.disabled = false;
+                 }
              }, 600);
         }
     });
@@ -236,9 +250,20 @@ function openIssueModal(issue) {
     }
 
     const statusClass = issue.status || 'open';
-    const statusText = statusClass === 'spam' ? '🚫 Spam' :
-                       statusClass === 'closed' ? '✅ Closed' :
-                       statusClass === 'verified' ? '🟡 Verified' : '🟠 Open';
+    let statusText = '';
+    if (statusClass === 'closed') {
+        if (issue.closed_by && issue.closed_by !== 'community_report') { //
+            statusText = '✅ Fixed by NGO'; //
+        } else {
+            statusText = '✅ Closed'; //
+        }
+    } else if (statusClass === 'verified') {
+        statusText = '🟡 Verified'; //
+    } else if (statusClass === 'spam') {
+        statusText = '🚫 Spam';
+    } else { // Default to open
+        statusText = '🟠 Open';
+    }
 
     const co2Saved = typeof issue.co2_kg_saved === 'number' ? issue.co2_kg_saved : 0;
     const fateRisk = typeof issue.fate_risk_co2 === 'number' ? issue.fate_risk_co2 : 0;
@@ -246,21 +271,24 @@ function openIssueModal(issue) {
 
     const issueTypes = Array.isArray(issue.issue_types) ? issue.issue_types : (issue.issue_types ? [issue.issue_types] : ['unknown']);
     const severityScore = typeof issue.severity_score === 'number' ? issue.severity_score : 5.0;
-    // --- Use display_address in modal too ---
+    
+    // --- THIS IS THE FIX for location in modal ---
     const locationText = `📍 ${issue.display_address || 'Address Unavailable'}`;
+    // ---
+    
     const reportedDate = issue.reported_at ? new Date(issue.reported_at).toLocaleDateString() : 'Unknown Date';
     const descriptionText = issue.description || issue.auto_caption || 'No description available';
     const photoUrl = issue.photo_url || 'placeholder.png';
     const issueIdShort = issue.issue_id ? issue.issue_id.substring(0, 8) : 'N/A';
     const sourceText = issue.source || 'citizen';
     const openUpvotes = (issue.upvotes && typeof issue.upvotes.open === 'number') ? issue.upvotes.open : 0;
-    // --- Get correct report count based on status for modal display ---
+    
     let relevantReportCount = 0;
     if (issue.reports) {
         if (statusClass === 'open') relevantReportCount = issue.reports.open || 0;
         else if (statusClass === 'closed') relevantReportCount = issue.reports.closed || 0;
         else if (statusClass === 'verified') relevantReportCount = issue.reports.verified || 0;
-        else if (statusClass === 'spam') relevantReportCount = issue.reports.spam || 0; // If you added spam counter
+        else if (statusClass === 'spam') relevantReportCount = issue.reports.spam || 0;
     }
     const predictedFixText = issue.predicted_fix || 'No fix prediction available';
     const fixConfidence = typeof issue.predicted_fix_confidence === 'number' ? issue.predicted_fix_confidence : 0;
@@ -353,7 +381,10 @@ document.addEventListener('click', (e) => {
 });
 
 
+// --- 5. UPDATED DOMContentLoaded ---
 document.addEventListener('DOMContentLoaded', async () => {
+  // --- CALL AUTH LISTENER FIRST ---
+  initializeAuthListener();
   initThemeToggle();
   initMobileMenu();
 
@@ -361,7 +392,8 @@ document.addEventListener('DOMContentLoaded', async () => {
   if (grid) grid.innerHTML = '<div class="loading-spinner"></div>';
 
   try {
-    const response = await fetch('http://localhost:8000/api/issues');
+    // --- 6. FETCH FROM CORRECT BACKEND ---
+    const response = await fetch('http://localhost:8000/api/issues'); // Points to our Python backend
     if (!response.ok) {
       let errorMsg = `HTTP error! status: ${response.status}`;
       try { const errData = await response.json(); errorMsg = errData.detail || errorMsg; } catch (e) { /* Ignore */ }
@@ -379,10 +411,13 @@ document.addEventListener('DOMContentLoaded', async () => {
      if (grid) grid.innerHTML = `<p style="text-align: center; color: var(--error-color);">Failed to load issues: ${error.message}</p>`;
   }
 
+  // --- 7. REMOVED FRONTEND SORTING ---
+  // The backend already sorts by upvotes and severity
+
   // Render issues (or error message)
   if (grid && !grid.innerHTML.includes('Failed to load')) {
       renderIssues();
   }
   initFilterPills();
-  initVoteButtons();
+  initVoteButtons(); // This is the correct function name
 });
