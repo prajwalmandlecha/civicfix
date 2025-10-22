@@ -866,31 +866,37 @@ async def upvote_issue(
     logger.info(f"User {user.get('uid')} upvoting issue {issue_id}")
     if not es_client:
         raise HTTPException(503, "DB unavailable")
-    # ... (Rest of upvote logic remains the same) ...
     try:
-        get_resp = await es_client.get(index="issues", id=issue_id)
-        status = get_resp["_source"].get("status", "open")
-        if status == "open":
-            script = "ctx._source.upvotes.open += 1"
-        elif status == "closed":
-            script = "ctx._source.upvotes.closed += 1"
-        else:
-            logger.warning(
-                f"Upvoting issue {issue_id} (status: {status}). Adding to open."
-            )
-            script = "ctx._source.upvotes.open += 1"
-        await es_client.update(
+        # Single update operation with script that handles different statuses
+        script = {
+            "source": """
+                if (!ctx._source.containsKey('upvotes')) {
+                    ctx._source.upvotes = ['open': 0, 'closed': 0];
+                }
+                if (ctx._source.status == 'closed') {
+                    ctx._source.upvotes.closed += 1;
+                } else {
+                    ctx._source.upvotes.open += 1;
+                }
+            """,
+            "lang": "painless"
+        }
+
+        # Update and return the document in one operation
+        update_response = await es_client.update(
             index="issues",
             id=issue_id,
-            script={"source": script, "lang": "painless"},
+            script=script,
             refresh=True,
             retry_on_conflict=3,
+            return_doc=True  # This returns the updated document
         )
-        updated = await es_client.get(index="issues", id=issue_id)
+
+        updated_source = update_response['doc']
         logger.info(
-            f"Upvote OK for {issue_id}. New: {updated['_source'].get('upvotes')}"
+            f"Upvote OK for {issue_id}. New: {updated_source.get('upvotes')}"
         )
-        return {"message": "Upvoted", "updated_issue": updated["_source"]}
+        return {"message": "Upvoted", "updated_issue": updated_source}
     except NotFoundError:
         logger.warning(f"Upvote fail: {issue_id} not found.")
         raise HTTPException(404, f"{issue_id} not found")
@@ -902,6 +908,60 @@ async def upvote_issue(
         raise HTTPException(500, f"Server err: {e}")
 
 
+# --- Unlike Endpoint (Requires Auth) ---
+@app.post("/api/issues/{issue_id}/unlike")
+async def unlike_issue(
+    issue_id: str, user: dict = Depends(get_current_user)
+):  # Require user
+    logger.info(f"User {user.get('uid')} unliking issue {issue_id}")
+    if not es_client:
+        raise HTTPException(503, "DB unavailable")
+    try:
+        # Single update operation with script that handles different statuses and prevents negative values
+        script = {
+            "source": """
+                if (!ctx._source.containsKey('upvotes')) {
+                    ctx._source.upvotes = ['open': 0, 'closed': 0];
+                }
+                if (ctx._source.status == 'closed') {
+                    if (ctx._source.upvotes.closed > 0) {
+                        ctx._source.upvotes.closed -= 1;
+                    }
+                } else {
+                    if (ctx._source.upvotes.open > 0) {
+                        ctx._source.upvotes.open -= 1;
+                    }
+                }
+            """,
+            "lang": "painless"
+        }
+
+        # Update and return the document in one operation
+        update_response = await es_client.update(
+            index="issues",
+            id=issue_id,
+            script=script,
+            refresh=True,
+            retry_on_conflict=3,
+            return_doc=True  # This returns the updated document
+        )
+
+        updated_source = update_response['doc']
+        logger.info(
+            f"Unlike OK for {issue_id}. New: {updated_source.get('upvotes')}"
+        )
+        return {"message": "Unliked", "updated_issue": updated_source}
+    except NotFoundError:
+        logger.warning(f"Unlike fail: {issue_id} not found.")
+        raise HTTPException(404, f"{issue_id} not found")
+    except RequestError as e:
+        logger.error(f"ES Err unlike {issue_id}: {e.info}")
+        raise HTTPException(400, f"DB err: {e.error}")
+    except Exception as e:
+        logger.exception(f"Unexpected err unlike {issue_id}")
+        raise HTTPException(500, f"Server err: {e}")
+
+
 # --- Report Endpoint (Requires Auth, uses Closed status) ---
 @app.post("/api/issues/{issue_id}/report")
 async def report_issue(
@@ -910,7 +970,6 @@ async def report_issue(
     logger.info(f"User {user.get('uid')} reporting issue {issue_id}")
     if not es_client:
         raise HTTPException(503, "DB unavailable")
-    # ... (Rest of report logic remains the same, using 'closed') ...
     try:
         get_resp = await es_client.get(index="issues", id=issue_id)
         source = get_resp["_source"]
