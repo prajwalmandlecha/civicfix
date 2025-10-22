@@ -604,8 +604,7 @@ async def get_issues(
                 "auto_review_flag",
                 "upvotes",
                 "reports",
-                "is_spam",
-                "impact_score"
+                "is_spam"
             ]
         }
 
@@ -700,7 +699,6 @@ async def get_latest_issues(
                 "upvotes",
                 "reports",
                 "is_spam",
-                "impact_score"
             ]
         }
         
@@ -876,8 +874,6 @@ async def upvote_issue(
             script = "ctx._source.upvotes.open += 1"
         elif status == "closed":
             script = "ctx._source.upvotes.closed += 1"
-        elif status == "verified":
-            script = "ctx._source.upvotes.verified += 1"
         else:
             logger.warning(
                 f"Upvoting issue {issue_id} (status: {status}). Adding to open."
