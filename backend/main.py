@@ -3,46 +3,6 @@ import json
 import uuid
 import logging
 import requests
-<<<<<<< HEAD
-from fastapi import FastAPI, File, Form, Request, HTTPException, UploadFile, status
-from firebase_admin import auth, credentials, initialize_app, firestore
-from dotenv import load_dotenv
-import os
-from google.cloud import storage
-from pydantic import ValidationError
-from fastapi.middleware.cors import CORSMiddleware
-
-from schema import AnalyzeOut,  Location, ReportIn
-from typing import List, Optional
-from elasticsearch import Elasticsearch, TransportError
-import ssl
-import urllib3
-
-load_dotenv()
-
-# Disable SSL warnings for self-signed certificates
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-ES_HOST = os.getenv("ES_URL", "http://localhost:9200")
-ES_INDEX = os.getenv("ES_INDEX", "issues")
-ES_USER = os.getenv("ES_USER")
-ES_PASS = os.getenv("ES_PASS")
-ES_VERIFY_CERTS = os.getenv("ES_VERIFY_CERTS", "true").lower() in ("1", "true", "yes")
-ES_CA_CERT = os.getenv("ES_CA_CERT")
-
-es_kwargs = {}
-if ES_USER and ES_PASS:
-    es_kwargs["basic_auth"] = (ES_USER, ES_PASS)
-
-if not ES_VERIFY_CERTS:
-    # Disable certificate verification for environments with self-signed certs.
-    es_kwargs["verify_certs"] = False
-elif ES_CA_CERT:
-    es_kwargs["ca_certs"] = ES_CA_CERT
-
-es = Elasticsearch(ES_HOST, **es_kwargs)
-
-=======
 import os
 from datetime import datetime
 
@@ -65,6 +25,7 @@ from firebase_admin import (
     credentials,
     initialize_app,
     _auth_utils as firebase_auth_errors,
+    firestore
 )
 from dotenv import load_dotenv
 from google.cloud import storage
@@ -75,26 +36,17 @@ from elasticsearch import AsyncElasticsearch, NotFoundError, RequestError
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import asyncio
->>>>>>> 452ce09f1f9c3eba66f250586a281de54d7dc51d
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
 
-<<<<<<< HEAD
-
-#firebase initialization
-cred = credentials.Certificate("serviceAccountKey.json")
-default_app = initialize_app(cred)
-db = firestore.client()
-
-
-=======
 # --- Firebase Setup ---
 try:
     cred = credentials.Certificate("serviceAccountKey.json")
     default_app = initialize_app(cred)
+    db = firestore.client()
     logger.info("Firebase Admin initialized successfully.")
 except Exception as fb_err:
     logger.error(f"Failed to initialize Firebase Admin: {fb_err}")
@@ -102,25 +54,43 @@ except Exception as fb_err:
 
 # --- Environment Variables ---
 load_dotenv()
->>>>>>> 452ce09f1f9c3eba66f250586a281de54d7dc51d
 BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 CLOUD_ANALYZER_URL = os.getenv("CLOUD_ANALYZER_URL", "http://localhost:8001")
 ES_URL = os.getenv("ES_URL", "http://localhost:9200")
+# For cloud ES, try HTTP if HTTPS fails
+ES_URL_HTTP = ES_URL.replace("https://", "http://") if ES_URL.startswith("https://") else ES_URL
+ES_USER = os.getenv("ES_USER")
+ES_PASS = os.getenv("ES_PASS")
+ES_VERIFY_CERTS = os.getenv("ES_VERIFY_CERTS", "true").lower() in ("1", "true", "yes")
+ES_CA_CERT = os.getenv("ES_CA_CERT")
+ES_INDEX = os.getenv("ES_INDEX", "issues")
 SPAM_REPORT_THRESHOLD = 3
 REOPEN_REPORT_THRESHOLD = 3
+
+# Debug: Print all relevant environment variables
+logger.info(f"Environment Variables:")
+logger.info(f"  ES_URL: {ES_URL}")
+logger.info(f"  ES_USER: {'***' if ES_USER else None}")
+logger.info(f"  ES_PASS: {'***' if ES_PASS else None}")
+logger.info(f"  ES_VERIFY_CERTS: {ES_VERIFY_CERTS}")
+logger.info(f"  ES_CA_CERT: {ES_CA_CERT}")
+logger.info(f"  GCS_BUCKET_NAME: {BUCKET_NAME}")
+logger.info(f"  CLOUD_ANALYZER_URL: {CLOUD_ANALYZER_URL}")
 
 if not BUCKET_NAME:
     logger.warning("GCS_BUCKET_NAME env var not set. File uploads will fail.")
 
-<<<<<<< HEAD
-app = FastAPI()
-
-logger.info(f"CLOUD_ANALYZER_URL={CLOUD_ANALYZER_URL}")
-
-=======
 # --- FastAPI App and ES Client ---
 app = FastAPI(title="CivicFix API Gateway")
 es_client: Optional[AsyncElasticsearch] = None
+es_connection_kwargs: Dict[str, Any] = {}
+if ES_USER and ES_PASS:
+    es_connection_kwargs["basic_auth"] = (ES_USER, ES_PASS)
+if not ES_VERIFY_CERTS:
+    es_connection_kwargs["verify_certs"] = False
+    es_connection_kwargs["ssl_context"] = None  # Disable SSL context checking
+elif ES_CA_CERT:
+    es_connection_kwargs["ca_certs"] = ES_CA_CERT
 
 
 # --- Lifespan Events for ES Client ---
@@ -129,22 +99,42 @@ async def startup_event():
     # ... (Keep the correct startup_event) ...
     global es_client
     logger.info(f"Connecting to ES at {ES_URL}")
-    es_client = AsyncElasticsearch(ES_URL, http_compress=True, request_timeout=30)
-    for i in range(3):
-        try:
-            info = await es_client.info()
-            cluster_name = info.body.get("cluster_name", "Unknown")
-            logger.info(f"Successfully connected to ES cluster: {cluster_name}")
-            return
-        except ConnectionError as ce:
-            logger.warning(f"Attempt {i+1} ES connect fail (ConnErr): {ce}")
-        except TimeoutError:
-            logger.warning(f"Attempt {i+1} ES connect fail (Timeout).")
-        except Exception as e:
-            logger.error(f"Attempt {i+1} ES connect fail (Other): {e}")
-        if i < 2:
-            await asyncio.sleep(2 * (i + 1))
-    logger.error("Failed ES connect after multiple attempts.")
+
+    # Try HTTPS first, then HTTP if it fails
+    urls_to_try = [ES_URL]
+    if ES_URL.startswith("https://"):
+        urls_to_try.append(ES_URL_HTTP)
+
+    for url in urls_to_try:
+        logger.info(f"Trying ES connection to {url}")
+        # Initialize AsyncElasticsearch with auth and SSL settings
+        es_client = AsyncElasticsearch(
+            hosts=[url],
+            http_compress=True,
+            request_timeout=45,  # increased to 45 seconds
+            **es_connection_kwargs
+        )
+
+        for i in range(3):
+            try:
+                info = await es_client.info()
+                cluster_name = info.body.get("cluster_name", "Unknown")
+                logger.info(f"Successfully connected to ES cluster: {cluster_name} at {url}")
+                return
+            except ConnectionError as ce:
+                logger.warning(f"Attempt {i+1} ES connect fail (ConnErr) to {url}: {ce}")
+            except TimeoutError:
+                logger.warning(f"Attempt {i+1} ES connect fail (Timeout) to {url}.")
+            except Exception as e:
+                logger.error(f"Attempt {i+1} ES connect fail (Other) to {url}: {e}")
+            if i < 2:
+                await asyncio.sleep(2 * (i + 1))
+
+        # Close the failed client before trying next URL
+        await es_client.close()
+        es_client = None
+
+    logger.error("Failed ES connect after multiple attempts to all URLs.")
     es_client = None
 
 
@@ -160,8 +150,8 @@ async def shutdown_event():
 @app.middleware("http")
 async def verify_firebase_token_middleware(request: Request, call_next):
     # Allow access to docs and root path without authentication
-    # --- ADDED /api/issues to the public list ---
-    public_paths = ["/", "/docs", "/openapi.json", "/api/issues"]
+    # --- ADDED /api/issues, /issues/, /issues/latest to the public list ---
+    public_paths = ["/", "/docs", "/openapi.json", "/api/issues", "/issues/", "/issues/latest"]
 
     # Check if the path *starts with* /api/issues (in case of /api/issues/123)
     # A simpler check for now:
@@ -247,7 +237,6 @@ async def get_optional_user(request: Request) -> Optional[dict]:
 
 # --- CORS Middleware (MUST come AFTER Auth Middleware if applied globally) ---
 # Actually, middleware order is defined by app.add_middleware order. Auth first is fine.
->>>>>>> 452ce09f1f9c3eba66f250586a281de54d7dc51d
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -304,23 +293,51 @@ async def root():
     # ... (Keep root, public access allowed by middleware) ...
     return {"message": "CivicFix API Gateway - Running"}
 
-<<<<<<< HEAD
-@app.post("/submit-issue")
-async def submit_issue(
-    file: UploadFile = File(...),
-    locationstr: str = Form(...),
-    description: str = Form(...),
-    labels: Optional[List[str]] = Form(None),
-    timestamp: Optional[str] = Form(None)
-):
-    if not file:
-        raise HTTPException(status_code=400, detail="No file uploaded")
-    if not (file.content_type or "").startswith("image/"):
-        raise HTTPException(status_code=400, detail="Only image files are allowed")
 
-=======
+@app.get("/debug/es")
+async def debug_elasticsearch():
+    """Debug endpoint to check Elasticsearch connection and indices"""
+    if not es_client:
+        return {"error": "Elasticsearch client not initialized"}
 
-# --- Replace the existing get_all_issues function ---
+    try:
+        # Test connection
+        info = await es_client.info()
+        cluster_name = info.body.get("cluster_name", "Unknown")
+
+        # Get all indices
+        indices_response = await es_client.cat.indices(format="json")
+        indices = [index["index"] for index in indices_response.body]
+
+        # Check if our index exists
+        index_exists = ES_INDEX in indices
+
+        # Try to get mapping for our index if it exists
+        mapping = None
+        if index_exists:
+            try:
+                mapping_response = await es_client.indices.get_mapping(index=ES_INDEX)
+                mapping = mapping_response.body
+            except Exception as e:
+                mapping = f"Error getting mapping: {e}"
+
+        return {
+            "cluster_name": cluster_name,
+            "connected": True,
+            "es_url": ES_URL,
+            "es_index": ES_INDEX,
+            "index_exists": index_exists,
+            "available_indices": indices,
+            "mapping": mapping
+        }
+    except Exception as e:
+        return {
+            "error": f"Elasticsearch connection failed: {str(e)}",
+            "es_url": ES_URL,
+            "es_index": ES_INDEX
+        }
+
+
 @app.get("/api/issues")
 async def get_all_issues(
     user: Optional[dict] = Depends(get_optional_user),
@@ -340,14 +357,11 @@ async def get_all_issues(
 
     logger.info("Fetching issues from Elasticsearch...")
     issues_with_address = []
->>>>>>> 452ce09f1f9c3eba66f250586a281de54d7dc51d
     try:
-        # Fetch issues sorted by upvotes.open descending, then severity_score descending
         response = await es_client.search(
-            index="issues",
+            index=ES_INDEX,
             body={
                 "query": {"match_all": {}},
-                # --- SIMPLIFIED SORT (Removed the failing _script) ---
                 "sort": [
                     {
                         "upvotes.open": {"order": "desc", "missing": "_last"}
@@ -358,6 +372,7 @@ async def get_all_issues(
                 ],
             },
             size=100,
+            request_timeout=45  # allow up to 45 seconds for this query
         )
         logger.info(f"Elasticsearch returned {len(response['hits']['hits'])} issues.")
         issues_source = [doc["_source"] for doc in response["hits"]["hits"]]
@@ -428,75 +443,8 @@ async def get_all_issues(
             status_code=500, detail=f"Database query or processing failed: {e}"
         )
 
-<<<<<<< HEAD
-    labels = labels or []
 
-    file.filename = f"issues/{uuid.uuid4()}"
-    data = await file.read()
-    if not data:
-        raise HTTPException(status_code=400, detail="File is empty")
-
-=======
-
-# --- Submit Issue Endpoint (Requires Auth) ---
-@app.post("/submit-issue")
-async def submit_issue(
-    # --- Added user dependency ---
-    user: dict = Depends(get_current_user),  # Requires valid token
-    file: UploadFile = File(...),
-    location_text: str = Form(...),
-    description: str = Form(...),
-    # --- Added is_anonymous form field ---
-    is_anonymous: bool = Form(False),
-):
-    # ... (Keep geocoding and GCS upload logic) ...
-    if not storage_client:
-        raise HTTPException(503, "GCS unavailable")
-    if not file:
-        raise HTTPException(400, "No file")
-    if not (file.content_type or "").startswith("image/"):
-        raise HTTPException(400, "Image only")
-    geocoded = geocode_location(location_text)
-    if not geocoded:
-        raise HTTPException(400, f"Cannot find coords for: '{location_text}'.")
-    file_uuid = uuid.uuid4()
-    file.filename = f"issues/{file_uuid}"
-    data = await file.read()
-    if not data:
-        raise HTTPException(400, "Empty file")
-    if not BUCKET_NAME:
-        raise HTTPException(500, "GCS bucket not config")
->>>>>>> 452ce09f1f9c3eba66f250586a281de54d7dc51d
-    bucket = storage_client.bucket(BUCKET_NAME)
-    blob = bucket.blob(file.filename)
-    try:
-<<<<<<< HEAD
-        analyzer_response = requests.post(
-            f"{CLOUD_ANALYZER_URL}/analyze/",
-            json={
-                "image_url": public_url,
-                "description": description,
-                "location": location.model_dump(),
-                "timestamp": str(timestamp),
-                "user_selected_labels": labels, 
-            },
-        )
-        analyzer_response.raise_for_status()
-        analysis_result = analyzer_response.json()
-        
-        logger.info(f"Analyzer response: {analysis_result}")
-        issues = analysis_result.get("detected_issues", [])
-        no_issues_found = analysis_result.get("no_issues_found", False)
-
-        if(no_issues_found):
-            logger.info("No issues found in the submitted image.")
-            #need to delete the photo from GCS
-    except requests.exceptions.RequestException as e:
-        logger.exception("Failed to call cloud analyzer")
-        raise HTTPException(status_code=500, detail=f"Analysis service error: {str(e)}")
-
-    return {"image_url": public_url, "issues": issues, "location": location, "no_issues_found": no_issues_found}
-
+# --- Get Issues by Location (Public) ---
 @app.get("/issues/")
 async def get_issues(
     latitude: float,
@@ -515,6 +463,10 @@ async def get_issues(
         limit: Maximum number of results (default 10)
         days_back: Only include issues from last N days (default 30)
     """
+    if not es_client:
+        logger.error("get_issues called but es_client is not available.")
+        raise HTTPException(status_code=503, detail="Database connection unavailable")
+    
     try:
         date_threshold = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
 
@@ -593,7 +545,14 @@ async def get_issues(
             ]
         }
 
-        response = es.search(index=ES_INDEX, body=query)
+        # First check if the index exists
+        try:
+            await es_client.indices.get(index=ES_INDEX)
+        except NotFoundError:
+            logger.warning(f"Index '{ES_INDEX}' does not exist. Returning empty results.")
+            return {"issues": []}
+
+        response = await es_client.search(index=ES_INDEX, body=query, request_timeout=45)
         issues = []
 
         for hit in response["hits"]["hits"]:
@@ -609,11 +568,141 @@ async def get_issues(
             "issues": issues
         }
 
-
-    except TransportError as e:
+    except NotFoundError:
+        logger.warning("Issues index not found.")
+        return {"issues": []}
+    except Exception as e:
         logger.exception("Failed to retrieve nearby issues from Elasticsearch")
+        logger.error(f"ES_URL: {ES_URL}")
+        logger.error(f"ES_INDEX: {ES_INDEX}")
+        logger.error(f"Query: {query}")
+        raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
+
+
+# --- Get Latest Issues (Public) ---
+@app.get("/issues/latest")
+async def get_latest_issues(
+    limit: int = 10,
+    days_back: Optional[int] = None
+):
+    """
+    Get the latest issues sorted by reported time.
+    
+    Args:
+        limit: Maximum number of results (default 10)
+        days_back: Only include issues from last N days (optional)
+    """
+    if not es_client:
+        logger.error("get_latest_issues called but es_client is not available.")
+        raise HTTPException(status_code=503, detail="Database connection unavailable")
+    
+    try:
+        query = {
+            "size": limit,
+            "query": {
+                "match_all": {}
+            },
+            "sort": [
+                {
+                    "created_at": {
+                        "order": "desc"
+                    }
+                }
+            ],
+            "_source": [
+                "issue_id",
+                "reported_by",
+                "uploader_display_name",
+                "source",
+                "status",
+                "closed_by",
+                "closed_at",
+                "created_at",
+                "updated_at",
+                "location",
+                "description",
+                "auto_caption",
+                "user_selected_labels",
+                "photo_url",
+                "detected_issues",
+                "issue_types",
+                "label_confidences",
+                "severity_score",
+                "fate_risk_co2",
+                "co2_kg_saved",
+                "predicted_fix",
+                "predicted_fix_confidence",
+                "evidence_ids",
+                "auto_review_flag",
+                "upvotes",
+                "reports",
+                "is_spam",
+                "impact_score"
+            ]
+        }
+        
+        # Add date filter if days_back is specified
+        if days_back:
+            date_threshold = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
+            query["query"] = {
+                "range": {
+                    "created_at": {
+                        "gte": date_threshold
+                    }
+                }
+            }
+        
+        response = await es_client.search(index=ES_INDEX, body=query, request_timeout=45)
+        
+        issues = []
+        for hit in response["hits"]["hits"]:
+            issue_data = hit["_source"]
+            issues.append(issue_data)
+        
+        return {
+            "count": len(issues),
+            "issues": issues
+        }
+        
+    except NotFoundError:
+        logger.warning("Issues index not found.")
+        return {"issues": []}
+    except Exception as e:
+        logger.exception("Failed to retrieve latest issues from Elasticsearch")
         raise HTTPException(status_code=500, detail="Internal server error")
-=======
+
+
+# --- Submit Issue Endpoint (Requires Auth) ---
+@app.post("/submit-issue")
+async def submit_issue(
+    # --- Added user dependency ---
+    user: dict = Depends(get_current_user),  # Requires valid token
+    file: UploadFile = File(...),
+    location_text: str = Form(...),
+    description: str = Form(...),
+    # --- Added is_anonymous form field ---
+    is_anonymous: bool = Form(False),
+):
+    # ... (Keep geocoding and GCS upload logic) ...
+    if not storage_client:
+        raise HTTPException(503, "GCS unavailable")
+    if not file:
+        raise HTTPException(400, "No file")
+    if not (file.content_type or "").startswith("image/"):
+        raise HTTPException(400, "Image only")
+    geocoded = geocode_location(location_text)
+    if not geocoded:
+        raise HTTPException(400, f"Cannot find coords for: '{location_text}'.")
+    file_uuid = uuid.uuid4()
+    file.filename = f"issues/{file_uuid}"
+    data = await file.read()
+    if not data:
+        raise HTTPException(400, "Empty file")
+    if not BUCKET_NAME:
+        raise HTTPException(500, "GCS bucket not config")
+    bucket = storage_client.bucket(BUCKET_NAME)
+    blob = bucket.blob(file.filename)
+    try:
         blob.upload_from_string(data, content_type=file.content_type)
         public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{file.filename}"
         logger.info(f"GCS OK: {public_url}")
@@ -687,7 +776,7 @@ async def upvote_issue(
         raise HTTPException(503, "DB unavailable")
     # ... (Rest of upvote logic remains the same) ...
     try:
-        get_resp = await es_client.get(index="issues", id=issue_id)
+        get_resp = await es_client.get(index=ES_INDEX, id=issue_id)
         status = get_resp["_source"].get("status", "open")
         if status == "open":
             script = "ctx._source.upvotes.open += 1"
@@ -701,13 +790,13 @@ async def upvote_issue(
             )
             script = "ctx._source.upvotes.open += 1"
         await es_client.update(
-            index="issues",
+            index=ES_INDEX,
             id=issue_id,
             script={"source": script, "lang": "painless"},
             refresh=True,
             retry_on_conflict=3,
         )
-        updated = await es_client.get(index="issues", id=issue_id)
+        updated = await es_client.get(index=ES_INDEX, id=issue_id)
         logger.info(
             f"Upvote OK for {issue_id}. New: {updated['_source'].get('upvotes')}"
         )
@@ -733,7 +822,7 @@ async def report_issue(
         raise HTTPException(503, "DB unavailable")
     # ... (Rest of report logic remains the same, using 'closed') ...
     try:
-        get_resp = await es_client.get(index="issues", id=issue_id)
+        get_resp = await es_client.get(index=ES_INDEX, id=issue_id)
         source = get_resp["_source"]
         status = source.get("status", "open")
         reports = source.get("reports", {})
@@ -766,11 +855,10 @@ async def report_issue(
         else:
             logger.error(f"Cannot report {issue_id}, unknown status: {status}.")
             return {"message": f"Unknown status {status}", "updated_issue": source}
->>>>>>> 452ce09f1f9c3eba66f250586a281de54d7dc51d
 
         if script_defined:
             await es_client.update(
-                index="issues",
+                index=ES_INDEX,
                 id=issue_id,
                 script={"source": script, "lang": "painless", "params": params},
                 refresh=True,
@@ -779,94 +867,7 @@ async def report_issue(
         else:
             logger.info("No update script needed.")
 
-<<<<<<< HEAD
-@app.get("/issues/latest")
-async def get_latest_issues(
-    limit: int = 10,
-    days_back: Optional[int] = None
-):
-    """
-    Get the latest issues sorted by reported time.
-    
-    Args:
-        limit: Maximum number of results (default 10)
-        days_back: Only include issues from last N days (optional)
-    """
-    try:
-        query = {
-            "size": limit,
-            "query": {
-                "match_all": {}
-            },
-            "sort": [
-                {
-                    "created_at": {
-                        "order": "desc"
-                    }
-                }
-            ],
-            "_source": [
-                "issue_id",
-                "reported_by",
-                "uploader_display_name",
-                "source",
-                "status",
-                "closed_by",
-                "closed_at",
-                "created_at",
-                "updated_at",
-                "location",
-                "description",
-                "auto_caption",
-                "user_selected_labels",
-                "photo_url",
-                "detected_issues",
-                "issue_types",
-                "label_confidences",
-                "severity_score",
-                "fate_risk_co2",
-                "co2_kg_saved",
-                "predicted_fix",
-                "predicted_fix_confidence",
-                "evidence_ids",
-                "auto_review_flag",
-                "upvotes",
-                "reports",
-                "is_spam",
-                "impact_score"
-            ]
-        }
-        
-        # Add date filter if days_back is specified
-        if days_back:
-            date_threshold = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
-            query["query"] = {
-                "range": {
-                    "created_at": {
-                        "gte": date_threshold
-                    }
-                }
-            }
-        
-        response = es.search(index=ES_INDEX, body=query)
-        
-        issues = []
-        for hit in response["hits"]["hits"]:
-            issue_data = hit["_source"]
-            issues.append(issue_data)
-        
-        return {
-            "count": len(issues),
-            "issues": issues
-        }
-        
-    except TransportError as e:
-        logger.exception("Failed to retrieve latest issues from Elasticsearch")
-        raise HTTPException(status_code=500, detail="Internal server error")
-
-# ...existing code...
-=======
-        updated = await es_client.get(index="issues", id=issue_id)
+        updated = await es_client.get(index=ES_INDEX, id=issue_id)
         new_status = updated["_source"].get("status")
         logger.info(
             f"Report OK for {issue_id}. New counts: {updated['_source'].get('reports')}, New Status: {new_status}"
@@ -881,4 +882,3 @@ async def get_latest_issues(
     except Exception as e:
         logger.exception(f"Unexpected err report {issue_id}")
         raise HTTPException(500, f"Server err: {e}")
->>>>>>> 452ce09f1f9c3eba66f250586a281de54d7dc51d
