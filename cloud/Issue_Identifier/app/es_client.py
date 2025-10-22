@@ -1,10 +1,35 @@
 from elasticsearch import Elasticsearch, NotFoundError
 import os
 import logging
+import ssl
 from typing import List, Dict, Any, Optional
 
-ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
-es = Elasticsearch(ES_URL, verify_certs=False, request_timeout=60)
+# ES_URL = os.environ.get("ES_URL", "http://localhost:9200")
+# es = Elasticsearch(ES_URL, verify_certs=False, request_timeout=60)
+ES_HOST = os.getenv("ES_URL", "http://localhost:9200")
+ES_INDEX = os.getenv("ES_INDEX", "issues")
+ES_USER = os.getenv("ES_USER")
+ES_PASS = os.getenv("ES_PASS")
+ES_VERIFY_CERTS = os.getenv("ES_VERIFY_CERTS", "true").lower() in ("1", "true", "yes")
+ES_CA_CERT = os.getenv("ES_CA_CERT")
+
+es_kwargs = {}
+if ES_USER and ES_PASS:
+    es_kwargs["basic_auth"] = (ES_USER, ES_PASS)
+
+if not ES_VERIFY_CERTS:
+    # Disable certificate verification for environments with self-signed certs.
+    insecure_context = ssl.create_default_context()
+    insecure_context.check_hostname = False
+    insecure_context.verify_mode = ssl.CERT_NONE
+    es_kwargs.update({
+        "verify_certs": False,
+        "ssl_context": insecure_context,
+    })
+elif ES_CA_CERT:
+    es_kwargs["ca_certs"] = ES_CA_CERT
+
+es = Elasticsearch(ES_HOST, **es_kwargs)
 logger = logging.getLogger("uvicorn.error")
 
 

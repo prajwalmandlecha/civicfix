@@ -5,7 +5,7 @@ import uuid
 import logging 
 import requests
 from fastapi import FastAPI, File, Form, Request, HTTPException, UploadFile, status
-from firebase_admin import auth, credentials, initialize_app
+from firebase_admin import auth, credentials, initialize_app, firestore
 from dotenv import load_dotenv
 import os
 from google.cloud import storage
@@ -15,11 +15,32 @@ from fastapi.middleware.cors import CORSMiddleware
 from schema import AnalyzeOut,  Location, ReportIn
 from typing import List, Optional
 from elasticsearch import Elasticsearch, TransportError
+import ssl
+import urllib3
 
-ES_HOST = os.getenv("ES_HOST", "http://localhost:9200")
+load_dotenv()
+
+# Disable SSL warnings for self-signed certificates
+urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
+
+ES_HOST = os.getenv("ES_URL", "http://localhost:9200")
 ES_INDEX = os.getenv("ES_INDEX", "issues")
+ES_USER = os.getenv("ES_USER")
+ES_PASS = os.getenv("ES_PASS")
+ES_VERIFY_CERTS = os.getenv("ES_VERIFY_CERTS", "true").lower() in ("1", "true", "yes")
+ES_CA_CERT = os.getenv("ES_CA_CERT")
 
-es = Elasticsearch(ES_HOST)
+es_kwargs = {}
+if ES_USER and ES_PASS:
+    es_kwargs["basic_auth"] = (ES_USER, ES_PASS)
+
+if not ES_VERIFY_CERTS:
+    # Disable certificate verification for environments with self-signed certs.
+    es_kwargs["verify_certs"] = False
+elif ES_CA_CERT:
+    es_kwargs["ca_certs"] = ES_CA_CERT
+
+es = Elasticsearch(ES_HOST, **es_kwargs)
 
 
 # Configure logging
@@ -29,10 +50,12 @@ logging.basicConfig(
 )
 logger = logging.getLogger(__name__)
 
+
+#firebase initialization
 cred = credentials.Certificate("serviceAccountKey.json")
 default_app = initialize_app(cred)
+db = firestore.client()
 
-load_dotenv()
 
 BUCKET_NAME = os.getenv("GCS_BUCKET_NAME")
 if not BUCKET_NAME:
@@ -43,6 +66,8 @@ CLOUD_ANALYZER_URL = os.getenv("CLOUD_ANALYZER_URL", "http://localhost:8001")  #
 # CLOUD_ANALYZER_URL = "http://localhost:8001"
 
 app = FastAPI()
+
+logger.info(f"CLOUD_ANALYZER_URL={CLOUD_ANALYZER_URL}")
 
 app.add_middleware(
     CORSMiddleware,
@@ -117,6 +142,7 @@ async def submit_issue(
         )
         analyzer_response.raise_for_status()
         analysis_result = analyzer_response.json()
+        
         logger.info(f"Analyzer response: {analysis_result}")
         issues = analysis_result.get("detected_issues", [])
         no_issues_found = analysis_result.get("no_issues_found", False)
@@ -158,7 +184,7 @@ async def get_issues(
                     "must": [
                         {
                             "range": {
-                                "reported_at": {
+                                "created_at": {
                                     "gte": date_threshold
                                 }
                             }
@@ -189,23 +215,40 @@ async def get_issues(
                     }
                 },
                 {
-                    "reported_at": {
+                    "created_at": {
                         "order": "desc"
                     }
                 }
             ],
             "_source": [
                 "issue_id",
+                "reported_by",
+                "uploader_display_name",
+                "source",
+                "status",
+                "closed_by",
+                "closed_at",
+                "created_at",
+                "updated_at",
                 "location",
                 "description",
-                "issue_types",
-                "severity_score",
-                "status",
-                "reported_at",
+                "auto_caption",
+                "user_selected_labels",
                 "photo_url",
+                "detected_issues",
+                "issue_types",
+                "label_confidences",
+                "severity_score",
+                "fate_risk_co2",
+                "co2_kg_saved",
+                "predicted_fix",
+                "predicted_fix_confidence",
+                "evidence_ids",
+                "auto_review_flag",
                 "upvotes",
-                "impact_score",
-                "detected_issues"
+                "reports",
+                "is_spam",
+                "impact_score"
             ]
         }
 
@@ -251,23 +294,40 @@ async def get_latest_issues(
             },
             "sort": [
                 {
-                    "reported_at": {
+                    "created_at": {
                         "order": "desc"
                     }
                 }
             ],
             "_source": [
                 "issue_id",
+                "reported_by",
+                "uploader_display_name",
+                "source",
+                "status",
+                "closed_by",
+                "closed_at",
+                "created_at",
+                "updated_at",
                 "location",
                 "description",
-                "issue_types",
-                "severity_score",
-                "status",
-                "reported_at",
+                "auto_caption",
+                "user_selected_labels",
                 "photo_url",
+                "detected_issues",
+                "issue_types",
+                "label_confidences",
+                "severity_score",
+                "fate_risk_co2",
+                "co2_kg_saved",
+                "predicted_fix",
+                "predicted_fix_confidence",
+                "evidence_ids",
+                "auto_review_flag",
                 "upvotes",
-                "impact_score",
-                "detected_issues"
+                "reports",
+                "is_spam",
+                "impact_score"
             ]
         }
         
@@ -276,7 +336,7 @@ async def get_latest_issues(
             date_threshold = (datetime.now(timezone.utc) - timedelta(days=days_back)).isoformat()
             query["query"] = {
                 "range": {
-                    "reported_at": {
+                    "created_at": {
                         "gte": date_threshold
                     }
                 }
