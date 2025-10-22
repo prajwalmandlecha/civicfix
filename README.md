@@ -87,10 +87,6 @@ pip install -r requirements.txt
 export GEMINI_API_KEY="your_gemini_api_key_here"
 export ES_URL="http://localhost:9200"
 
-# Seed 300 documents (adjust count as needed)
-python seed.py --count 300
-```
-
 **Verify seeded data:**
 ```powershell
 # PowerShell
@@ -328,4 +324,4 @@ You should see `civicfix-es`, `civicfix-issue-identifier`, and `civicfix-issue-v
 - Verify Elasticsearch is running: `curl http://localhost:9200`
 
 **Port conflicts:**
-- If port 8000 or 9200 is in use, stop conflicting services or change ports in docker-compose.yml/run commands
+- If port 8000, 8001 or 9200 is in use, stop conflicting services or change ports in docker-compose.yml/run commands

@@ -15,11 +15,7 @@ def fetch_image_bytes(url: str, timeout: int = 10) -> Tuple[bytes, str]:
     mime = content_type.split(";")[0].strip()
     return resp.content, mime
 
-def now_iso() -> str:
-    return datetime.now(timezone.utc).isoformat()
-
 def make_fix_id(issue_id: str, ngo_id: str) -> str:
-    # deterministic-ish id; you can switch to uuid4() if you prefer non-deterministic
     return str(uuid.uuid4())
 
 def safe_parse_json(raw: str):

@@ -1,18 +1,17 @@
 from pydantic import BaseModel, Field
 from typing import Literal, List, Optional
-
+from datetime import datetime, timezone
 
 class Location(BaseModel):
     latitude: float
     longitude: float
-    timestamp: Optional[str] = None
 
 
 class ReportIn(BaseModel):
     image_url: str
     description: str = ""
     location: Location
-    timestamp: str
+    timestamp: Optional[str] = datetime.now(timezone.utc).isoformat()
     user_selected_labels: List[str] = []
     reported_by: Optional[str] = "anonymous"
     uploader_display_name: Optional[str] = "anonymous"
