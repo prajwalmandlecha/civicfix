@@ -804,6 +804,7 @@ async def submit_issue(
         logger.debug(f"Analyzer response: {analyzer_response.text}")
         analyzer_response.raise_for_status()
         analysis_result = analyzer_response.json()
+        issue_id = analysis_result.get("issue_id")
         logger.info(f"Analyzer OK for user {reporter_id}. Response: {analysis_result}")
 
         return {

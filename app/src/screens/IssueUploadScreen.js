@@ -40,22 +40,22 @@ const IssueUploadScreen = ({ navigation }) => {
 
   const getLocation = async () => {
     const result = await getCurrentLocation(setLoadingLocation);
-    
+
     if (!result) {
       return;
     }
-    
+
     const { addressParts, location, error } = result;
-    
+
     if (error) {
       console.log("Location error:", error);
       return;
     }
-    
+
     if (location) {
       setLocation(location);
     }
-    
+
     if (addressParts) {
       const addr = `${addressParts.street}, ${addressParts.city}, ${addressParts.region}, ${addressParts.country}`;
       setAddress(addr);
@@ -147,24 +147,31 @@ const IssueUploadScreen = ({ navigation }) => {
         name: image.substring(image.lastIndexOf("/") + 1),
         type: type,
       });
-
-      formData.append(
-        "locationstr",
-        JSON.stringify({
-          ...location.coords,
-        })
-      );
+      formData.append("locationstr", address);
       formData.append("description", description);
-      formData.append("labels", JSON.stringify(issueTypes));
-      formData.append("timestamp", new Date().toISOString());
-      formData.append(
-        "reported_by",
-        isAnonymous ? "anonymous" : auth.currentUser.uid
-      );
+      if (issueTypes && issueTypes.length > 0) {
+        issueTypes.forEach((label) => {
+          formData.append("labels", label);
+        });
+      }
+      formData.append("is_anonymous", isAnonymous.toString());
+
+      // Get the auth token manually to ensure it's included
+      const user = auth.currentUser;
+      if (!user) {
+        Alert.alert("Error", "You must be logged in to submit an issue");
+        return;
+      }
+      const token = await user.getIdToken();
+      console.log("User authenticated:", user.uid);
+      console.log("Token obtained:", token ? "Yes" : "No");
+
       const response = await api.post("/submit-issue", formData, {
         headers: {
+          Authorization: `Bearer ${token}`,
           "Content-Type": "multipart/form-data",
         },
+        timeout: 60000,
       });
 
       console.log("Upload successful:", response.data);

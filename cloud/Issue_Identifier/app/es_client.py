@@ -5,6 +5,8 @@ import ssl
 from typing import List, Dict, Any, Optional
 from dotenv import load_dotenv
 
+from cloud.Issue_Verifier.app.main import ES_PASSWORD, ES_URL
+
 # Load environment variables before reading them
 load_dotenv()
 

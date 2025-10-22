@@ -126,45 +126,65 @@ const HomeScreen = () => {
       return;
     }
     console.log("Fetching posts for location:", lastLocation);
-    const response = await api.get("/issues/", {
-      params: {
-        latitude: lastLocation.coords.latitude,
-        longitude: lastLocation.coords.longitude,
-        limit: 20,
-      },
-    });
-    console.log("API Response:", response.data);
-    const issues = await Promise.all(
-      response.data.issues.map(async (issue) => ({
-        id: issue.issue_id,
-        issueTypes: issue.detected_issues,
-        location: await formatLocation(issue.location),
-        postImage: {
-          uri: issue.photo_url,
+
+    try {
+      const response = await api.get("/issues/", {
+        params: {
+          latitude: lastLocation.coords.latitude,
+          longitude: lastLocation.coords.longitude,
+          limit: 20,
         },
-        impactLevel:
-          issue.severity_score > 7
-            ? "High"
-            : issue.severity_score > 4
-            ? "Medium"
-            : "Low",
-        co2Impact: issue.co2Impact,
-        likes: issue.upvotes.open,
-        status: issue.status,
-        description: issue.description,
-        createdAt: issue.created_at,
-        severityScore: issue.severity_score,
-        distanceKm: issue.distance_km,
-        detailedData: issue,
-      }))
-    );
+      });
+      console.log("API Response:", response.data);
 
-    issues.sort((a, b) => b.severityScore - a.severityScore);
+      if (!response.data || !response.data.issues) {
+        console.error("API Response missing issues data:", response.data);
+        setPosts([]);
+        return;
+      }
 
-    console.log("Fetched Issues", issues);
-    setPosts(issues);
-    // console.log("Issues", response.data);
-    console.dir(response.data, { depth: null });
+      const issues = await Promise.all(
+        response.data.issues.map(async (issue) => ({
+          id: issue.issue_id,
+          issueTypes: issue.detected_issues,
+          location: await formatLocation(issue.location),
+          postImage: {
+            uri: issue.photo_url,
+          },
+          impactLevel:
+            issue.severity_score > 7
+              ? "High"
+              : issue.severity_score > 4
+              ? "Medium"
+              : "Low",
+          co2Impact: issue.co2Impact,
+          likes: issue.upvotes?.open || 0,
+          status: issue.status,
+          description: issue.description,
+          createdAt: issue.created_at,
+          severityScore: issue.severity_score,
+          distanceKm: issue.distance_km,
+          detailedData: issue,
+        }))
+      );
+
+      issues.sort((a, b) => b.severityScore - a.severityScore);
+
+      console.log("Fetched Issues", issues);
+      setPosts(issues);
+
+      if (issues.length === 0) {
+        console.log("No issues found for this location");
+      }
+    } catch (error) {
+      console.error("Error fetching posts:", error);
+      console.error("Error details:", {
+        message: error.message,
+        status: error.response?.status,
+        data: error.response?.data,
+      });
+      setPosts([]);
+    }
   };
 
   const handleFixToggle = (postId) => {
