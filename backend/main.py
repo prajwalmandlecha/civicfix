@@ -63,7 +63,6 @@ ES_USER = os.getenv("ES_USER")
 ES_PASS = os.getenv("ES_PASS")
 ES_VERIFY_CERTS = os.getenv("ES_VERIFY_CERTS", "true").lower() in ("1", "true", "yes")
 ES_CA_CERT = os.getenv("ES_CA_CERT")
-ES_INDEX = os.getenv("ES_INDEX", "issues")
 SPAM_REPORT_THRESHOLD = 3
 REOPEN_REPORT_THRESHOLD = 3
 
@@ -375,13 +374,13 @@ async def debug_elasticsearch():
         indices = [index["index"] for index in indices_response.body]
 
         # Check if our index exists
-        index_exists = ES_INDEX in indices
+        index_exists = "issues" in indices
 
         # Try to get mapping for our index if it exists
         mapping = None
         if index_exists:
             try:
-                mapping_response = await es_client.indices.get_mapping(index=ES_INDEX)
+                mapping_response = await es_client.indices.get_mapping(index="issues")
                 mapping = mapping_response.body
             except Exception as e:
                 mapping = f"Error getting mapping: {e}"
@@ -390,7 +389,7 @@ async def debug_elasticsearch():
             "cluster_name": cluster_name,
             "connected": True,
             "es_url": ES_URL,
-            "es_index": ES_INDEX,
+            "es_index": "issues",
             "index_exists": index_exists,
             "available_indices": indices,
             "mapping": mapping
@@ -399,7 +398,7 @@ async def debug_elasticsearch():
         return {
             "error": f"Elasticsearch connection failed: {str(e)}",
             "es_url": ES_URL,
-            "es_index": ES_INDEX
+            "es_index": "issues"
         }
 
 
@@ -424,7 +423,7 @@ async def get_all_issues(
     issues_with_address = []
     try:
         response = await es_client.search(
-            index=ES_INDEX,
+            index="issues",
             body={
                 "query": {"match_all": {}},
                 "sort": [
@@ -612,12 +611,12 @@ async def get_issues(
 
         # First check if the index exists
         try:
-            await es_client.indices.get(index=ES_INDEX)
+            await es_client.indices.get(index="issues")
         except NotFoundError:
-            logger.warning(f"Index '{ES_INDEX}' does not exist. Returning empty results.")
+            logger.warning(f"Index 'issues' does not exist. Returning empty results.")
             return {"issues": []}
 
-        response = await es_client.search(index=ES_INDEX, body=query, request_timeout=45)
+        response = await es_client.search(index="issues", body=query, request_timeout=45)
         issues = []
 
         for hit in response["hits"]["hits"]:
@@ -639,7 +638,6 @@ async def get_issues(
     except Exception as e:
         logger.exception("Failed to retrieve nearby issues from Elasticsearch")
         logger.error(f"ES_URL: {ES_URL}")
-        logger.error(f"ES_INDEX: {ES_INDEX}")
         logger.error(f"Query: {query}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {str(e)}")
 
@@ -717,7 +715,7 @@ async def get_latest_issues(
                 }
             }
         
-        response = await es_client.search(index=ES_INDEX, body=query, request_timeout=45)
+        response = await es_client.search(index="issues", body=query, request_timeout=45)
         
         issues = []
         for hit in response["hits"]["hits"]:
@@ -807,6 +805,37 @@ async def submit_issue(
         issue_id = analysis_result.get("issue_id")
         logger.info(f"Analyzer OK for user {reporter_id}. Response: {analysis_result}")
 
+        db.collection("issue_metadata").document(issue_id).set({
+            "issue_id": issue_id,
+            "reporter": reporter_id,
+            "status": "open",
+            "upvoteCount": {
+                "open": 0,
+                "closed": 0,
+            },
+            "reportCount": {
+                "open": 0,
+                "closed": 0,
+            },
+            "fixedBy": None,
+            "fixedAt": None,
+
+            "createdAt": datetime.now(datetime.timezone.utc),
+        })
+
+        db.collection("users").document(reporter_id).set({
+            "stats": {
+                "issuesReported": firestore.Increment(1),
+                "issuesUpvoted": firestore.Increment(0),
+                "issuesFixed": firestore.Increment(0),
+            },
+            "issuesUploaded":{
+                issue_id: {
+                    "issue_id": issue_id,
+                }
+            }
+        }, merge=True)
+
         return {
             "image_url": public_url,
             "analysis": analysis_result,
@@ -841,7 +870,7 @@ async def upvote_issue(
         raise HTTPException(503, "DB unavailable")
     # ... (Rest of upvote logic remains the same) ...
     try:
-        get_resp = await es_client.get(index=ES_INDEX, id=issue_id)
+        get_resp = await es_client.get(index="issues", id=issue_id)
         status = get_resp["_source"].get("status", "open")
         if status == "open":
             script = "ctx._source.upvotes.open += 1"
@@ -855,13 +884,13 @@ async def upvote_issue(
             )
             script = "ctx._source.upvotes.open += 1"
         await es_client.update(
-            index=ES_INDEX,
+            index="issues",
             id=issue_id,
             script={"source": script, "lang": "painless"},
             refresh=True,
             retry_on_conflict=3,
         )
-        updated = await es_client.get(index=ES_INDEX, id=issue_id)
+        updated = await es_client.get(index="issues", id=issue_id)
         logger.info(
             f"Upvote OK for {issue_id}. New: {updated['_source'].get('upvotes')}"
         )
@@ -887,7 +916,7 @@ async def report_issue(
         raise HTTPException(503, "DB unavailable")
     # ... (Rest of report logic remains the same, using 'closed') ...
     try:
-        get_resp = await es_client.get(index=ES_INDEX, id=issue_id)
+        get_resp = await es_client.get(index="issues", id=issue_id)
         source = get_resp["_source"]
         status = source.get("status", "open")
         reports = source.get("reports", {})
@@ -923,7 +952,7 @@ async def report_issue(
 
         if script_defined:
             await es_client.update(
-                index=ES_INDEX,
+                index="issues",
                 id=issue_id,
                 script={"source": script, "lang": "painless", "params": params},
                 refresh=True,
@@ -932,7 +961,7 @@ async def report_issue(
         else:
             logger.info("No update script needed.")
 
-        updated = await es_client.get(index=ES_INDEX, id=issue_id)
+        updated = await es_client.get(index="issues", id=issue_id)
         new_status = updated["_source"].get("status")
         logger.info(
             f"Report OK for {issue_id}. New counts: {updated['_source'].get('reports')}, New Status: {new_status}"
