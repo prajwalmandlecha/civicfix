@@ -882,17 +882,19 @@ async def upvote_issue(
             "lang": "painless"
         }
 
-        # Update and return the document in one operation
-        update_response = await es_client.update(
+        # Perform update operation
+        await es_client.update(
             index="issues",
             id=issue_id,
             script=script,
             refresh=True,
             retry_on_conflict=3,
-            return_doc=True  # This returns the updated document
         )
 
-        updated_source = update_response['doc']
+        # Retrieve updated document
+        get_response = await es_client.get(index="issues", id=issue_id)
+        updated_source = get_response['_source']
+        
         logger.info(
             f"Upvote OK for {issue_id}. New: {updated_source.get('upvotes')}"
         )
@@ -936,17 +938,19 @@ async def unlike_issue(
             "lang": "painless"
         }
 
-        # Update and return the document in one operation
-        update_response = await es_client.update(
+        # Perform update operation
+        await es_client.update(
             index="issues",
             id=issue_id,
             script=script,
             refresh=True,
             retry_on_conflict=3,
-            return_doc=True  # This returns the updated document
         )
 
-        updated_source = update_response['doc']
+        # Retrieve updated document
+        get_response = await es_client.get(index="issues", id=issue_id)
+        updated_source = get_response['_source']
+        
         logger.info(
             f"Unlike OK for {issue_id}. New: {updated_source.get('upvotes')}"
         )
