@@ -5,10 +5,11 @@ import { auth, db } from '../firebaseConfig.js';
 import { createUserWithEmailAndPassword } from "firebase/auth";
 // --- Import Firestore functions ---
 import { doc, setDoc, serverTimestamp } from "firebase/firestore";
-import { showToast } from './shared.js';
+// --- Import shared functions AND the new auth listener ---
+import { showToast, initThemeToggle, initMobileMenu } from './shared.js'; // Added theme/menu
+import { initializeAuthListener } from './auth.js'; // <-- ADD THIS
 
 const signupForm = document.getElementById('signup-form');
-// --- Get new "name" input ---
 const nameInput = document.getElementById('name');
 const emailInput = document.getElementById('email');
 const passwordInput = document.getElementById('password');
@@ -20,7 +21,6 @@ if (signupForm) {
         e.preventDefault();
         errorMessageElement.textContent = '';
 
-        // --- Read new "name" value ---
         const name = nameInput.value.trim();
         const email = emailInput.value.trim();
         const password = passwordInput.value;
@@ -40,7 +40,6 @@ if (signupForm) {
             return;
         }
 
-        // --- Disable button during signup ---
         const submitButton = signupForm.querySelector('button[type="submit"]');
         submitButton.disabled = true;
         submitButton.textContent = 'Creating account...';
@@ -52,20 +51,17 @@ if (signupForm) {
             console.log('Auth user created:', user.uid);
 
             // --- Step 2: Create user document in Firestore ---
-            // Create a reference to the new document in 'users' collection using the user's UID
             const userDocRef = doc(db, "users", user.uid);
 
-            // Define the data for the new user document
             const newUserDoc = {
                 name: name,
                 email: email,
                 userType: "citizen", // Set default userType
-                createdAt: serverTimestamp(), // Add a server timestamp
-                karma: 0, // Initialize karma
-                lastLocation: null // Initialize location
+                createdAt: serverTimestamp(),
+                karma: 0,
+                lastLocation: null
             };
 
-            // Set the document in Firestore
             await setDoc(userDocRef, newUserDoc);
             console.log('Firestore user document created:', user.uid);
 
@@ -86,7 +82,6 @@ if (signupForm) {
             }
             errorMessageElement.textContent = message;
             showToast(`❌ ${message}`);
-            // Re-enable button on failure
             submitButton.disabled = false;
             submitButton.textContent = 'Create Account';
         }
@@ -94,3 +89,10 @@ if (signupForm) {
 } else {
     console.error("Signup form not found!");
 }
+
+// --- ADD THIS AT THE BOTTOM ---
+document.addEventListener('DOMContentLoaded', () => {
+  initializeAuthListener(); // Handles redirects if already logged in + navbar
+  initThemeToggle();        // Standard setup
+  initMobileMenu();         // Standard setup
+});

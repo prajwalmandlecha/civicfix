@@ -153,18 +153,3 @@ export const ngoLeaderboard = [
   { rank: 10, name: 'Better Streets Coalition', co2: 3890, badges: ['🌟'] }
 ];
 
-
-export function protectPage() {
-  const idToken = localStorage.getItem('firebaseIdToken');
-  const currentPage = window.location.pathname;
-
-  if (!idToken) {
-    // No token found, user is not logged in.
-    console.log("No token found, redirecting to login.");
-    // Save the page they were trying to access so we can redirect back
-    localStorage.setItem('redirectAfterLogin', currentPage);
-    // Use replace() so the user can't click the "back" button to the protected page
-    window.location.replace('/login.html');
-  }
-  // If token exists, do nothing, let the page load.
-}
