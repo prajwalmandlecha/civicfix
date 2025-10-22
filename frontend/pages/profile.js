@@ -1,5 +1,7 @@
-import { initThemeToggle, initMobileMenu, showToast } from './shared.js'
+// import { initThemeToggle, initMobileMenu, showToast } from './shared.js'
+import { initThemeToggle, initMobileMenu, showToast, protectPage } from './shared.js';
 
+protectPage();
 document.addEventListener('DOMContentLoaded', () => {
   initThemeToggle();
   initMobileMenu();

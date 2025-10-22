@@ -43,11 +43,13 @@
 
         <div class="upload-card">
           <div class="upload-area" id="upload-area">
-            <input type="file" id="file-input" accept="image/*,video/*" multiple hidden>
+            <input type="file" id="file-input" accept="image/*" multiple hidden>
             <div class="upload-placeholder">
               <div class="upload-icon">📤</div>
               <p class="upload-text">Drag & drop photos or videos</p>
               <p class="upload-subtext">or click to browse</p>
+              <p class="upload-hint" style="font-size: 0.8em; color: var(--grey-text); margin-top: 10px;">Upload up to 5 images.
+                Please ensure the <strong>first image</strong> clearly shows the main issue.</p>
             </div>
             <div class="preview-container" id="preview-container"></div>
           </div>
@@ -73,9 +75,9 @@
               >
             </div>
 
-            <button class="voice-btn" id="voice-btn">
+            <!-- <button class="voice-btn" id="voice-btn">
               🎤 Record Voice Note
-            </button>
+            </button> -->
 
             <div class="anonymous-toggle">
               <label>
@@ -83,13 +85,6 @@
                 <span class="toggle-slider"></span>
                 <span class="toggle-label">🎭 Anonymous (skip karma)</span>
               </label>
-            </div>
-
-            <div class="issue-types" id="issue-types">
-              <p class="types-label">🤖 AI-Detected Issue Types:</p>
-              <div class="type-chips">
-                <span class="type-chip">🕳️ Pothole</span>
-              </div>
             </div>
 
             <button class="submit-btn" id="submit-btn" disabled>

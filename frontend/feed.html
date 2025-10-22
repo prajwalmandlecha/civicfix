@@ -1,13 +1,16 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
     <link rel="icon" type="image/svg+xml" href="/vite.svg" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>StreetFeed - CivicFix</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
+      rel="stylesheet"
+    />
   </head>
   <body>
     <!-- Navigation -->
@@ -23,13 +26,21 @@
           <span></span>
         </button>
         <ul class="nav-menu" id="nav-menu">
-          <li><a href="/feed.html" class="nav-link active">📰 StreetFeed</a></li>
+          <li>
+            <a href="/feed.html" class="nav-link active">📰 StreetFeed</a>
+          </li>
           <li><a href="/map.html" class="nav-link">🗺️ StreetHeat</a></li>
           <li><a href="/upload.html" class="nav-link">📸 Upload</a></li>
-          <li><a href="/leaderboard.html" class="nav-link">🏆 Leaderboard</a></li>
+          <li>
+            <a href="/leaderboard.html" class="nav-link">🏆 Leaderboard</a>
+          </li>
           <li><a href="/profile.html" class="nav-link">👤 Profile</a></li>
         </ul>
-        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+        <button
+          id="theme-toggle"
+          class="theme-toggle"
+          aria-label="Toggle theme"
+        >
           <span class="theme-icon">☀️</span>
         </button>
       </div>
@@ -42,9 +53,11 @@
         <p class="page-subtitle">Trending Issues in Your Community</p>
 
         <div class="filter-pills">
-          <button class="filter-pill active" data-filter="all">All Issues</button>
+          <button class="filter-pill active" data-filter="all">
+            All Issues
+          </button>
           <button class="filter-pill" data-filter="open">Open</button>
-          <button class="filter-pill" data-filter="verified">Verified</button>
+          <!-- <button class="filter-pill" data-filter="verified">Verified</button> -->
           <button class="filter-pill" data-filter="closed">Closed</button>
         </div>
 
