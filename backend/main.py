@@ -149,22 +149,24 @@ async def shutdown_event():
 # --- NEW: Firebase Authentication Middleware ---
 @app.middleware("http")
 async def verify_firebase_token_middleware(request: Request, call_next):
+    # Log every incoming request method and path
+    logger.info(f"Incoming request: {request.method} {request.url.path}")
     # Allow access to docs and root path without authentication
-    # --- ADDED /api/issues, /issues/, /issues/latest to the public list ---
-    public_paths = ["/", "/docs", "/openapi.json", "/api/issues", "/issues/", "/issues/latest"]
+    public_paths = ["/", "/docs", "/openapi.json", "/api/issues", "/issues/", "/issues/latest", "/test-gcs"]
 
-    # Check if the path *starts with* /api/issues (in case of /api/issues/123)
-    # A simpler check for now:
     if request.url.path in public_paths:
+        logger.debug(f"Public path access, skipping auth: {request.url.path}")
         response = await call_next(request)
         return response
 
     # Allow OPTIONS requests for CORS preflight
     if request.method == "OPTIONS":
+        logger.debug(f"CORS preflight request: {request.method} {request.url.path}")
         response = await call_next(request)
         return response
 
-    if not default_app:  # Check if Firebase initialized
+    # Check Firebase initialization
+    if not default_app:
         logger.error("Firebase Admin SDK not initialized. Cannot verify token.")
         raise HTTPException(
             status_code=status.HTTP_503_SERVICE_UNAVAILABLE,
@@ -172,9 +174,11 @@ async def verify_firebase_token_middleware(request: Request, call_next):
         )
 
     auth_header = request.headers.get("Authorization")
+    logger.debug(f"Authorization header received: {auth_header}")
+    logger.debug(f"All headers: {dict(request.headers)}")
     if not auth_header or not auth_header.startswith("Bearer "):
         logger.warning(
-            f"Missing or invalid Authorization header for: {request.url.path}"
+            f"Missing or invalid Authorization header for: {request.method} {request.url.path} - Header: {auth_header}"
         )
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
@@ -205,9 +209,10 @@ async def verify_firebase_token_middleware(request: Request, call_next):
         )
     except (ValueError, firebase_auth_errors.InvalidIdTokenError) as e:
         logger.error(f"Invalid token received: {e}")
+        logger.error(f"Token that failed: {id_token[:50]}..." if id_token else "No token")
         raise HTTPException(
             status_code=status.HTTP_401_UNAUTHORIZED,
-            detail="Invalid authentication token",
+            detail=f"Invalid authentication token: {str(e)}",
         )
     except Exception as e:
         logger.exception(f"Unexpected error during token verification: {e}")
@@ -235,8 +240,6 @@ async def get_optional_user(request: Request) -> Optional[dict]:
     return getattr(request.state, "user", None)
 
 
-# --- CORS Middleware (MUST come AFTER Auth Middleware if applied globally) ---
-# Actually, middleware order is defined by app.add_middleware order. Auth first is fine.
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -245,17 +248,16 @@ app.add_middleware(
     allow_credentials=True,
 )
 
-# --- GCS and Geocoder ---
 try:
-    storage_client = storage.Client()
-    logger.info("GCS client init.")
+    # Initialize GCS client with GCS service account credentials (different from Firebase)
+    storage_client = storage.Client.from_service_account_json("../secrets/civicfix-474613-613212b7d832.json")
+    logger.info("GCS client initialized successfully.")
 except Exception as gcs_err:
-    logger.error(f"GCS client init fail: {gcs_err}")
+    logger.error(f"GCS client initialization failed: {gcs_err}")
     storage_client = None
 geolocator = Nominatim(user_agent="civicfix_backend_app_v6")  # Incremented version
 
 
-# --- Geocoding Helper ---
 def geocode_location(address: str, attempts=3) -> Optional[Dict[str, Any]]:
     # ... (Keep the working geocode_location function) ...
     logger.info(f"Attempting geocode: '{address}'")
@@ -292,6 +294,69 @@ def geocode_location(address: str, attempts=3) -> Optional[Dict[str, Any]]:
 async def root():
     # ... (Keep root, public access allowed by middleware) ...
     return {"message": "CivicFix API Gateway - Running"}
+
+
+@app.get("/test-gcs")
+async def test_gcs_bucket():
+    """
+    Test endpoint to verify GCS bucket connectivity without authentication.
+    Creates a test file, uploads it, reads it back, and deletes it.
+    """
+    if not storage_client:
+        return {
+            "status": "error",
+            "message": "GCS client not initialized",
+            "bucket_name": BUCKET_NAME
+        }
+    
+    if not BUCKET_NAME:
+        return {
+            "status": "error",
+            "message": "GCS_BUCKET_NAME environment variable not set"
+        }
+    
+    try:
+        bucket = storage_client.bucket(BUCKET_NAME)
+        
+        # Create a test file
+        test_filename = f"test/{uuid.uuid4()}.txt"
+        test_content = f"Test file created at {datetime.utcnow().isoformat()}"
+        
+        # Upload test file (this will fail if bucket doesn't exist or no permissions)
+        blob = bucket.blob(test_filename)
+        blob.upload_from_string(test_content, content_type="text/plain")
+        logger.info(f"Test file uploaded: {test_filename}")
+        
+        # Read test file back
+        downloaded_content = blob.download_as_text()
+        
+        # Generate public URL
+        public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{test_filename}"
+        
+        # Delete test file
+        blob.delete()
+        logger.info(f"Test file deleted: {test_filename}")
+        
+        return {
+            "status": "success",
+            "message": "GCS bucket is accessible and working correctly",
+            "bucket_name": BUCKET_NAME,
+            "test_file": test_filename,
+            "uploaded_content": test_content,
+            "downloaded_content": downloaded_content,
+            "content_match": test_content == downloaded_content,
+            "public_url_format": public_url,
+            "service_account": storage_client.project
+        }
+        
+    except Exception as e:
+        logger.exception("GCS test failed")
+        return {
+            "status": "error",
+            "message": f"GCS test failed: {str(e)}",
+            "bucket_name": BUCKET_NAME,
+            "error_type": type(e).__name__
+        }
 
 
 @app.get("/debug/es")
@@ -675,13 +740,12 @@ async def get_latest_issues(
 # --- Submit Issue Endpoint (Requires Auth) ---
 @app.post("/submit-issue")
 async def submit_issue(
-    # --- Added user dependency ---
-    user: dict = Depends(get_current_user),  # Requires valid token
+    user: dict = Depends(get_current_user), 
     file: UploadFile = File(...),
-    location_text: str = Form(...),
+    locationstr: str = Form(...),
     description: str = Form(...),
-    # --- Added is_anonymous form field ---
     is_anonymous: bool = Form(False),
+    labels: Optional[List[str]] = Form(None),
 ):
     # ... (Keep geocoding and GCS upload logic) ...
     if not storage_client:
@@ -690,9 +754,9 @@ async def submit_issue(
         raise HTTPException(400, "No file")
     if not (file.content_type or "").startswith("image/"):
         raise HTTPException(400, "Image only")
-    geocoded = geocode_location(location_text)
+    geocoded = geocode_location(locationstr)
     if not geocoded:
-        raise HTTPException(400, f"Cannot find coords for: '{location_text}'.")
+        raise HTTPException(400, f"Cannot find coords for: '{locationstr}'.")
     file_uuid = uuid.uuid4()
     file.filename = f"issues/{file_uuid}"
     data = await file.read()
@@ -729,8 +793,7 @@ async def submit_issue(
                 "longitude": geocoded["longitude"],
             },
             "timestamp": geocoded["timestamp"],
-            "user_selected_labels": [],
-            # --- Pass reporter info ---
+            "user_selected_labels": labels or [],
             "reported_by": reporter_id,
             "source": source_type,
         }
@@ -738,6 +801,7 @@ async def submit_issue(
         analyzer_response = requests.post(
             f"{CLOUD_ANALYZER_URL}/analyze/", json=analyzer_payload, timeout=60
         )
+        logger.debug(f"Analyzer response: {analyzer_response.text}")
         analyzer_response.raise_for_status()
         analysis_result = analyzer_response.json()
         logger.info(f"Analyzer OK for user {reporter_id}. Response: {analysis_result}")
@@ -745,7 +809,7 @@ async def submit_issue(
         return {
             "image_url": public_url,
             "analysis": analysis_result,
-            "location_text": location_text,
+            "location_text": locationstr,
             "location_coords": {
                 "latitude": geocoded["latitude"],
                 "longitude": geocoded["longitude"],
