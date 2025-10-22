@@ -1,4 +1,5 @@
 from datetime import datetime, timedelta, timezone
+import asyncio
 import json
 import uuid
 import logging
@@ -162,6 +163,8 @@ async def verify_firebase_token_middleware(request: Request, call_next):
         "/docs",
         "/openapi.json",
         "/api/issues",
+        "/issues/",
+        "/issues/latest",
         "/favicon.ico",  # Keep if you added it
         "/api/leaderboard/citizens",  # <-- ADD THIS
         "/api/leaderboard/ngos",  # <-- ADD THIS
@@ -359,6 +362,168 @@ async def get_all_issues(
     except Exception as e:
         logger.exception("Failed severely during fetch/process issues")
         raise HTTPException(500, f"Database query or processing failed: {e}")
+
+
+@app.get("/issues/")
+async def get_issues(
+    latitude: float,
+    longitude: float,
+    radius_km: float = 5.0,
+    limit: int = 10,
+    skip: int = 0,
+    days_back: int = 30,
+    user: Optional[dict] = Depends(get_optional_user),
+):
+    """
+    Get issues near a location, sorted by distance and recency.
+    
+    Args:
+        latitude: Location latitude
+        longitude: Location longitude
+        radius_km: Search radius in kilometers (default 5km)
+        limit: Maximum number of results (default 10)
+        skip: Number of results to skip for pagination (default 0)
+        days_back: Only include issues from last N days (default 30)
+    """
+    if not es_client:
+        raise HTTPException(503, "DB unavailable")
+    
+    try:
+        date_threshold = (
+            datetime.now(timezone.utc) - timedelta(days=days_back)
+        ).isoformat()
+
+        query = {
+            "size": limit,
+            "from": skip,  # Add pagination support
+            "query": {
+                "bool": {
+                    "must": [{"range": {"created_at": {"gte": date_threshold}}}],
+                    "filter": [
+                        {
+                            "geo_distance": {
+                                "distance": f"{radius_km}km",
+                                "location": {"lat": latitude, "lon": longitude},
+                            }
+                        }
+                    ],
+                }
+            },
+            "sort": [
+                {
+                    "_geo_distance": {
+                        "location": {"lat": latitude, "lon": longitude},
+                        "order": "asc",
+                        "unit": "km",
+                    }
+                },
+                {"created_at": {"order": "desc"}},
+            ],
+            "_source": [
+                "issue_id",
+                "location",
+                "description",
+                "issue_types",
+                "severity_score",
+                "status",
+                "created_at",
+                "photo_url",
+                "upvotes",
+                "impact_score",
+                "detected_issues",
+                "created_at",
+            ],
+        }
+
+        response = await es_client.search(
+            index="issues", body=query, request_timeout=45
+        )
+        issues = []
+
+        for hit in response["hits"]["hits"]:
+            issue_data = hit["_source"]
+            if hit.get("sort"):
+                issue_data["distance_km"] = hit["sort"][0]
+            issues.append(issue_data)
+
+        total_hits = response["hits"]["total"]["value"]
+        
+        logger.info(
+            f"Found {len(issues)} issues near ({latitude}, {longitude}) within {radius_km}km (skip={skip}, total={total_hits})"
+        )
+        return {
+            "location": {"latitude": latitude, "longitude": longitude},
+            "radius_km": radius_km,
+            "count": len(issues),
+            "total": total_hits,  # Total available results
+            "skip": skip,
+            "issues": issues,
+        }
+
+    except Exception as e:
+        logger.exception("Failed to retrieve nearby issues from Elasticsearch")
+        raise HTTPException(500, "Internal server error")
+
+
+@app.get("/issues/latest")
+async def get_latest_issues(
+    limit: int = 10,
+    days_back: Optional[int] = None,
+    user: Optional[dict] = Depends(get_optional_user),
+):
+    """
+    Get the latest issues sorted by reported time.
+    
+    Args:
+        limit: Maximum number of results (default 10)
+        days_back: Only include issues from last N days (optional)
+    """
+    if not es_client:
+        raise HTTPException(503, "DB unavailable")
+    
+    try:
+        query = {
+            "size": limit,
+            "query": {"match_all": {}},
+            "sort": [{"created_at": {"order": "desc"}}],
+            "_source": [
+                "issue_id",
+                "location",
+                "description",
+                "issue_types",
+                "severity_score",
+                "status",
+                "created_at",
+                "photo_url",
+                "upvotes",
+                "impact_score",
+                "detected_issues",
+                "created_at",
+            ],
+        }
+
+        # Add date filter if days_back is specified
+        if days_back:
+            date_threshold = (
+                datetime.now(timezone.utc) - timedelta(days=days_back)
+            ).isoformat()
+            query["query"] = {"range": {"created_at": {"gte": date_threshold}}}
+
+        response = await es_client.search(
+            index="issues", body=query, request_timeout=45
+        )
+
+        issues = []
+        for hit in response["hits"]["hits"]:
+            issue_data = hit["_source"]
+            issues.append(issue_data)
+
+        logger.info(f"Retrieved {len(issues)} latest issues")
+        return {"count": len(issues), "issues": issues}
+
+    except Exception as e:
+        logger.exception("Failed to retrieve latest issues from Elasticsearch")
+        raise HTTPException(500, "Internal server error")
 
 
 @app.post("/submit-issue")
@@ -767,13 +932,13 @@ async def submit_fix(
             raise HTTPException(status_code=403, detail="User profile not found.")
 
         user_type = user_doc.to_dict().get("userType")
-        if user_type != "ngo":
+        if user_type not in ["ngo", "volunteer"]:
             logger.warning(
-                f"User {user_uid} is not an NGO (userType: {user_type}). Cannot submit fix."
+                f"User {user_uid} is not an NGO/Volunteer (userType: {user_type}). Cannot submit fix."
             )
-            raise HTTPException(status_code=403, detail="Only NGOs can submit fixes.")
+            raise HTTPException(status_code=403, detail="Only NGOs and Volunteers can submit fixes.")
 
-        logger.info(f"User {user_uid} verified as NGO.")
+        logger.info(f"User {user_uid} verified as {user_type}.")
     except Exception as e:
         logger.exception(f"Error verifying NGO status for {user_uid}: {e}")
         raise HTTPException(status_code=500, detail="Error verifying user permissions.")
@@ -915,7 +1080,7 @@ async def get_ngo_leaderboard():
         users_ref = db.collection("users")
         # Query for userType == "ngo", order by karma descending, limit to 10
         query = (
-            users_ref.where(field_path="userType", op_string="==", value="ngo")
+            users_ref.where(field_path="userType", op_string="in", value=["ngo", "volunteer"])
             .order_by("karma", direction="DESCENDING")
             .limit(10)
         )
@@ -940,3 +1105,5 @@ async def get_ngo_leaderboard():
     except Exception as e:
         logger.exception(f"Error fetching NGO leaderboard: {e}")
         raise HTTPException(500, "Failed to fetch NGO leaderboard")
+
+

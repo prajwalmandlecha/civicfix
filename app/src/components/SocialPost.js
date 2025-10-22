@@ -6,11 +6,10 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
-  Animated,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
+import api from "../services/api";
 
 const SocialPost = ({
   postId,
@@ -21,7 +20,6 @@ const SocialPost = ({
   co2Impact,
   likes,
   status,
-  onLike,
   onFixToggle,
   onSameIssue,
   onPress,
@@ -30,38 +28,21 @@ const SocialPost = ({
   createdAt,
   severityScore,
   distanceKm,
+  userType,
+  onUploadFix,
 }) => {
-  const [isLiked, setIsLiked] = useState(false);
-  const [scaleValue] = useState(new Animated.Value(1));
   const [isReported, setIsReported] = useState(false);
   // console.log("Issue Types in SocialPost:", issueTypes);
 
-  const handleLike = () => {
-    // Toggle liked state
-    setIsLiked(!isLiked);
-
-    // Animate heart scale
-    Animated.sequence([
-      Animated.timing(scaleValue, {
-        toValue: 1.3,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-      Animated.timing(scaleValue, {
-        toValue: 1,
-        duration: 150,
-        useNativeDriver: true,
-      }),
-    ]).start();
-
-    // Call parent handler
-    onLike();
-  };
-
   const getImpactColor = () => {
+    // For closed issues, show light green background
+    if (status?.toLowerCase() === "closed") {
+      return "#e8f5e9"; // Light green
+    }
+    // For open issues, use impact level colors
     if (impactLevel === "High") return "#ffebee"; // Light red
     if (impactLevel === "Medium") return "#fff3e0"; // Light orange
-    return "#e8f5e9"; // Light green for Low
+    return "#e8f5e9"; // Light green
   };
 
   const getTagColor = () => {
@@ -128,55 +109,43 @@ const SocialPost = ({
 
         {/* Actions Row */}
         <View style={styles.actionsRow}>
-          {/* Likes */}
-          <View style={styles.likesContainer}>
+          {userType === "volunteer" && status?.toLowerCase() === "open" ? (
             <TouchableOpacity
-              onPress={handleLike}
-              style={styles.likeButton}
-              activeOpacity={0.7}
-              hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+              style={styles.uploadFixButton}
+              onPress={onUploadFix}
             >
-              <Animated.View
-                style={{
-                  transform: [{ scale: scaleValue }],
-                  alignItems: "center",
-                  justifyContent: "center",
-                }}
-              >
-                {isLiked ? (
-                  <FontAwesome name="thumbs-up" size={24} color="#0d6efd" />
-                ) : (
-                  <FontAwesome name="thumbs-o-up" size={24} color="#6c757d" />
-                )}
-              </Animated.View>
+              <Ionicons
+                name="construct"
+                size={16}
+                color="#fff"
+                style={{ marginRight: 6 }}
+              />
+              <Text style={styles.uploadFixButtonText}>Upload Fix</Text>
             </TouchableOpacity>
-            <View style={styles.likesCountContainer}>
-              <Text style={styles.likesCount}>{likes}</Text>
-            </View>
-          </View>
-
-          <TouchableOpacity
-            style={[
-              styles.reportButton,
-              isReported && styles.reportButtonReported,
-            ]}
-            onPress={handleReport}
-          >
-            <Ionicons
-              name={isReported ? "flag" : "flag-outline"}
-              size={16}
-              color={isReported ? "#fff" : "#dc3545"}
-              style={{ marginRight: 6 }}
-            />
-            <Text
+          ) : userType !== "volunteer" ? (
+            <TouchableOpacity
               style={[
-                styles.reportButtonText,
-                isReported && styles.reportButtonTextReported,
+                styles.reportButton,
+                isReported && styles.reportButtonReported,
               ]}
+              onPress={handleReport}
             >
-              {isReported ? "Reported" : "Report"}
-            </Text>
-          </TouchableOpacity>
+              <Ionicons
+                name={isReported ? "flag" : "flag-outline"}
+                size={16}
+                color={isReported ? "#fff" : "#dc3545"}
+                style={{ marginRight: 6 }}
+              />
+              <Text
+                style={[
+                  styles.reportButtonText,
+                  isReported && styles.reportButtonTextReported,
+                ]}
+              >
+                {isReported ? "Reported" : "Report"}
+              </Text>
+            </TouchableOpacity>
+          ) : null}
         </View>
 
         {/* Status Button */}
@@ -307,28 +276,8 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "space-between",
+    justifyContent: "flex-end",
     marginBottom: 12,
-  },
-  likesContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  likeButton: {
-    marginRight: 8,
-    padding: 4,
-  },
-  heartIcon: {
-    fontSize: 24,
-  },
-  likesCountContainer: {
-    flexDirection: "row",
-    alignItems: "center",
-  },
-  likesCount: {
-    fontSize: 16,
-    fontWeight: "500",
-    color: "#333",
   },
   reportButton: {
     flexDirection: "row",
@@ -350,6 +299,19 @@ const styles = StyleSheet.create({
     color: "#dc3545",
   },
   reportButtonTextReported: {
+    color: "#fff",
+  },
+  uploadFixButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    backgroundColor: "#4CAF79",
+  },
+  uploadFixButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
     color: "#fff",
   },
   sameIssueButton: {

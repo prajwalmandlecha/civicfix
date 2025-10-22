@@ -9,6 +9,7 @@ import {
   Image,
   ScrollView,
   Switch,
+  Modal,
 } from "react-native";
 import MapView, {
   Marker,
@@ -17,6 +18,7 @@ import MapView, {
   Callout,
 } from "react-native-maps";
 import * as Location from "expo-location";
+import Ionicons from "@expo/vector-icons/Ionicons";
 import { useUserContext } from "../context/UserContext";
 import api from "../services/api";
 
@@ -44,17 +46,15 @@ const getSeverityColor = (severityScore) => {
 const getStatusColor = (status) => {
   switch (status?.toLowerCase()) {
     case "closed":
-      return "#22C55E";
-    case "verified":
-      return "#EAB308";
+      return "#22C55E"; // Green
     case "open":
-      return "#F97316";
+      return "#F97316"; // Orange
     default:
-      return "#9CA3AF";
+      return "#9CA3AF"; // Gray
   }
 };
 
-const MapScreen = () => {
+const MapScreen = ({ navigation }) => {
   const mapRef = useRef(null);
   const [issues, setIssues] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -64,6 +64,12 @@ const MapScreen = () => {
   const [showMarkers, setShowMarkers] = useState(true);
   const [currentZoom, setCurrentZoom] = useState(13);
   const [locationError, setLocationError] = useState(false);
+  const [filtersVisible, setFiltersVisible] = useState(false);
+  const [filters, setFilters] = useState({
+    status: "open", // all, open, closed (default to open)
+    severity: "all", // all, high, medium, low
+    sortBy: "severity", // severity, date, distance
+  });
   const [region, setRegion] = useState({
     latitude: 12.9716,
     longitude: 77.5946,
@@ -71,9 +77,50 @@ const MapScreen = () => {
     longitudeDelta: 0.0421,
   });
 
+  const { userType } = useUserContext();
+
   const displayIssues = React.useMemo(() => {
-    return issues.filter((issue) => issue.status?.toLowerCase() !== "closed");
-  }, [issues]);
+    let filtered = [...issues];
+
+    // Filter by status
+    if (filters.status !== "all") {
+      filtered = filtered.filter(
+        (issue) => issue.status?.toLowerCase() === filters.status
+      );
+    }
+
+    // Filter by severity
+    if (filters.severity !== "all") {
+      filtered = filtered.filter((issue) => {
+        const severity = issue.severity_score || 0;
+        switch (filters.severity) {
+          case "high":
+            return severity >= 7;
+          case "medium":
+            return severity >= 4 && severity < 7;
+          case "low":
+            return severity < 4;
+          default:
+            return true;
+        }
+      });
+    }
+
+    // Sort issues
+    filtered.sort((a, b) => {
+      switch (filters.sortBy) {
+        case "date":
+          return new Date(b.created_at) - new Date(a.created_at);
+        case "distance":
+          return (a.distance_km || 0) - (b.distance_km || 0);
+        case "severity":
+        default:
+          return (b.severity_score || 0) - (a.severity_score || 0);
+      }
+    });
+
+    return filtered;
+  }, [issues, filters]);
 
   useEffect(() => {
     initializeMap();
@@ -268,6 +315,35 @@ const MapScreen = () => {
     setSelectedIssue(issue);
   };
 
+  const handleUploadFix = (issue) => {
+    // Convert issue format to match what FixUploadScreen expects
+    const issueData = {
+      id: issue.issue_id,
+      postImage: issue.photo_url ? { uri: issue.photo_url } : null,
+      location: `${issue.location?.lat?.toFixed(
+        4
+      )}, ${issue.location?.lon?.toFixed(4)}`,
+      issueTypes: issue.issue_types?.map((type) => ({ type })) || [],
+    };
+
+    navigation.navigate("FixUpload", {
+      issueId: issue.issue_id,
+      issueData: issueData,
+    });
+  };
+
+  const updateFilter = (filterType, value) => {
+    setFilters((prev) => ({ ...prev, [filterType]: value }));
+  };
+
+  const resetFilters = () => {
+    setFilters({
+      status: "open", // Reset to open (not all)
+      severity: "all",
+      sortBy: "severity",
+    });
+  };
+
   const handleRefresh = useCallback(async () => {
     if (locationError) {
       // Try to reinitialize if there was a location error
@@ -329,11 +405,19 @@ const MapScreen = () => {
       <View style={styles.filterBar}>
         <View style={styles.filterLeft}>
           <Text style={styles.issueCountText}>
-            {displayIssues.length} issues
+            {displayIssues.length} of {issues.length} issues
           </Text>
         </View>
 
         <View style={styles.filterRight}>
+          <TouchableOpacity
+            style={styles.filterSettingsBtn}
+            onPress={() => setFiltersVisible(true)}
+            activeOpacity={0.7}
+          >
+            <Ionicons name="options" size={18} color="#fff" />
+          </TouchableOpacity>
+
           <TouchableOpacity
             style={[styles.filterBtn, showHeatmap && styles.filterBtnActive]}
             onPress={toggleHeatmap}
@@ -345,7 +429,7 @@ const MapScreen = () => {
                 showHeatmap && styles.filterBtnTextActive,
               ]}
             >
-              Heatmap
+              Heat
             </Text>
           </TouchableOpacity>
 
@@ -360,7 +444,7 @@ const MapScreen = () => {
                 showMarkers && styles.filterBtnTextActive,
               ]}
             >
-              Markers
+              Pins
             </Text>
           </TouchableOpacity>
 
@@ -369,7 +453,7 @@ const MapScreen = () => {
             onPress={handleRefresh}
             activeOpacity={0.7}
           >
-            <Text style={styles.refreshBtnText}>Refresh</Text>
+            <Text style={styles.refreshBtnText}>↻</Text>
           </TouchableOpacity>
         </View>
       </View>
@@ -451,9 +535,138 @@ const MapScreen = () => {
         </View>
       )}
 
+      {/* Filter Modal */}
+      <Modal
+        visible={filtersVisible}
+        animationType="slide"
+        transparent={true}
+        onRequestClose={() => setFiltersVisible(false)}
+      >
+        <View style={styles.modalOverlay}>
+          <View style={styles.filterModal}>
+            <View style={styles.filterModalHeader}>
+              <Text style={styles.filterModalTitle}>Filters</Text>
+              <TouchableOpacity
+                onPress={() => setFiltersVisible(false)}
+                style={styles.filterCloseButton}
+              >
+                <Text style={styles.filterCloseButtonText}>×</Text>
+              </TouchableOpacity>
+            </View>
+
+            <ScrollView style={styles.filterModalContent}>
+              {/* Status Filter */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Status</Text>
+                <View style={styles.filterOptions}>
+                  {["all", "open", "closed"].map((status) => (
+                    <TouchableOpacity
+                      key={status}
+                      style={[
+                        styles.filterOption,
+                        filters.status === status &&
+                          styles.filterOptionSelected,
+                      ]}
+                      onPress={() => updateFilter("status", status)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterOptionText,
+                          filters.status === status &&
+                            styles.filterOptionTextSelected,
+                        ]}
+                      >
+                        {status.charAt(0).toUpperCase() + status.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Severity Filter */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Severity</Text>
+                <View style={styles.filterOptions}>
+                  {["all", "high", "medium", "low"].map((severity) => (
+                    <TouchableOpacity
+                      key={severity}
+                      style={[
+                        styles.filterOption,
+                        filters.severity === severity &&
+                          styles.filterOptionSelected,
+                      ]}
+                      onPress={() => updateFilter("severity", severity)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterOptionText,
+                          filters.severity === severity &&
+                            styles.filterOptionTextSelected,
+                        ]}
+                      >
+                        {severity.charAt(0).toUpperCase() + severity.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Sort By */}
+              <View style={styles.filterSection}>
+                <Text style={styles.filterSectionTitle}>Sort By</Text>
+                <View style={styles.filterOptions}>
+                  {["severity", "date", "distance"].map((sort) => (
+                    <TouchableOpacity
+                      key={sort}
+                      style={[
+                        styles.filterOption,
+                        filters.sortBy === sort && styles.filterOptionSelected,
+                      ]}
+                      onPress={() => updateFilter("sortBy", sort)}
+                    >
+                      <Text
+                        style={[
+                          styles.filterOptionText,
+                          filters.sortBy === sort &&
+                            styles.filterOptionTextSelected,
+                        ]}
+                      >
+                        {sort.charAt(0).toUpperCase() + sort.slice(1)}
+                      </Text>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              </View>
+
+              {/* Action Buttons */}
+              <View style={styles.filterActions}>
+                <TouchableOpacity
+                  style={styles.resetButton}
+                  onPress={resetFilters}
+                >
+                  <Text style={styles.resetButtonText}>Reset</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={styles.applyButton}
+                  onPress={() => setFiltersVisible(false)}
+                >
+                  <Text style={styles.applyButtonText}>Apply</Text>
+                </TouchableOpacity>
+              </View>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
+
       {/* Issue Detail Card */}
       {selectedIssue && (
-        <View style={styles.detailCard}>
+        <View
+          style={[
+            styles.detailCard,
+            selectedIssue.status?.toLowerCase() === "closed" &&
+              styles.detailCardClosed,
+          ]}
+        >
           <ScrollView>
             <View style={styles.detailHeader}>
               <Text style={styles.detailTitle}>
@@ -542,6 +755,21 @@ const MapScreen = () => {
                   </Text>
                 )}
               </View>
+
+              {/* Action Button for Volunteers */}
+              {userType === "volunteer" &&
+                selectedIssue.status?.toLowerCase() === "open" && (
+                  <TouchableOpacity
+                    style={styles.uploadFixButtonCard}
+                    onPress={() => {
+                      setSelectedIssue(null);
+                      handleUploadFix(selectedIssue);
+                    }}
+                  >
+                    <Ionicons name="construct" size={20} color="#fff" />
+                    <Text style={styles.uploadFixButtonText}>Upload Fix</Text>
+                  </TouchableOpacity>
+                )}
             </View>
           </ScrollView>
         </View>
@@ -654,6 +882,9 @@ const styles = StyleSheet.create({
     shadowOpacity: 0.25,
     shadowRadius: 3.84,
     elevation: 5,
+  },
+  detailCardClosed: {
+    backgroundColor: "#e8f5e9", // Light green for closed issues
   },
   detailHeader: {
     flexDirection: "row",
@@ -805,6 +1036,136 @@ const styles = StyleSheet.create({
     fontSize: 13,
     color: "#888",
     fontWeight: "500",
+  },
+  filterSettingsBtn: {
+    backgroundColor: "#4285f4",
+    paddingHorizontal: 10,
+    paddingVertical: 6,
+    borderRadius: 16,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  modalOverlay: {
+    flex: 1,
+    backgroundColor: "rgba(0, 0, 0, 0.5)",
+    justifyContent: "flex-end",
+  },
+  filterModal: {
+    backgroundColor: "#fff",
+    borderTopLeftRadius: 20,
+    borderTopRightRadius: 20,
+    maxHeight: "70%",
+  },
+  filterModalHeader: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    padding: 16,
+    borderBottomWidth: 1,
+    borderBottomColor: "#e1e5e9",
+  },
+  filterModalTitle: {
+    fontSize: 18,
+    fontWeight: "bold",
+    color: "#333",
+  },
+  filterCloseButton: {
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: "#f0f0f0",
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  filterCloseButtonText: {
+    fontSize: 24,
+    color: "#666",
+    fontWeight: "bold",
+  },
+  filterModalContent: {
+    padding: 16,
+  },
+  filterSection: {
+    marginBottom: 24,
+  },
+  filterSectionTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 12,
+  },
+  filterOptions: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 8,
+  },
+  filterOption: {
+    backgroundColor: "#f0f0f0",
+    paddingHorizontal: 16,
+    paddingVertical: 8,
+    borderRadius: 16,
+  },
+  filterOptionSelected: {
+    backgroundColor: "#6FCF97",
+  },
+  filterOptionText: {
+    color: "#666",
+    fontSize: 14,
+    fontWeight: "500",
+  },
+  filterOptionTextSelected: {
+    color: "#fff",
+    fontWeight: "600",
+  },
+  filterActions: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    marginTop: 24,
+    paddingBottom: 16,
+  },
+  resetButton: {
+    backgroundColor: "#f0f0f0",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flex: 1,
+    marginRight: 8,
+    alignItems: "center",
+  },
+  resetButtonText: {
+    color: "#666",
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  applyButton: {
+    backgroundColor: "#6FCF97",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 8,
+    flex: 1,
+    marginLeft: 8,
+    alignItems: "center",
+  },
+  applyButtonText: {
+    color: "#fff",
+    fontWeight: "600",
+    fontSize: 15,
+  },
+  uploadFixButtonCard: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    backgroundColor: "#4CAF79",
+    paddingVertical: 14,
+    paddingHorizontal: 20,
+    borderRadius: 12,
+    marginTop: 16,
+    gap: 8,
+  },
+  uploadFixButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "600",
   },
 });
 

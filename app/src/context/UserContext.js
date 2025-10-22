@@ -18,6 +18,7 @@ export const UserProvider = ({ children }) => {
       if (userDoc.exists()) {
         const data = userDoc.data();
         setProfile(data);
+        setUserType(data.userType || null);
         if (data.lastLocation) {
           setLastLocation(data.lastLocation);
         }
@@ -60,6 +61,7 @@ export const UserProvider = ({ children }) => {
       value={{
         user,
         profile,
+        userType,
         lastLocation,
         loading,
         updateLastLocation,

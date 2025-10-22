@@ -1,4 +1,4 @@
-import React from "react";
+import React, { useState } from "react";
 import {
   View,
   Text,
@@ -10,17 +10,31 @@ import {
   Dimensions,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
+import FontAwesome from "@expo/vector-icons/FontAwesome";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
 
 const { width } = Dimensions.get("window");
 
-const IssueDetailModal = ({ visible, onClose, issueData }) => {
+const IssueDetailModal = ({
+  visible,
+  onClose,
+  issueData,
+  userType,
+  onUploadFix,
+}) => {
+  const [isLiked, setIsLiked] = useState(false);
+
   if (!issueData) return null;
 
   const getImpactColor = () => {
-    if (issueData.impactLevel === "High") return "#ffebee";
-    if (issueData.impactLevel === "Medium") return "#fff3e0";
-    return "#e8f5e9";
+    // For closed issues, show light green background
+    if (issueData.status?.toLowerCase() === "closed") {
+      return "#e8f5e9"; // Light green
+    }
+    // For open issues, use impact level colors
+    if (issueData.impactLevel === "High") return "#ffebee"; // Light red
+    if (issueData.impactLevel === "Medium") return "#fff3e0"; // Light orange
+    return "#e8f5e9"; // Light green
   };
 
   const getSeverityColor = (severity) => {
@@ -158,7 +172,92 @@ const IssueDetailModal = ({ visible, onClose, issueData }) => {
                 </Text>
               </View>
             )}
+
+            {/* Fix Status - Only for Closed Issues */}
+            {issueData.status?.toLowerCase() === "closed" &&
+              issueData.detailedData?.fix_status && (
+                <View style={styles.section}>
+                  <Text style={styles.sectionTitle}>Fix Status</Text>
+                  <View style={styles.fixStatusContainer}>
+                    <View style={styles.fixStatusItem}>
+                      <Text style={styles.fixStatusLabel}>Is Fixed:</Text>
+                      <Text
+                        style={[
+                          styles.fixStatusValue,
+                          issueData.detailedData.fix_status.is_fixed &&
+                            styles.fixStatusValueFixed,
+                        ]}
+                      >
+                        {issueData.detailedData.fix_status.is_fixed
+                          ? "✅ Yes"
+                          : "❌ No"}
+                      </Text>
+                    </View>
+                    <View style={styles.fixStatusItem}>
+                      <Text style={styles.fixStatusLabel}>Is Not Fixed:</Text>
+                      <Text
+                        style={[
+                          styles.fixStatusValue,
+                          issueData.detailedData.fix_status.is_not_fixed &&
+                            styles.fixStatusValueNotFixed,
+                        ]}
+                      >
+                        {issueData.detailedData.fix_status.is_not_fixed
+                          ? "✅ Yes"
+                          : "❌ No"}
+                      </Text>
+                    </View>
+                  </View>
+                </View>
+              )}
           </ScrollView>
+
+          {/* Action Buttons Footer */}
+          <View style={styles.actionFooter}>
+            {/* Upload Fix Button - Only for volunteers on open issues */}
+            {userType === "volunteer" &&
+            issueData.status?.toLowerCase() === "open" ? (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.uploadFixButton]}
+                onPress={() => {
+                  onClose();
+                  onUploadFix && onUploadFix(issueData);
+                }}
+              >
+                <Ionicons name="construct" size={20} color="#fff" />
+                <Text
+                  style={[
+                    styles.actionButtonText,
+                    styles.actionButtonTextActive,
+                  ]}
+                >
+                  Upload Fix
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+
+            {/* Upload Fix Button - Only for citizens on closed issues */}
+            {userType !== "volunteer" &&
+            issueData.status?.toLowerCase() === "closed" ? (
+              <TouchableOpacity
+                style={[styles.actionButton, styles.uploadFixButton]}
+                onPress={() => {
+                  onClose();
+                  onUploadFix && onUploadFix(issueData);
+                }}
+              >
+                <Ionicons name="construct" size={20} color="#fff" />
+                <Text
+                  style={[
+                    styles.actionButtonText,
+                    styles.actionButtonTextActive,
+                  ]}
+                >
+                  Upload Fix
+                </Text>
+              </TouchableOpacity>
+            ) : null}
+          </View>
         </View>
       </View>
     </Modal>
@@ -352,6 +451,71 @@ const styles = StyleSheet.create({
   dateText: {
     fontSize: 14,
     color: "#555",
+  },
+  actionFooter: {
+    flexDirection: "row",
+    padding: 16,
+    paddingBottom: 20,
+    borderTopWidth: 1,
+    borderTopColor: "rgba(0, 0, 0, 0.1)",
+    gap: 12,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 12,
+    gap: 8,
+  },
+  likeButton: {
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: "#4285f4",
+  },
+  likeButtonActive: {
+    backgroundColor: "#4285f4",
+    borderColor: "#4285f4",
+  },
+  uploadFixButton: {
+    backgroundColor: "#4CAF79",
+  },
+  actionButtonText: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#4285f4",
+  },
+  actionButtonTextActive: {
+    color: "#fff",
+  },
+  fixStatusContainer: {
+    backgroundColor: "rgba(255, 255, 255, 0.6)",
+    padding: 16,
+    borderRadius: 12,
+  },
+  fixStatusItem: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    marginBottom: 12,
+  },
+  fixStatusLabel: {
+    fontSize: 14,
+    fontWeight: "600",
+    color: "#666",
+  },
+  fixStatusValue: {
+    fontSize: 16,
+    fontWeight: "bold",
+    color: "#999",
+  },
+  fixStatusValueFixed: {
+    color: "#4CAF79",
+  },
+  fixStatusValueNotFixed: {
+    color: "#dc3545",
   },
 });
 

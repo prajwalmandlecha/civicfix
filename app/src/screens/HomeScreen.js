@@ -8,6 +8,7 @@ import {
   TouchableOpacity,
   Modal,
   ScrollView,
+  ActivityIndicator,
 } from "react-native";
 import SocialPost from "../components/SocialPost";
 import IssueDetailModal from "../components/IssueDetailModal";
@@ -15,19 +16,19 @@ import api from "../services/api";
 import { useUserContext } from "../context/UserContext";
 import * as Location from "expo-location";
 
-const HomeScreen = () => {
+const HomeScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState([]);
   const [selectedIssue, setSelectedIssue] = useState(null);
   const [modalVisible, setModalVisible] = useState(false);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [filters, setFilters] = useState({
-    status: "all", // all, open, verified, closed
+    status: "all", // all, open, closed
     severity: "all", // all, high, medium, low
     sortBy: "severity", // severity, date, likes
   });
 
-  const { lastLocation } = useUserContext();
+  const { lastLocation, userType } = useUserContext();
 
   useEffect(() => {
     getPosts();
@@ -90,13 +91,101 @@ const HomeScreen = () => {
     });
   };
 
-  const handleLike = (postId) => {
-    setPosts(
-      posts.map((post) =>
-        post.id === postId ? { ...post, likes: post.likes + 1 } : post
-      )
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
+
+  const handleLoadMore = async () => {
+    if (loadingMore || !hasMore || !lastLocation?.coords) return;
+
+    console.log(
+      `Loading more issues... Current posts: ${posts.length}, Page: ${page}`
     );
+    setLoadingMore(true);
+    const nextPage = page + 1;
+
+    try {
+      const response = await api.get("/issues/", {
+        params: {
+          latitude: lastLocation.coords.latitude,
+          longitude: lastLocation.coords.longitude,
+          limit: 20,
+          skip: posts.length, // Use current posts length as offset to avoid duplicates
+        },
+      });
+
+      console.log("Load more response:", response.data);
+
+      if (response.data && response.data.issues) {
+        const newIssues = await Promise.all(
+          response.data.issues.map(async (issue) => ({
+            id: issue.issue_id,
+            issueTypes: issue.detected_issues,
+            location: await formatLocation(issue.location),
+            postImage: {
+              uri: issue.photo_url,
+            },
+            impactLevel:
+              issue.severity_score > 7
+                ? "High"
+                : issue.severity_score > 4
+                ? "Medium"
+                : "Low",
+            co2Impact: issue.co2Impact,
+            likes: issue.upvotes?.open || 0,
+            status: issue.status,
+            description: issue.description,
+            createdAt: issue.created_at,
+            severityScore: issue.severity_score,
+            distanceKm: issue.distance_km,
+            detailedData: issue,
+          }))
+        );
+
+        console.log(
+          `Loaded ${newIssues.length} new issues. Total in backend: ${
+            response.data.total || "unknown"
+          }, Current skip: ${response.data.skip || 0}`
+        );
+
+        if (newIssues.length === 0) {
+          setHasMore(false);
+        } else {
+          // Filter out duplicates by checking if issue ID already exists
+          setPosts((prev) => {
+            const existingIds = new Set(prev.map((p) => p.id));
+            const uniqueNewIssues = newIssues.filter(
+              (issue) => !existingIds.has(issue.id)
+            );
+
+            // If no new unique issues, we've reached the end
+            if (uniqueNewIssues.length === 0) {
+              setHasMore(false);
+              return prev;
+            }
+
+            const newTotal = prev.length + uniqueNewIssues.length;
+            // Check if we've loaded all available issues
+            if (response.data.total && newTotal >= response.data.total) {
+              setHasMore(false);
+            }
+
+            return [...prev, ...uniqueNewIssues];
+          });
+          setPage(nextPage);
+        }
+      } else {
+        setHasMore(false);
+      }
+    } catch (error) {
+      console.error("Error loading more posts:", error);
+    } finally {
+      setLoadingMore(false);
+    }
   };
+
+  // Like functionality is now handled within SocialPost component
 
   const formatLocation = async (location) => {
     if (!location) return "Unknown location";
@@ -128,6 +217,10 @@ const HomeScreen = () => {
     console.log("Fetching posts for location:", lastLocation);
 
     try {
+      // Reset pagination state when fetching initial posts
+      setPage(1);
+      setHasMore(true);
+
       const response = await api.get("/issues/", {
         params: {
           latitude: lastLocation.coords.latitude,
@@ -214,8 +307,17 @@ const HomeScreen = () => {
     setSelectedIssue(null);
   };
 
+  const handleUploadFix = (post) => {
+    // Navigate to FixUploadScreen with issue data
+    navigation.navigate("FixUpload", {
+      issueId: post.id,
+      issueData: post,
+    });
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
+    // getPosts will reset pagination state internally
     await getPosts();
     setRefreshing(false);
   };
@@ -252,10 +354,11 @@ const HomeScreen = () => {
             severityScore={item.severityScore}
             distanceKm={item.distanceKm}
             detailedData={item.detailedData}
-            onLike={() => handleLike(item.id)}
+            userType={userType}
             onFixToggle={() => handleFixToggle(item.id)}
             onSameIssue={() => handleSameIssue(item.id)}
             onPress={() => handlePostPress(item)}
+            onUploadFix={() => handleUploadFix(item)}
           />
         )}
         keyExtractor={(item) => item.id.toString()}
@@ -268,6 +371,20 @@ const HomeScreen = () => {
             tintColor="#4285f4"
             colors={["#4285f4"]}
           />
+        }
+        onEndReached={handleLoadMore}
+        onEndReachedThreshold={0.5}
+        ListFooterComponent={
+          loadingMore ? (
+            <View style={styles.loadingFooter}>
+              <ActivityIndicator size="large" color="#4285f4" />
+              <Text style={styles.loadingText}>Loading more issues...</Text>
+            </View>
+          ) : !hasMore && posts.length > 0 ? (
+            <View style={styles.endFooter}>
+              <Text style={styles.endText}>No more issues to load</Text>
+            </View>
+          ) : null
         }
       />
 
@@ -398,6 +515,8 @@ const HomeScreen = () => {
         visible={modalVisible}
         onClose={handleCloseModal}
         issueData={selectedIssue}
+        userType={userType}
+        onUploadFix={handleUploadFix}
       />
     </View>
   );
@@ -533,6 +652,25 @@ const styles = StyleSheet.create({
   applyButtonText: {
     color: "#fff",
     fontWeight: "600",
+  },
+  loadingFooter: {
+    paddingVertical: 20,
+    alignItems: "center",
+    justifyContent: "center",
+  },
+  loadingText: {
+    marginTop: 10,
+    fontSize: 14,
+    color: "#666",
+  },
+  endFooter: {
+    paddingVertical: 20,
+    alignItems: "center",
+  },
+  endText: {
+    fontSize: 14,
+    color: "#999",
+    fontStyle: "italic",
   },
 });
 

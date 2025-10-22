@@ -8,48 +8,64 @@ import {
   RefreshControl,
 } from "react-native";
 import api from "../services/api";
+import { useUserContext } from "../context/UserContext";
 
 const LeaderboardScreen = () => {
   const [leaderboardData, setLeaderboardData] = useState([]);
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const { userType } = useUserContext();
 
   useEffect(() => {
     fetchLeaderboard();
-  }, []);
+  }, [userType]);
 
   const fetchLeaderboard = async () => {
     try {
       setLoading(true);
-      const response = await api.get("/leaderboard");
-      setLeaderboardData(response.data || []);
+      // Fetch appropriate leaderboard based on user type
+      const endpoint =
+        userType === "volunteer"
+          ? "/api/leaderboard/ngos"
+          : "/api/leaderboard/citizens";
+      const response = await api.get(endpoint);
+      setLeaderboardData(response.data.leaderboard || []);
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
       // Set mock data for demonstration
-      setLeaderboardData(generateMockData());
+      setLeaderboardData(generateMockData(userType === "volunteer"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const generateMockData = () => {
+  const generateMockData = (isVolunteer = false) => {
+    if (isVolunteer) {
+      return [
+        { rank: 1, name: "Community Builders NGO", co2: 3200, badges: [] },
+        { rank: 2, name: "Green Earth Foundation", co2: 2850, badges: [] },
+        { rank: 3, name: "Urban Care Society", co2: 2400, badges: [] },
+        { rank: 4, name: "Fix It Forward", co2: 2100, badges: [] },
+        { rank: 5, name: "City Volunteers", co2: 1900, badges: [] },
+        { rank: 6, name: "Road Warriors", co2: 1600, badges: [] },
+        { rank: 7, name: "Clean Streets Initiative", co2: 1400, badges: [] },
+        { rank: 8, name: "Civic Action Team", co2: 1200, badges: [] },
+        { rank: 9, name: "Local Heroes", co2: 1000, badges: [] },
+        { rank: 10, name: "Community First", co2: 800, badges: [] },
+      ];
+    }
     return [
-      { rank: 1, name: "Citizen Hero", points: 2450, issues_reported: 49 },
-      {
-        rank: 2,
-        name: "Community Champion",
-        points: 2100,
-        issues_reported: 42,
-      },
-      { rank: 3, name: "Civic Leader", points: 1850, issues_reported: 37 },
-      { rank: 4, name: "Street Guardian", points: 1600, issues_reported: 32 },
-      { rank: 5, name: "Urban Watcher", points: 1400, issues_reported: 28 },
-      { rank: 6, name: "City Helper", points: 1200, issues_reported: 24 },
-      { rank: 7, name: "Town Scout", points: 1050, issues_reported: 21 },
-      { rank: 8, name: "Alert Citizen", points: 900, issues_reported: 18 },
-      { rank: 9, name: "Watchful Eye", points: 750, issues_reported: 15 },
-      { rank: 10, name: "Good Neighbor", points: 600, issues_reported: 12 },
+      { rank: 1, name: "Citizen Hero", co2: 2450, badges: [] },
+      { rank: 2, name: "Community Champion", co2: 2100, badges: [] },
+      { rank: 3, name: "Civic Leader", co2: 1850, badges: [] },
+      { rank: 4, name: "Street Guardian", co2: 1600, badges: [] },
+      { rank: 5, name: "Urban Watcher", co2: 1400, badges: [] },
+      { rank: 6, name: "City Helper", co2: 1200, badges: [] },
+      { rank: 7, name: "Town Scout", co2: 1050, badges: [] },
+      { rank: 8, name: "Alert Citizen", co2: 900, badges: [] },
+      { rank: 9, name: "Watchful Eye", co2: 750, badges: [] },
+      { rank: 10, name: "Good Neighbor", co2: 600, badges: [] },
     ];
   };
 
@@ -84,7 +100,11 @@ const LeaderboardScreen = () => {
     <View style={styles.container}>
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Leaderboard</Text>
-        <Text style={styles.headerSubtitle}>Top Community Contributors</Text>
+        <Text style={styles.headerSubtitle}>
+          {userType === "volunteer"
+            ? "Top Volunteer Organizations"
+            : "Top Community Contributors"}
+        </Text>
       </View>
 
       <ScrollView
@@ -103,7 +123,7 @@ const LeaderboardScreen = () => {
           </View>
         ) : (
           <>
-            {/* Top 3 Podium */}
+            {/* Top 3 Podium - only show if we have at least 3 users */}
             {leaderboardData.length >= 3 && (
               <View style={styles.podiumContainer}>
                 {/* Second Place */}
@@ -120,7 +140,7 @@ const LeaderboardScreen = () => {
                     {leaderboardData[1]?.name || "N/A"}
                   </Text>
                   <Text style={styles.podiumPoints}>
-                    {leaderboardData[1]?.points || 0} pts
+                    {leaderboardData[1]?.co2 || 0} pts
                   </Text>
                   <View style={[styles.podiumBar, styles.podiumBarSecond]} />
                 </View>
@@ -139,7 +159,7 @@ const LeaderboardScreen = () => {
                     {leaderboardData[0]?.name || "N/A"}
                   </Text>
                   <Text style={styles.podiumPoints}>
-                    {leaderboardData[0]?.points || 0} pts
+                    {leaderboardData[0]?.co2 || 0} pts
                   </Text>
                   <View style={[styles.podiumBar, styles.podiumBarFirst]} />
                 </View>
@@ -158,16 +178,19 @@ const LeaderboardScreen = () => {
                     {leaderboardData[2]?.name || "N/A"}
                   </Text>
                   <Text style={styles.podiumPoints}>
-                    {leaderboardData[2]?.points || 0} pts
+                    {leaderboardData[2]?.co2 || 0} pts
                   </Text>
                   <View style={[styles.podiumBar, styles.podiumBarThird]} />
                 </View>
               </View>
             )}
 
-            {/* Rest of Leaderboard */}
+            {/* Rest of Leaderboard - show all users if less than 3, otherwise show from position 4 onwards */}
             <View style={styles.listContainer}>
-              {leaderboardData.slice(3).map((user, index) => (
+              {(leaderboardData.length < 3
+                ? leaderboardData
+                : leaderboardData.slice(3)
+              ).map((user, index) => (
                 <View key={index} style={styles.listItem}>
                   <View style={styles.listItemLeft}>
                     <View style={styles.rankBadge}>
@@ -176,12 +199,12 @@ const LeaderboardScreen = () => {
                     <View style={styles.userInfo}>
                       <Text style={styles.userName}>{user.name}</Text>
                       <Text style={styles.userStats}>
-                        {user.issues_reported} issues reported
+                        {user.badges?.length || 0} badges earned
                       </Text>
                     </View>
                   </View>
                   <View style={styles.pointsBadge}>
-                    <Text style={styles.pointsText}>{user.points}</Text>
+                    <Text style={styles.pointsText}>{user.co2}</Text>
                     <Text style={styles.pointsLabel}>pts</Text>
                   </View>
                 </View>
