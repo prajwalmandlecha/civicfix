@@ -1,8 +1,9 @@
+// frontend/pages/upload.js
 import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
-import { initializeAuthListener } from './auth.js'; // Import the main auth router
-// No need to import protectPage, initializeAuthListener handles it.
+import { initializeAuthListener } from './auth.js';
 
-let uploadedFiles = []; // Array to hold multiple files
+// --- Reverted to single file variable ---
+let uploadedFile = null;
 
 function initUploadArea() {
     const uploadArea = document.getElementById('upload-area');
@@ -18,177 +19,171 @@ function initUploadArea() {
         return;
     }
 
-    // Function to check if submit should be enabled
+    // --- UPDATED: Check state for single file ---
     const checkSubmitButtonState = () => {
-        const hasFiles = uploadedFiles.length > 0;
+        const hasFile = uploadedFile != null; // Check single file
         const hasLocationText = locationInput.value.trim().length > 2;
-        
-        // Optional: Enforce a limit (e.g., 5 images total)
-        const maxFiles = 5;
-        if (uploadedFiles.length > maxFiles) {
-            showToast(`⚠️ Max ${maxFiles} images. ${uploadedFiles.length - maxFiles} removed.`);
-            uploadedFiles = uploadedFiles.slice(0, maxFiles); // Enforce limit
-            renderPreviews(); // Re-render after slicing
-        }
-        
-        submitBtn.disabled = !(hasFiles && hasLocationText);
+        submitBtn.disabled = !(hasFile && hasLocationText);
     };
 
-    // Add listeners to check state
+    // Add listeners
     locationInput.addEventListener('input', checkSubmitButtonState);
-    // --- UPDATED: Handle multiple files from input ---
-    fileInput.addEventListener('change', (e) => handleFiles(e.target.files));
+    // --- UPDATED: Handle single file change ---
+    fileInput.addEventListener('change', (e) => handleFile(e.target.files[0])); // Get first file only
 
-    // --- Upload Area Listeners ---
+    // --- Upload Area Listeners (Drop updated) ---
     uploadArea.addEventListener('click', () => fileInput.click());
     uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragging'); });
     uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragging'));
-    // --- UPDATED: Handle multiple dropped files ---
     uploadArea.addEventListener('drop', (e) => {
         e.preventDefault();
         uploadArea.classList.remove('dragging');
-        handleFiles(e.dataTransfer.files); // Pass all dropped files
+        // --- UPDATED: Handle single dropped file ---
+        handleFile(e.dataTransfer.files[0]); // Get first file only
     });
 
-    // --- NEW: Render multiple previews ---
-    function renderPreviews() {
+    // --- UPDATED: Render preview for single file ---
+    function renderPreview() {
         previewContainer.innerHTML = ''; // Clear previous
-        uploadPlaceholder.style.display = uploadedFiles.length > 0 ? 'none' : 'block';
+        uploadPlaceholder.style.display = uploadedFile ? 'none' : 'block';
 
-        uploadedFiles.forEach((file, index) => {
-            if (file.type.startsWith('image/')) {
-                const reader = new FileReader();
-                reader.onload = (e) => {
-                    const preview = document.createElement('div');
-                    preview.className = 'preview-item';
-                    preview.innerHTML = `
-                        <img src="${e.target.result}" alt="Preview ${index + 1}">
-                        <button class="preview-remove" data-index="${index}">&times;</button>
-                    `;
-                    previewContainer.appendChild(preview);
-                };
-                reader.readAsDataURL(file);
-            } else {
-                 console.log(`Skipping non-image file: ${file.name}`);
-            }
-        });
-        checkSubmitButtonState(); // Update submit button after rendering
-    }
-
-    // --- UPDATED: Handle multiple files ---
-    function handleFiles(files) {
-        const imageFiles = Array.from(files).filter(file => file.type.startsWith('image/'));
-        if (imageFiles.length === 0 && files.length > 0) {
-            showToast('⚠️ No valid image files selected/dropped. Only images are allowed.');
+        if (uploadedFile && uploadedFile.type.startsWith('image/')) {
+            const reader = new FileReader();
+            reader.onload = (e) => {
+                const preview = document.createElement('div');
+                preview.className = 'preview-item';
+                preview.innerHTML = `
+                    <img src="${e.target.result}" alt="Preview">
+                    <button class="preview-remove" data-index="0">&times;</button>
+                `; // Keep data-index="0" for consistency
+                previewContainer.appendChild(preview);
+            };
+            reader.readAsDataURL(uploadedFile);
+        } else if (uploadedFile) {
+             console.log(`Skipping non-image file: ${uploadedFile.name}`);
+             uploadedFile = null; // Discard non-image file
+             showToast('⚠️ Only image files are allowed.');
         }
-
-        // Add the new valid files to our list
-        uploadedFiles.push(...imageFiles);
-        renderPreviews(); // Render all current previews
+        checkSubmitButtonState(); // Update submit button
     }
 
-    // --- UPDATED: Handle preview removal from array ---
+    // --- UPDATED: Handle single file ---
+    function handleFile(file) {
+        if (!file) { // Handle clearing the file
+             uploadedFile = null;
+        } else if (file.type.startsWith('image/')) {
+            uploadedFile = file; // Store the single valid file
+        } else {
+            uploadedFile = null; // Reset if invalid type
+            showToast('⚠️ Only image files are allowed.');
+            fileInput.value = ''; // Clear the input field
+        }
+        renderPreview(); // Render the single preview (or clear it)
+    }
+
+    // --- UPDATED: Handle preview removal for single file ---
     previewContainer.addEventListener('click', (e) => {
         if (e.target.classList.contains('preview-remove')) {
-            const indexToRemove = parseInt(e.target.getAttribute('data-index'));
-            if (!isNaN(indexToRemove) && indexToRemove >= 0 && indexToRemove < uploadedFiles.length) {
-                uploadedFiles.splice(indexToRemove, 1); // Remove file from array
-                renderPreviews(); // Re-render previews to update indices
-            } else {
-                console.error("Could not remove preview item, invalid index:", indexToRemove);
-            }
+            uploadedFile = null; // Clear the single file variable
+            fileInput.value = ''; // Clear the actual file input
+            renderPreview(); // Re-render (will clear preview)
         }
     });
 
-    // --- UPDATED: Submit Logic to send multiple files and auth token ---
+    // --- UPDATED: Submit Logic for single file ---
     submitBtn.addEventListener('click', async () => {
         const isAnonymous = document.getElementById('anonymous-toggle')?.checked || false;
         const descriptionInput = document.getElementById('description-input');
-        const description = descriptionInput ? descriptionInput.value : '';
+        const description = descriptionInput ? descriptionInput.value.trim() : ''; // Trim description
         const locationText = locationInput.value.trim();
 
-        // --- Auth Check ---
+        // Auth Check
         const idToken = localStorage.getItem('firebaseIdToken');
         if (!idToken) {
             showToast('⚠️ Please log in to submit an issue.');
-            window.location.href = '/login.html'; // Redirect to login
+            localStorage.setItem('redirectAfterLogin', window.location.pathname);
+            window.location.href = '/login.html';
             return;
         }
-        // --- End Auth Check ---
 
-        const imageFilesToUpload = uploadedFiles.filter(file => file.type.startsWith('image/'));
-        if (imageFilesToUpload.length === 0) { showToast('⚠️ Please select at least one image.'); return; }
+        // --- UPDATED: Check single file ---
+        if (!uploadedFile) { showToast('⚠️ Please select an image file.'); return; }
         if (!locationText) { showToast('⚠️ Please enter the location.'); locationInput.focus(); return; }
 
         submitBtn.disabled = true;
         submitBtn.textContent = 'Submitting...';
-        showToast(`⏳ Uploading ${imageFilesToUpload.length} image(s) & finding coordinates...`);
+        showToast(`⏳ Uploading image & finding coordinates...`); // Updated message
 
         const formData = new FormData();
-        // --- Append MULTIPLE files under the 'files' key ---
-        imageFilesToUpload.forEach((file) => {
-            formData.append('files', file, file.name); // Key MUST match backend
-        });
+        // --- UPDATED: Append SINGLE file under 'file' key ---
+        formData.append('file', uploadedFile, uploadedFile.name); // Key MUST match /submit-issue backend
         formData.append('description', description);
-        formData.append('location_text', locationText);
-        formData.append('is_anonymous', isAnonymous); // Send anonymous flag
+        // --- UPDATED: Key name to match /submit-issue backend ---
+        formData.append('locationstr', locationText); // Use 'locationstr'
+        formData.append('is_anonymous', isAnonymous);
 
         try {
-            // --- Point to the MULTI-FILE backend endpoint ---
-            const response = await fetch('http://localhost:8000/submit-issue-multi', {
+            // --- Point to the SINGLE-FILE backend endpoint ---
+            const response = await fetch('http://localhost:8000/submit-issue', { // Changed URL
                 method: 'POST',
                 headers: {
+                    'Authorization': `Bearer ${idToken}`
                     // NO 'Content-Type' for FormData
-                    'Authorization': `Bearer ${idToken}` // ADDED Auth Header
                 },
                 body: formData,
             });
 
             if (!response.ok) {
                 let errorDetail = `Error ${response.status}`;
+                 try {
+                     const errorData = await response.json();
+                     errorDetail = errorData.detail || errorDetail;
+                 } catch (e) { /* Ignore if response is not JSON */ }
+
                 if (response.status === 401 || response.status === 403) {
                      errorDetail = "Authentication failed. Please log in again.";
+                     // Optionally clear local storage and redirect here too
+                } else if (response.status === 400 && errorDetail.includes("Cannot find coords")) {
+                    showToast(`❌ Location Error: ${errorDetail}`); // Show specific error for geocoding
                 } else {
-                     try { const errorData = await response.json(); errorDetail = errorData.detail || errorDetail; } catch (e) { /* Ignore */ }
+                    showToast(`❌ Submission failed: ${errorDetail}`);
                 }
-                if (response.status === 400 && errorDetail.includes("Could not find coordinates")) showToast(`❌ Location Error: ${errorDetail}`);
-                else showToast(`❌ Submission failed: ${errorDetail}`);
-                throw new Error(errorDetail);
+                throw new Error(errorDetail); // Throw after showing toast
             }
 
             const result = await response.json();
             console.log("Submit successful, analysis result:", result);
-            const message = isAnonymous ? '✅ Submitted! Analysis running...' : '✅ Submitted! +10 karma. Analysis running...';
+            // Use backend message or default (consider adding first post karma message here later if needed)
+            const message = result.message || (isAnonymous ? '✅ Submitted! Analysis running...' : '✅ Submitted! Analysis running...'); // Simplified message
             showToast(message);
-            
+
             // Clear form on success
-            uploadedFiles = [];
-            renderPreviews();
+            uploadedFile = null;
+            renderPreview(); // Clear preview
             if(descriptionInput) descriptionInput.value = '';
             locationInput.value = '';
-            fileInput.value = '';
-            checkSubmitButtonState();
+            fileInput.value = ''; // Clear file input
+            checkSubmitButtonState(); // Disable button
 
             setTimeout(() => { window.location.href = '/feed.html'; }, 1500);
 
         } catch (error) {
             console.error('Submission failed:', error);
-            if (!error.message.includes("Could not find coordinates") && !error.message.includes("Authentication failed")) {
+            // Avoid showing redundant toast if already shown in the !response.ok block
+            if (!(response && !response.ok)) {
                 showToast(`❌ Submission failed: ${error.message}`);
             }
-            checkSubmitButtonState(); // Re-check button state
+            submitBtn.disabled = false; // Re-enable button on error
             submitBtn.textContent = 'Submit Issue';
         }
     });
 }
 
-// Voice recording is commented out/removed as requested
-// function initVoiceRecording() { ... }
+// initVoiceRecording remains commented out
 
 document.addEventListener('DOMContentLoaded', () => {
-    initializeAuthListener(); // <-- Correct auth call
+    initializeAuthListener();
     initThemeToggle();
     initMobileMenu();
     initUploadArea();
-    // initVoiceRecording(); // Not called
 });

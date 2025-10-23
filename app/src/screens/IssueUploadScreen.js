@@ -224,7 +224,7 @@ const IssueUploadScreen = ({ navigation }) => {
             <View style={styles.uploadPlaceholder}>
               <Text style={styles.uploadIcon}>📦</Text>
               <Text style={styles.uploadText}>
-                Drag & drop photos or videos
+                Drag & drop photos
               </Text>
               <Text style={styles.uploadSubtext}>or click to browse</Text>
             </View>
