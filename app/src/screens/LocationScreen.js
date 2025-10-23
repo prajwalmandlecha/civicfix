@@ -21,6 +21,7 @@ import * as Location from "expo-location";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { useUserContext } from "../context/UserContext";
 import api from "../services/api";
+import { getIssueDisplayName } from "../utils/issueTypeMapping";
 
 // Custom Marker Component
 const CustomMarker = ({ severity }) => {
@@ -173,11 +174,9 @@ const MapScreen = ({ navigation }) => {
         return;
       }
 
-      // Get current location with timeout
+      // Get current location
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.High,
-        timeInterval: 5000,
-        distanceInterval: 0,
       });
       const { latitude, longitude } = location.coords;
 
@@ -294,9 +293,18 @@ const MapScreen = ({ navigation }) => {
   };
 
   const getMarkerTitle = (issue) => {
-    const issueTypes = issue.issue_types || [];
+    const issueTypes = issue.issue_types || issue.detected_issues || [];
     if (issueTypes.length > 0) {
-      return issueTypes.join(", ");
+      return issueTypes
+        .map((type) => {
+          // Extract the type string from various possible formats
+          const typeString =
+            typeof type === "string"
+              ? type
+              : type?.type || type?.name || String(type);
+          return getIssueDisplayName(typeString);
+        })
+        .join(", ");
     }
     return "Issue Report";
   };
@@ -323,7 +331,11 @@ const MapScreen = ({ navigation }) => {
       location: `${issue.location?.lat?.toFixed(
         4
       )}, ${issue.location?.lon?.toFixed(4)}`,
-      issueTypes: issue.issue_types?.map((type) => ({ type })) || [],
+      issueTypes: (issue.issue_types || issue.detected_issues || []).map(
+        (type) => ({
+          type: type.type || type,
+        })
+      ),
     };
 
     navigation.navigate("FixUpload", {
@@ -756,8 +768,8 @@ const MapScreen = ({ navigation }) => {
                 )}
               </View>
 
-              {/* Action Button for Volunteers */}
-              {userType === "volunteer" &&
+              {/* Action Button for Volunteers/NGOs - ONLY on OPEN issues */}
+              {(userType === "volunteer" || userType === "ngo") &&
                 selectedIssue.status?.toLowerCase() === "open" && (
                   <TouchableOpacity
                     style={styles.uploadFixButtonCard}

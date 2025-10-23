@@ -14,6 +14,7 @@ import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { auth } from "../services/firebase";
 import api from "../services/api";
+import { getIssueDisplayName } from "../utils/issueTypeMapping";
 
 const FixUploadScreen = ({ route, navigation }) => {
   const { issueId, issueData } = route.params || {};
@@ -34,7 +35,7 @@ const FixUploadScreen = ({ route, navigation }) => {
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaType: ["images"],
         allowsMultipleSelection: true,
         quality: 0.8,
         selectionLimit: 5,
@@ -174,10 +175,15 @@ const FixUploadScreen = ({ route, navigation }) => {
             />
           )}
           <View style={styles.issueInfo}>
-            <Text style={styles.issueLocation}>📍 {issueData.location}</Text>
+            <View style={styles.issueLocationRow}>
+              <Ionicons name="location" size={16} color="#666" />
+              <Text style={styles.issueLocation}>{issueData.location}</Text>
+            </View>
             {issueData.issueTypes && issueData.issueTypes.length > 0 && (
               <Text style={styles.issueType}>
-                {issueData.issueTypes.map((t) => t.type).join(", ")}
+                {issueData.issueTypes
+                  .map((t) => getIssueDisplayName(t.type))
+                  .join(", ")}
               </Text>
             )}
           </View>

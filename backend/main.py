@@ -42,14 +42,35 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 # --- Firebase Setup ---
+default_app = None
+db = None
+
 try:
-    cred = credentials.Certificate("serviceAccountKey.json")
-    default_app = initialize_app(cred)
-    # --- NEW: Initialize Firestore DB client ---
+    import os
+    import firebase_admin
+    
+    # Check if Firebase is already initialized
+    try:
+        default_app = firebase_admin.get_app()
+        logger.info("✓ Firebase app already initialized, reusing existing instance")
+    except ValueError:
+        # Firebase not initialized yet, initialize it
+        service_account_path = os.path.join(os.path.dirname(__file__), "serviceAccountKey.json")
+        logger.info(f"Attempting to load Firebase credentials from: {service_account_path}")
+        
+        if not os.path.exists(service_account_path):
+            raise FileNotFoundError(f"serviceAccountKey.json not found at {service_account_path}")
+        
+        cred = credentials.Certificate(service_account_path)
+        default_app = initialize_app(cred)
+        logger.info("✓ Firebase Admin initialized successfully")
+    
+    # Initialize Firestore DB client (synchronous)
     db = firestore.client()
-    logger.info("Firebase Admin and Firestore client initialized successfully.")
+    logger.info("✓ Firestore client initialized successfully")
+    
 except Exception as fb_err:
-    logger.error(f"Failed to initialize Firebase Admin: {fb_err}")
+    logger.error(f"✗ Failed to initialize Firebase Admin: {fb_err}", exc_info=True)
     default_app = None
     db = None  # Set db to None if init fails
 
@@ -154,7 +175,6 @@ async def shutdown_event():
         logger.info("ES connection closed.")
 
 
-# --- NEW: Firebase Authentication Middleware (Copied from our previous discussion) ---
 @app.middleware("http")
 async def verify_firebase_token_middleware(request: Request, call_next):
     # --- NEW ---
@@ -172,9 +192,9 @@ async def verify_firebase_token_middleware(request: Request, call_next):
     if request.url.path in public_paths or request.method == "OPTIONS":
         response = await call_next(request)
         return response
-    if not default_app:
-        logger.error("Firebase not init.")
-        raise HTTPException(503, "Auth service unavailable")
+    if not default_app or not db:
+        logger.error(f"Firebase not initialized. Path: {request.url.path}, default_app: {default_app is not None}, db: {db is not None}")
+        raise HTTPException(503, "Auth service unavailable - Firebase not initialized")
     auth_header = request.headers.get("Authorization")
     logger.debug(f"Authorization header received: {auth_header}")
     logger.debug(f"All headers: {dict(request.headers)}")
@@ -278,7 +298,17 @@ async def root():
     except Exception as e:
         logger.error(f"ES ping fail: {e}")
         raise HTTPException(503, "DB conn err")
-    return {"message": "CivicFix API Gateway - Running", "db_status": "connected"}
+    
+    # Check Firebase status
+    firebase_status = "connected" if (default_app and db) else "disconnected"
+    
+    return {
+        "message": "CivicFix API Gateway - Running",
+        "db_status": "connected",
+        "firebase_status": firebase_status,
+        "firebase_app": default_app is not None,
+        "firestore_client": db is not None
+    }
 
 
 @app.get("/api/issues")
@@ -363,7 +393,6 @@ async def get_all_issues(
         logger.exception("Failed severely during fetch/process issues")
         raise HTTPException(500, f"Database query or processing failed: {e}")
 
-
 @app.get("/issues/")
 async def get_issues(
     latitude: float,
@@ -376,6 +405,7 @@ async def get_issues(
 ):
     """
     Get issues near a location, sorted by distance and recency.
+    Includes user's upvote/report status if authenticated.
     
     Args:
         latitude: Location latitude
@@ -446,6 +476,7 @@ async def get_issues(
                 issue_data["distance_km"] = hit["sort"][0]
             issues.append(issue_data)
 
+
         total_hits = response["hits"]["total"]["value"]
         
         logger.info(
@@ -469,14 +500,9 @@ async def get_issues(
 async def get_latest_issues(
     limit: int = 10,
     days_back: Optional[int] = None,
-    user: Optional[dict] = Depends(get_optional_user),
 ):
     """
     Get the latest issues sorted by reported time.
-    
-    Args:
-        limit: Maximum number of results (default 10)
-        days_back: Only include issues from last N days (optional)
     """
     if not es_client:
         raise HTTPException(503, "DB unavailable")
@@ -739,7 +765,14 @@ async def submit_issue_multi(
 
 @app.post("/api/issues/{issue_id}/upvote")
 async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
-    logger.info(f"User {user.get('uid')} upvoting {issue_id}")
+    """
+    Toggle upvote for an issue. 
+    - Creates upvote with isActive=True if it doesn't exist
+    - Toggles isActive between True/False if it exists
+    - Updates Elasticsearch upvote count accordingly
+    - Returns current toggle state
+    """
+    logger.info(f"User {user.get('uid')} toggling upvote for {issue_id}")
     if not es_client or not db:
         raise HTTPException(503, "DB unavailable")
     
@@ -747,22 +780,75 @@ async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
     upvote_doc_id = f"{issue_id}__{user_uid}"
 
     try:
-        # Single update operation with script that handles different statuses
-        script = {
-            "source": """
-                if (!ctx._source.containsKey('upvotes')) {
-                    ctx._source.upvotes = ['open': 0, 'closed': 0];
-                }
-                if (ctx._source.status == 'closed') {
-                    ctx._source.upvotes.closed += 1;
-                } else {
-                    ctx._source.upvotes.open += 1;
-                }
-            """,
-            "lang": "painless"
-        }
+        # Check if upvote document exists in Firestore
+        upvote_ref = db.collection("upvotes").document(upvote_doc_id)
+        upvote_doc = upvote_ref.get()
+        
+        now = datetime.utcnow().isoformat() + "Z"
+        new_active_state = True  # Default for new upvotes
+        
+        if upvote_doc.exists:
+            # Toggle existing upvote
+            upvote_data = upvote_doc.to_dict()
+            is_active = upvote_data.get("isActive", False)
+            new_active_state = not is_active
+            
+            # Update Firestore with new state
+            upvote_ref.update({
+                "isActive": new_active_state,
+                "lastUpdated": now
+            })
+            
+            logger.info(f"Toggling upvote from {is_active} to {new_active_state}")
+        else:
+            # Create new upvote document with isActive=True
+            upvote_ref.set({
+                "issueId": issue_id,
+                "userId": user_uid,
+                "isActive": True,
+                "upvotedAt": now,
+                "lastUpdated": now
+            })
+            new_active_state = True
+            logger.info(f"Creating new upvote for user {user_uid}")
+        
+        # Update Elasticsearch count based on new state
+        if new_active_state:
+            # Activating upvote - increment count
+            script = {
+                "source": """
+                    if (!ctx._source.containsKey('upvotes')) {
+                        ctx._source.upvotes = ['open': 0, 'closed': 0];
+                    }
+                    if (ctx._source.status == 'closed') {
+                        ctx._source.upvotes.closed += 1;
+                    } else {
+                        ctx._source.upvotes.open += 1;
+                    }
+                """,
+                "lang": "painless"
+            }
+        else:
+            # Deactivating upvote - decrement count (but not below 0)
+            script = {
+                "source": """
+                    if (!ctx._source.containsKey('upvotes')) {
+                        ctx._source.upvotes = ['open': 0, 'closed': 0];
+                    }
+                    if (ctx._source.status == 'closed') {
+                        if (ctx._source.upvotes.closed > 0) {
+                            ctx._source.upvotes.closed -= 1;
+                        }
+                    } else {
+                        if (ctx._source.upvotes.open > 0) {
+                            ctx._source.upvotes.open -= 1;
+                        }
+                    }
+                """,
+                "lang": "painless"
+            }
 
-        # Perform update operation
+        # Perform update operation in Elasticsearch
         await es_client.update(
             index="issues",
             id=issue_id,
@@ -771,118 +857,143 @@ async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
             retry_on_conflict=3,
         )
 
-        # Retrieve updated document
+        # Retrieve updated document from Elasticsearch
         get_response = await es_client.get(index="issues", id=issue_id)
         updated_source = get_response['_source']
         
         logger.info(
-            f"Upvote OK for {issue_id}. New: {updated_source.get('upvotes')}"
+            f"Upvote toggled for {issue_id}. isActive: {new_active_state}, New counts: {updated_source.get('upvotes')}"
         )
-        return {"message": "Upvoted", "updated_issue": updated_source}
+        
+        return {
+            "success": True,
+            "message": "Upvoted" if new_active_state else "Upvote removed",
+            "isActive": new_active_state,
+            "hasUpvoted": new_active_state,  # For frontend compatibility
+            "updated_issue": updated_source,
+            "upvotes": updated_source.get('upvotes', {})
+        }
+        
     except NotFoundError:
-        logger.warning(f"Upvote fail: {issue_id} not found.")
-        raise HTTPException(404, f"{issue_id} not found")
+        logger.warning(f"Upvote fail: Issue {issue_id} not found in Elasticsearch.")
+        raise HTTPException(404, f"Issue {issue_id} not found")
     except Exception as e:
-        logger.exception(f"Unexpected err upvote {issue_id}")
-        raise HTTPException(500, f"Server err: {e}")
+        logger.exception(f"Unexpected error while toggling upvote for {issue_id}")
+        raise HTTPException(500, f"Server error: {e}")
 
 
-# --- Unlike Endpoint (Requires Auth) ---
+# --- Unlike Endpoint (Deprecated - use /upvote to toggle) ---
+# Kept for backward compatibility
 @app.post("/api/issues/{issue_id}/unlike")
 async def unlike_issue(
     issue_id: str, user: dict = Depends(get_current_user)
-):  # Require user
-    logger.info(f"User {user.get('uid')} unliking issue {issue_id}")
-    if not es_client:
-        raise HTTPException(503, "DB unavailable")
-    try:
-        # Single update operation with script that handles different statuses and prevents negative values
-        script = {
-            "source": """
-                if (!ctx._source.containsKey('upvotes')) {
-                    ctx._source.upvotes = ['open': 0, 'closed': 0];
-                }
-                if (ctx._source.status == 'closed') {
-                    if (ctx._source.upvotes.closed > 0) {
-                        ctx._source.upvotes.closed -= 1;
-                    }
-                } else {
-                    if (ctx._source.upvotes.open > 0) {
-                        ctx._source.upvotes.open -= 1;
-                    }
-                }
-            """,
-            "lang": "painless"
-        }
-
-        # Perform update operation
-        await es_client.update(
-            index="issues",
-            id=issue_id,
-            script=script,
-            refresh=True,
-            retry_on_conflict=3,
-        )
-
-        # Retrieve updated document
-        get_response = await es_client.get(index="issues", id=issue_id)
-        updated_source = get_response['_source']
-        
-        logger.info(
-            f"Unlike OK for {issue_id}. New: {updated_source.get('upvotes')}"
-        )
-        return {"message": "Unliked", "updated_issue": updated_source}
-    except NotFoundError:
-        logger.warning(f"Unlike fail: {issue_id} not found.")
-        raise HTTPException(404, f"{issue_id} not found")
-    except RequestError as e:
-        logger.error(f"ES Err unlike {issue_id}: {e.info}")
-        raise HTTPException(400, f"DB err: {e.error}")
-    except Exception as e:
-        logger.exception(f"Unexpected err unlike {issue_id}")
-        raise HTTPException(500, f"Server err: {e}")
+):
+    """Deprecated: Use POST /api/issues/{issue_id}/upvote to toggle upvote state"""
+    # Redirect to upvote endpoint which now handles toggling
+    return await upvote_issue(issue_id, user)
 
 
-# --- Report Endpoint (Requires Auth, uses Closed status) ---
+# --- Report Endpoint (Requires Auth, uses Firestore tracking) ---
 @app.post("/api/issues/{issue_id}/report")
 async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
-    # ... (This is your existing, working code) ...
+    """
+    Report an issue as spam/not fixed.
+    - Reports are NOT toggleable (once reported, stays reported)
+    - Creates permanent record in Firestore with isActive=True
+    - Increments report count in Elasticsearch
+    - May close/reopen issue if threshold reached
+    """
     logger.info(f"User {user.get('uid')} reporting {issue_id}")
-    if not es_client:
+    if not es_client or not db:
         raise HTTPException(503, "DB unavailable")
+    
+    user_uid = user.get("uid")
+    report_doc_id = f"{issue_id}__{user_uid}"
+    
     try:
+        # Check if user already reported this issue
+        report_ref = db.collection("reports").document(report_doc_id)
+        report_doc = report_ref.get()
+        
+        if report_doc.exists:
+            report_data = report_doc.to_dict()
+            if report_data.get("isActive", False):
+                logger.warning(f"User {user_uid} already reported {issue_id}")
+                return {
+                    "success": True,
+                    "message": "Already reported",
+                    "hasReported": True,
+                    "isActive": True
+                }
+        
+        now = datetime.utcnow().isoformat() + "Z"
+        
+        # Create permanent report document in Firestore (NOT toggleable)
+        report_ref.set({
+            "issueId": issue_id,
+            "userId": user_uid,
+            "isActive": True,  # Always true, reports are permanent
+            "reportedAt": now,
+            "lastUpdated": now
+        })
+        
+        logger.info(f"Created permanent report for user {user_uid}")
+        
+        # Get current issue status and reports from Elasticsearch
         get_resp = await es_client.get(index="issues", id=issue_id)
         source = get_resp["_source"]
         status = source.get("status", "open")
         reports = source.get("reports", {})
-        params = {"now": datetime.utcnow().isoformat() + "Z"}
+        params = {"now": now}
         script = None
         script_defined = False
+        
+        # Update Elasticsearch based on current status
         if status == "open":
             count = reports.get("open", 0)
             if count + 1 >= SPAM_REPORT_THRESHOLD:
+                # Threshold reached - mark as spam/closed
                 script = "ctx._source.reports.open = 0; ctx._source.upvotes.open = 0; ctx._source.status = 'closed'; ctx._source.updated_at = params.now; ctx._source.closed_at = params.now; ctx._source.closed_by = 'community_report';"
                 script_defined = True
+                logger.info(f"Issue {issue_id} closed due to {count + 1} reports (threshold: {SPAM_REPORT_THRESHOLD})")
             else:
+                # Increment report count
                 script = "ctx._source.reports.open += 1"
                 script_defined = True
         elif status == "closed":
             count = reports.get("closed", 0)
             if count + 1 >= REOPEN_REPORT_THRESHOLD:
+                # Threshold reached - reopen issue
                 script = "ctx._source.reports.closed = 0; ctx._source.upvotes.closed = 0; ctx._source.status = 'open'; ctx._source.updated_at = params.now; ctx._source.closed_at = null; ctx._source.closed_by = null;"
                 script_defined = True
+                logger.info(f"Issue {issue_id} reopened due to {count + 1} reports (threshold: {REOPEN_REPORT_THRESHOLD})")
             else:
+                # Increment report count
                 script = "ctx._source.reports.closed += 1"
                 script_defined = True
         elif status == "verified":
             script = "ctx._source.reports.verified += 1"
             script_defined = True
         elif status == "spam":
-            logger.warning(f"Report ignored spam {issue_id}.")
-            return {"message": "Issue spam", "updated_issue": source}
+            logger.warning(f"Report ignored for spam issue {issue_id}.")
+            return {
+                "success": True,
+                "message": "Issue already marked as spam",
+                "updated_issue": source,
+                "hasReported": True,
+                "isActive": True
+            }
         else:
             logger.error(f"Cannot report {issue_id}, unknown status: {status}.")
-            return {"message": f"Unknown status {status}", "updated_issue": source}
+            return {
+                "success": False,
+                "message": f"Unknown status {status}",
+                "updated_issue": source,
+                "hasReported": True,
+                "isActive": True
+            }
+        
+        # Execute update script in Elasticsearch
         if script_defined:
             await es_client.update(
                 index="issues",
@@ -893,18 +1004,31 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
             )
         else:
             logger.info("No update script needed.")
+        
+        # Get updated document
         updated = await es_client.get(index="issues", id=issue_id)
         new_status = updated["_source"].get("status")
+        new_reports = updated["_source"].get("reports")
+        
         logger.info(
-            f"Report OK for {issue_id}. New counts: {updated['_source'].get('reports')}, New Status: {new_status}"
+            f"Report OK for {issue_id}. New counts: {new_reports}, New Status: {new_status}"
         )
-        return {"message": "Reported", "updated_issue": updated["_source"]}
+        
+        return {
+            "success": True,
+            "message": "Reported successfully",
+            "hasReported": True,
+            "isActive": True,  # Reports are always active (not toggleable)
+            "updated_issue": updated["_source"],
+            "reports": new_reports
+        }
+        
     except NotFoundError:
-        logger.warning(f"Report fail: {issue_id} not found.")
-        raise HTTPException(404, f"{issue_id} not found")
+        logger.warning(f"Report fail: Issue {issue_id} not found in Elasticsearch.")
+        raise HTTPException(404, f"Issue {issue_id} not found")
     except Exception as e:
-        logger.exception(f"Unexpected err report {issue_id}")
-        raise HTTPException(500, f"Server err: {e}")
+        logger.exception(f"Unexpected error while reporting {issue_id}")
+        raise HTTPException(500, f"Server error: {e}")
 
 
 # ---
@@ -1171,28 +1295,57 @@ async def get_user_stats(user_id: str):
         raise HTTPException(500, f"Failed to fetch user stats: {str(e)}")
 
 
-@app.get("/api/issues/{issue_id}/upvote-status")
-async def get_upvote_status(issue_id: str, user: dict = Depends(get_current_user)):
-    """Check if current user has upvoted this issue"""
-    if not db:
-        raise HTTPException(503, "Firestore unavailable")
-    
-    user_uid = user.get("uid")
-    upvote_doc_id = f"{issue_id}__{user_uid}"
-    
-    try:
-        upvote_doc = db.collection("upvotes").document(upvote_doc_id).get()
-        
-        if upvote_doc.exists:
-            upvote_data = upvote_doc.to_dict()
-            return {
-                "hasUpvoted": upvote_data.get("isActive", False),
-                "upvotedAt": upvote_data.get("upvotedAt"),
-                "lastUpdated": upvote_data.get("lastUpdated")
-            }
-        else:
-            return {"hasUpvoted": False}
-            
-    except Exception as e:
-        logger.exception(f"Error checking upvote status for {issue_id}")
-        raise HTTPException(500, f"Server error: {e}")
+# TEMPORARILY DISABLED - These endpoints are inefficient (N+1 queries)
+# TODO: Implement batch status checking or include status in main issue query
+# @app.get("/api/issues/{issue_id}/upvote-status")
+# async def get_upvote_status(issue_id: str, user: dict = Depends(get_current_user)):
+#     """Check if current user has upvoted this issue"""
+#     if not db:
+#         raise HTTPException(503, "Firestore unavailable")
+#     
+#     user_uid = user.get("uid")
+#     upvote_doc_id = f"{issue_id}__{user_uid}"
+#     
+#     try:
+#         upvote_doc = db.collection("upvotes").document(upvote_doc_id).get()
+#         
+#         if upvote_doc.exists:
+#             upvote_data = upvote_doc.to_dict()
+#             return {
+#                 "hasUpvoted": upvote_data.get("isActive", False),
+#                 "upvotedAt": upvote_data.get("upvotedAt"),
+#                 "lastUpdated": upvote_data.get("lastUpdated")
+#             }
+#         else:
+#             return {"hasUpvoted": False}
+#             
+#     except Exception as e:
+#         logger.exception(f"Error checking upvote status for {issue_id}")
+#         raise HTTPException(500, f"Server error: {e}")
+
+
+# @app.get("/api/issues/{issue_id}/report-status")
+# async def get_report_status(issue_id: str, user: dict = Depends(get_current_user)):
+#     """Check if current user has reported this issue"""
+#     if not db:
+#         raise HTTPException(503, "Firestore unavailable")
+#     
+#     user_uid = user.get("uid")
+#     report_doc_id = f"{issue_id}__{user_uid}"
+#     
+#     try:
+#         report_doc = db.collection("reports").document(report_doc_id).get()
+#         
+#         if report_doc.exists:
+#             report_data = report_doc.to_dict()
+#             return {
+#                 "hasReported": report_data.get("isActive", False),
+#                 "reportedAt": report_data.get("reportedAt"),
+#                 "lastUpdated": report_data.get("lastUpdated")
+#             }
+#         else:
+#             return {"hasReported": False}
+#             
+#     except Exception as e:
+#         logger.exception(f"Error checking report status for {issue_id}")
+#         raise HTTPException(500, f"Server error: {e}")

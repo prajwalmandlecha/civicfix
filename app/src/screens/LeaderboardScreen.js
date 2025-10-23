@@ -25,7 +25,7 @@ const LeaderboardScreen = () => {
       setLoading(true);
       // Fetch appropriate leaderboard based on user type
       const endpoint =
-        userType === "volunteer"
+        userType === "volunteer" || userType === "ngo"
           ? "/api/leaderboard/ngos"
           : "/api/leaderboard/citizens";
       const response = await api.get(endpoint);
@@ -33,7 +33,9 @@ const LeaderboardScreen = () => {
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
       // Set mock data for demonstration
-      setLeaderboardData(generateMockData(userType === "volunteer"));
+      setLeaderboardData(
+        generateMockData(userType === "volunteer" || userType === "ngo")
+      );
     } finally {
       setLoading(false);
       setRefreshing(false);
@@ -101,7 +103,7 @@ const LeaderboardScreen = () => {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Leaderboard</Text>
         <Text style={styles.headerSubtitle}>
-          {userType === "volunteer"
+          {userType === "volunteer" || userType === "ngo"
             ? "Top Volunteer Organizations"
             : "Top Community Contributors"}
         </Text>

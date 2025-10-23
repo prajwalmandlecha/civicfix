@@ -15,6 +15,7 @@ import StatCard from "../components/StatCard";
 import { getCurrentLocation } from "../services/getLocation";
 import { useUserContext } from "../context/UserContext";
 import api from "../services/api";
+import Ionicons from "@expo/vector-icons/Ionicons";
 
 const ProfileScreen = () => {
   const [userData, setUserData] = useState(null);
@@ -31,7 +32,8 @@ const ProfileScreen = () => {
   const [organization, setOrganization] = useState("");
   const [editingOrganization, setEditingOrganization] = useState(false);
 
-  const { updateLastLocation, lastLocation, userType } = useUserContext();
+  const { updateLastLocation, lastLocation, userType, profile } =
+    useUserContext();
 
   const fetchUserData = async () => {
     try {
@@ -55,12 +57,14 @@ const ProfileScreen = () => {
 
       // Update stats state
       setStats({
-        issuesUploaded: statsData.issuesReported || 0,
-        issuesResolved: statsData.issuesResolved || 0,
+        issuesUploaded:
+          statsData.issuesReported || profile?.stats?.issues_reported || 0,
+        issuesResolved:
+          statsData.issuesResolved || profile?.stats?.issues_resolved || 0,
         issuesFixed: statsData.issuesFixed || 0, // For volunteers
         co2Saved: statsData.co2Saved || 0,
         currentRank: statsData.currentRank || 0,
-        totalKarma: statsData.karma || 0,
+        totalKarma: statsData.karma || profile?.karma || 0,
       });
 
       // Update badges if available
@@ -117,20 +121,29 @@ const ProfileScreen = () => {
   };
 
   const handleSetLocation = async () => {
-    const { addressParts, location } = await getCurrentLocation(
-      setLoadingLocation
-    );
-    if (location && addressParts) {
-      const formattedAddress = [
-        addressParts.street,
-        addressParts.city,
-        addressParts.region,
-        addressParts.postalCode,
-        addressParts.country,
-      ]
-        .filter(Boolean)
-        .join(", ");
-      updateLastLocation({ ...location, address: formattedAddress });
+    try {
+      const { addressParts, location, error } = await getCurrentLocation(
+        setLoadingLocation
+      );
+      if (error) {
+        console.log("Location error:", error);
+        return;
+      }
+      if (location && addressParts) {
+        const formattedAddress = [
+          addressParts.street,
+          addressParts.city,
+          addressParts.region,
+          addressParts.postalCode,
+          addressParts.country,
+        ]
+          .filter(Boolean)
+          .join(", ");
+        updateLastLocation({ ...location, address: formattedAddress });
+      }
+    } catch (error) {
+      console.error("Error in handleSetLocation:", error);
+      setLoadingLocation(false);
     }
   };
 
@@ -169,8 +182,20 @@ const ProfileScreen = () => {
         <Text style={styles.username}>{getUserDisplayName()}</Text>
         <Text style={styles.userEmail}>{auth.currentUser?.email}</Text>
         <View style={styles.userTypeBadge}>
+          <Ionicons
+            name={
+              userData?.userType === "volunteer" || userData?.userType === "ngo"
+                ? "construct"
+                : "person"
+            }
+            size={16}
+            color="#fff"
+            style={{ marginRight: 6 }}
+          />
           <Text style={styles.userTypeText}>
-            {userData?.userType === "volunteer" ? "🔧 Volunteer" : "👤 Citizen"}
+            {userData?.userType === "volunteer" || userData?.userType === "ngo"
+              ? "Volunteer"
+              : "Citizen"}
           </Text>
         </View>
         <View style={styles.headerStats}>
@@ -206,8 +231,11 @@ const ProfileScreen = () => {
         </View>
       </Card>
 
-      {/* Organization Section - Only for Volunteers */}
-      {(userData?.userType === "volunteer" || userType === "volunteer") && (
+      {/* Organization Section - Only for Volunteers/NGOs */}
+      {(userData?.userType === "volunteer" ||
+        userData?.userType === "ngo" ||
+        userType === "volunteer" ||
+        userType === "ngo") && (
         <Card style={styles.organizationCard}>
           <Text style={styles.organizationLabel}>Organization</Text>
           {editingOrganization ? (
@@ -263,13 +291,17 @@ const ProfileScreen = () => {
 
       {/* Stats Grid */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>📊 Your Impact</Text>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="stats-chart" size={20} color="#333" />
+          <Text style={styles.sectionTitle}>Your Impact</Text>
+        </View>
         <View style={styles.statsGrid}>
-          {userData?.userType === "volunteer" ? (
+          {userData?.userType === "volunteer" ||
+          userData?.userType === "ngo" ? (
             <>
               <View style={styles.statCardWrapper}>
                 <StatCard
-                  emoji="�"
+                  icon="construct"
                   number={stats.issuesFixed || 0}
                   label="Issues Fixed"
                   size="small"
@@ -277,7 +309,7 @@ const ProfileScreen = () => {
               </View>
               <View style={styles.statCardWrapper}>
                 <StatCard
-                  emoji="📊"
+                  icon="trophy"
                   number={stats.totalKarma}
                   label="Total Karma"
                   size="small"
@@ -288,7 +320,7 @@ const ProfileScreen = () => {
             <>
               <View style={styles.statCardWrapper}>
                 <StatCard
-                  emoji="📸"
+                  icon="camera"
                   number={stats.issuesUploaded}
                   label="Issues Reported"
                   size="small"
@@ -296,7 +328,7 @@ const ProfileScreen = () => {
               </View>
               <View style={styles.statCardWrapper}>
                 <StatCard
-                  emoji="✅"
+                  icon="checkmark-circle"
                   number={stats.issuesResolved}
                   label="Issues Resolved"
                   size="small"
@@ -305,19 +337,23 @@ const ProfileScreen = () => {
             </>
           )}
         </View>
-        <View style={styles.statsGridFull}>
+        {/* CO2 Saved - Commented out for now */}
+        {/* <View style={styles.statsGridFull}>
           <StatCard
             emoji="🌍"
             number={`${stats.co2Saved}kg`}
             label="CO₂ Saved"
             size="medium"
           />
-        </View>
+        </View> */}
       </View>
 
       {/* Badges Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>🏅 Badges & Achievements</Text>
+        <View style={styles.sectionTitleRow}>
+          <Ionicons name="ribbon" size={20} color="#333" />
+          <Text style={styles.sectionTitle}>Badges & Achievements</Text>
+        </View>
         <Card style={styles.badgesCard}>
           <View style={styles.badgesGrid}>
             {badges.map((badge, index) => (
@@ -443,11 +479,16 @@ const styles = StyleSheet.create({
     paddingHorizontal: 16,
     paddingTop: 24,
   },
+  sectionTitleRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    marginBottom: 16,
+  },
   sectionTitle: {
     fontSize: 18,
     fontWeight: "700",
     color: "#1a1a1a",
-    marginBottom: 16,
   },
   statsGrid: {
     flexDirection: "row",

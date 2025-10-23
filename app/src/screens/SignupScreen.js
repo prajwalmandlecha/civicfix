@@ -128,7 +128,13 @@ const SignupScreen = ({ navigation }) => {
                   <CustomTextInput
                     label="You are a"
                     placeholder="Select type"
-                    value={userType}
+                    value={
+                      userType === "citizen"
+                        ? "Citizen"
+                        : userType === "volunteer"
+                        ? "Volunteer"
+                        : userType
+                    }
                     editable={false}
                     showSoftInputOnFocus={false}
                     onPressIn={openUserTypePicker}

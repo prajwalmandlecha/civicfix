@@ -65,7 +65,7 @@ const IssueUploadScreen = ({ navigation }) => {
   const pickFromCamera = async () => {
     try {
       let result = await ImagePicker.launchCameraAsync({
-        mediaTypes: ImagePicker.Images,
+        mediaType: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 1,
@@ -82,7 +82,7 @@ const IssueUploadScreen = ({ navigation }) => {
   const pickFromLibrary = async () => {
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.Images,
+        mediaType: ImagePicker.MediaTypeOptions.Images,
         allowsEditing: true,
         aspect: [4, 3],
         quality: 1,

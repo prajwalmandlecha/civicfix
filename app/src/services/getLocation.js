@@ -1,8 +1,6 @@
 import * as Location from "expo-location";
 import { Alert, Platform } from "react-native";
 
-
-
 export const getCurrentLocation = async (setLoadingLocation) => {
   try {
     setLoadingLocation(true);
@@ -47,8 +45,6 @@ export const getCurrentLocation = async (setLoadingLocation) => {
     console.log("Permission granted, fetching location...");
     let location = await Location.getCurrentPositionAsync({
       accuracy: Location.Accuracy.Highest,
-      timeInterval: 5000,
-      distanceInterval: 0,
     });
     console.log("📍 Current location:", location);
 

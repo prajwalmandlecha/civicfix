@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -6,6 +6,7 @@ import {
   TouchableOpacity,
   StyleSheet,
   Dimensions,
+  Alert,
 } from "react-native";
 import Ionicons from "@expo/vector-icons/Ionicons";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
@@ -30,30 +31,171 @@ const SocialPost = ({
   distanceKm,
   userType,
   onUploadFix,
+  onReport,
+  onUpvote,
+  userStatus, // NEW: Contains hasUpvoted and hasReported from backend
 }) => {
-  const [isReported, setIsReported] = useState(false);
-  // console.log("Issue Types in SocialPost:", issueTypes);
+  const [isReported, setIsReported] = useState(
+    userStatus?.hasReported || false
+  );
+  const [isReporting, setIsReporting] = useState(false);
+  const [isUpvoted, setIsUpvoted] = useState(userStatus?.hasUpvoted || false);
+  const [isUpvoting, setIsUpvoting] = useState(false);
+  const [upvoteCount, setUpvoteCount] = useState(likes || 0);
 
   const getImpactColor = () => {
-    // For closed issues, show light green background
+    // For closed issues, show light blue background (different from low)
     if (status?.toLowerCase() === "closed") {
-      return "#e8f5e9"; // Light green
+      return "#e3f2fd"; // Light blue - indicates resolved/fixed
     }
     // For open issues, use impact level colors
     if (impactLevel === "High") return "#ffebee"; // Light red
     if (impactLevel === "Medium") return "#fff3e0"; // Light orange
-    return "#e8f5e9"; // Light green
+    return "#e8f5e9"; // Light green (low severity)
   };
 
   const getTagColor = () => {
-    // if (issueType === "Pothole") return "#FFF9E6";
-    // if (issueType === "Streetlight") return "#FFF9E6";
-    // if (issueType === "Garbage") return "#FFF9E6";
     return "#FFF9E6";
   };
 
-  const handleReport = () => {
-    setIsReported(!isReported);
+  // Sync state with userStatus prop (if provided)
+  useEffect(() => {
+    // Initialize upvote count from props
+    if (likes !== undefined && likes !== null) {
+      setUpvoteCount(likes);
+    }
+
+    // Update status from userStatus prop (optional)
+    if (userStatus) {
+      setIsUpvoted(userStatus.hasUpvoted || false);
+      setIsReported(userStatus.hasReported || false);
+    }
+  }, [postId, likes, userStatus]);
+
+  const handleUpvote = async () => {
+    // Prevent multiple simultaneous clicks
+    if (isUpvoting) {
+      console.log("Already processing upvote, ignoring click");
+      return;
+    }
+
+    setIsUpvoting(true);
+    const previousUpvoted = isUpvoted;
+    const previousCount = upvoteCount;
+
+    // Optimistic update - toggle state
+    const newUpvotedState = !isUpvoted;
+    setIsUpvoted(newUpvotedState);
+    setUpvoteCount(newUpvotedState ? upvoteCount + 1 : upvoteCount - 1);
+
+    try {
+      // Backend handles toggle - returns isActive state
+      const response = await api.post(`/api/issues/${postId}/upvote`);
+
+      // Sync with backend response
+      if (response.data) {
+        const backendIsActive =
+          response.data.isActive || response.data.hasUpvoted || false;
+        setIsUpvoted(backendIsActive);
+
+        // Update count from backend - use correct count based on status
+        if (response.data.upvotes) {
+          const isClosed = status?.toLowerCase() === "closed";
+          const newCount = isClosed
+            ? response.data.upvotes.closed || 0
+            : response.data.upvotes.open || 0;
+          setUpvoteCount(newCount);
+        }
+
+        console.log(
+          `Upvote ${backendIsActive ? "added" : "removed"} for issue ${postId}`
+        );
+      }
+
+      // Call parent callback if provided
+      if (onUpvote) {
+        onUpvote(postId, { ok: true, isActive: response.data?.isActive });
+      }
+    } catch (error) {
+      console.error("Error upvoting issue:", error);
+      Alert.alert("Error", "Failed to upvote. Please try again.");
+
+      // Revert optimistic update on error
+      setIsUpvoted(previousUpvoted);
+      setUpvoteCount(previousCount);
+    } finally {
+      // Add small delay before allowing next click to prevent rapid clicking
+      setTimeout(() => {
+        setIsUpvoting(false);
+      }, 300);
+    }
+  };
+
+  const handleReport = async () => {
+    if (isReporting || isReported) return;
+
+    // Show confirmation dialog
+    Alert.alert(
+      "Report as Spam",
+      "Do you want to report this issue as spam? This action is permanent and helps maintain community quality.",
+      [
+        {
+          text: "Cancel",
+          style: "cancel",
+        },
+        {
+          text: "Report",
+          style: "destructive",
+          onPress: async () => {
+            setIsReporting(true);
+            try {
+              // Backend creates permanent report (NOT toggleable)
+              const response = await api.post(`/api/issues/${postId}/report`);
+
+              // Sync with backend response
+              if (response.data) {
+                const hasReported =
+                  response.data.hasReported || response.data.isActive || true;
+                setIsReported(hasReported);
+
+                console.log(`Issue ${postId} reported successfully`);
+              } else {
+                // Fallback if no response data
+                setIsReported(true);
+              }
+
+              // Call parent callback if provided
+              if (onReport) {
+                onReport(postId, { ok: true, hasReported: true });
+              }
+
+              Alert.alert(
+                "Success",
+                "Issue reported successfully. Thank you for helping maintain quality!"
+              );
+            } catch (error) {
+              console.error("Error reporting issue:", error);
+
+              // Check if already reported
+              if (error.response?.data?.message === "Already reported") {
+                setIsReported(true);
+                Alert.alert(
+                  "Already Reported",
+                  "You have already reported this issue."
+                );
+              } else {
+                Alert.alert(
+                  "Error",
+                  "Failed to report issue. Please try again."
+                );
+              }
+            } finally {
+              setIsReporting(false);
+            }
+          },
+        },
+      ]
+    );
   };
 
   return (
@@ -65,6 +207,16 @@ const SocialPost = ({
       {/* Post Image Container */}
       <View style={styles.imageContainer}>
         <Image source={postImage} style={styles.postImage} />
+
+        {/* FIXED Overlay - Only for closed issues */}
+        {status?.toLowerCase() === "closed" && (
+          <View style={styles.fixedOverlay}>
+            <View style={styles.fixedBadge}>
+              <Ionicons name="checkmark-circle" size={32} color="#4CAF50" />
+              <Text style={styles.fixedText}>FIXED</Text>
+            </View>
+          </View>
+        )}
 
         {/* Issue Type Tags Row */}
         <View style={styles.issueTagsContainer}>
@@ -91,7 +243,12 @@ const SocialPost = ({
       <View style={styles.content}>
         {/* Location and Distance */}
         <View style={styles.locationRow}>
-          <Text style={styles.locationIcon}>📍</Text>
+          <Ionicons
+            name="location"
+            size={14}
+            color="#666"
+            style={{ marginRight: 6 }}
+          />
           <Text style={styles.locationText}>{location}</Text>
           {distanceKm !== undefined && (
             <Text style={styles.distanceText}>
@@ -109,7 +266,34 @@ const SocialPost = ({
 
         {/* Actions Row */}
         <View style={styles.actionsRow}>
-          {userType === "volunteer" && status?.toLowerCase() === "open" ? (
+          {/* Upvote Button - Always visible */}
+          <TouchableOpacity
+            style={[
+              styles.upvoteButton,
+              isUpvoted && styles.upvoteButtonActive,
+              isUpvoting && styles.upvoteButtonDisabled,
+            ]}
+            onPress={handleUpvote}
+            disabled={isUpvoting}
+          >
+            <Ionicons
+              name={isUpvoted ? "heart" : "heart-outline"}
+              size={16}
+              color={isUpvoted ? "#fff" : "#4CAF79"}
+              style={{ marginRight: 6 }}
+            />
+            <Text
+              style={[
+                styles.upvoteButtonText,
+                isUpvoted && styles.upvoteButtonTextActive,
+              ]}
+            >
+              {upvoteCount}
+            </Text>
+          </TouchableOpacity>
+
+          {(userType === "volunteer" || userType === "ngo") &&
+          status?.toLowerCase() === "open" ? (
             <TouchableOpacity
               style={styles.uploadFixButton}
               onPress={onUploadFix}
@@ -122,13 +306,16 @@ const SocialPost = ({
               />
               <Text style={styles.uploadFixButtonText}>Upload Fix</Text>
             </TouchableOpacity>
-          ) : userType !== "volunteer" ? (
+          ) : userType === "citizen" ? (
+            // Report Button - ONLY for citizens (all statuses)
             <TouchableOpacity
               style={[
                 styles.reportButton,
                 isReported && styles.reportButtonReported,
+                isReporting && styles.reportButtonDisabled,
               ]}
               onPress={handleReport}
+              disabled={isReporting || isReported}
             >
               <Ionicons
                 name={isReported ? "flag" : "flag-outline"}
@@ -142,7 +329,11 @@ const SocialPost = ({
                   isReported && styles.reportButtonTextReported,
                 ]}
               >
-                {isReported ? "Reported" : "Report"}
+                {isReporting
+                  ? "Reporting..."
+                  : isReported
+                  ? "Reported"
+                  : "Report"}
               </Text>
             </TouchableOpacity>
           ) : null}
@@ -201,6 +392,40 @@ const styles = StyleSheet.create({
     height: "100%",
     resizeMode: "cover",
   },
+  fixedOverlay: {
+    position: "absolute",
+    top: 0,
+    left: 0,
+    right: 0,
+    bottom: 0,
+    backgroundColor: "rgba(76, 175, 80, 0.15)",
+    justifyContent: "center",
+    alignItems: "center",
+    zIndex: 10,
+  },
+  fixedBadge: {
+    backgroundColor: "rgba(255, 255, 255, 0.95)",
+    paddingHorizontal: 24,
+    paddingVertical: 12,
+    borderRadius: 12,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 8,
+    shadowColor: "#000",
+    shadowOffset: {
+      width: 0,
+      height: 2,
+    },
+    shadowOpacity: 0.25,
+    shadowRadius: 3.84,
+    elevation: 5,
+  },
+  fixedText: {
+    fontSize: 18,
+    fontWeight: "700",
+    color: "#4CAF50",
+    letterSpacing: 1,
+  },
   issueTagsContainer: {
     position: "absolute",
     top: 15,
@@ -252,10 +477,6 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginBottom: 12,
   },
-  locationIcon: {
-    fontSize: 14,
-    marginRight: 6,
-  },
   locationText: {
     fontSize: 14,
     color: "#666",
@@ -276,8 +497,34 @@ const styles = StyleSheet.create({
   actionsRow: {
     flexDirection: "row",
     alignItems: "center",
-    justifyContent: "flex-end",
+    justifyContent: "space-between",
     marginBottom: 12,
+    gap: 8,
+  },
+  upvoteButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#4CAF79",
+    backgroundColor: "#fff",
+  },
+  upvoteButtonActive: {
+    backgroundColor: "#4CAF79",
+    borderColor: "#45a06d",
+  },
+  upvoteButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4CAF79",
+  },
+  upvoteButtonTextActive: {
+    color: "#fff",
+  },
+  upvoteButtonDisabled: {
+    opacity: 0.6,
   },
   reportButton: {
     flexDirection: "row",
@@ -300,6 +547,9 @@ const styles = StyleSheet.create({
   },
   reportButtonTextReported: {
     color: "#fff",
+  },
+  reportButtonDisabled: {
+    opacity: 0.6,
   },
   uploadFixButton: {
     flexDirection: "row",

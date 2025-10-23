@@ -72,7 +72,12 @@ const IssueDetailModal = ({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Location</Text>
               <View style={styles.locationRow}>
-                <Text style={styles.locationIcon}>📍</Text>
+                <Ionicons
+                  name="location"
+                  size={16}
+                  color="#666"
+                  style={{ marginRight: 4 }}
+                />
                 <Text style={styles.locationText}>{issueData.location}</Text>
               </View>
             </View>
@@ -214,8 +219,8 @@ const IssueDetailModal = ({
 
           {/* Action Buttons Footer */}
           <View style={styles.actionFooter}>
-            {/* Upload Fix Button - Only for volunteers on open issues */}
-            {userType === "volunteer" &&
+            {/* Upload Fix Button - ONLY for volunteers/NGOs on OPEN issues */}
+            {(userType === "volunteer" || userType === "ngo") &&
             issueData.status?.toLowerCase() === "open" ? (
               <TouchableOpacity
                 style={[styles.actionButton, styles.uploadFixButton]}
@@ -236,27 +241,14 @@ const IssueDetailModal = ({
               </TouchableOpacity>
             ) : null}
 
-            {/* Upload Fix Button - Only for citizens on closed issues */}
-            {userType !== "volunteer" &&
-            issueData.status?.toLowerCase() === "closed" ? (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.uploadFixButton]}
-                onPress={() => {
-                  onClose();
-                  onUploadFix && onUploadFix(issueData);
-                }}
-              >
-                <Ionicons name="construct" size={20} color="#fff" />
-                <Text
-                  style={[
-                    styles.actionButtonText,
-                    styles.actionButtonTextActive,
-                  ]}
-                >
-                  Upload Fix
-                </Text>
-              </TouchableOpacity>
-            ) : null}
+            {/* Close Button - For closed issues, just show a close button */}
+            <TouchableOpacity
+              style={[styles.actionButton, styles.closeButton]}
+              onPress={onClose}
+            >
+              <Ionicons name="close-circle" size={20} color="#666" />
+              <Text style={styles.actionButtonText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
