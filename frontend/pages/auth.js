@@ -52,6 +52,7 @@ export function initializeAuthListener() {
                 // NGO Navbar
                 addNavLinks([
                     { href: '/feed.html', text: '📰 StreetFeed' },
+                    { href: '/map.html', text: '🗺️ StreetHeat' },
                     { href: '/ngo_upload.html', text: '🔧 Upload Fix' }, // NGO Link
                     { href: '/leaderboard.html', text: '🏆 Leaderboard' },
                     { href: '/profile.html', text: '👤 Profile' },

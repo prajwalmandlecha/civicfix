@@ -93,9 +93,9 @@ function handleFile(file) {
         return;
     }
     
-    // Check for image or video
-     if (!file.type.startsWith('image/') && !file.type.startsWith('video/')) {
-        showToast('⚠️ Please upload an image or video file.');
+    // Check for image
+     if (!file.type.startsWith('image/')) {
+        showToast('⚠️ Please upload an image.');
         fileInput.value = ''; // Reset input
         return;
     }
@@ -111,9 +111,9 @@ function handleFile(file) {
         let mediaElement = '';
         if (file.type.startsWith('image/')) {
             mediaElement = `<img src="${e.target.result}" alt="Preview">`;
-        } else if (file.type.startsWith('video/')) {
-             mediaElement = `<video controls src="${e.target.result}"></video>`;
-        }
+        // } else if (file.type.startsWith('video/')) {
+        //      mediaElement = `<video controls src="${e.target.result}"></video>`;
+        // }
         preview.innerHTML = `${mediaElement}<button class="preview-remove" data-index="0">&times;</button>`;
         previewContainer.appendChild(preview);
     };
