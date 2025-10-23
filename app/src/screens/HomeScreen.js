@@ -11,6 +11,7 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import SocialPost from "../components/SocialPost";
 import IssueDetailModal from "../components/IssueDetailModal";
 import api from "../services/api";

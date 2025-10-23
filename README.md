@@ -5,6 +5,7 @@ This guide will help you start CivicFix services: Elasticsearch, Issue Identifie
 ---
 
 ## Prerequisites
+
 - Docker Desktop installed and running
 - Python 3.10+ (for seeding data)
 - Node.js 16+ (for frontend/backend)
@@ -45,6 +46,7 @@ docker-compose up -d
 ```
 
 **Verify Elasticsearch is running:**
+
 ```powershell
 # PowerShell
 Invoke-RestMethod -Uri "http://localhost:9200" -Method Get
@@ -76,7 +78,7 @@ $env:ES_URL="http://localhost:9200"
 python seed.py --count 300
 ```
 
-```bash
+````bash
 # Linux/macOS
 cd elastic-local
 python3 -m venv .venv
@@ -91,7 +93,7 @@ export ES_URL="http://localhost:9200"
 ```powershell
 # PowerShell
 Invoke-RestMethod -Uri "http://localhost:9200/issues/_count" -Method Get
-```
+````
 
 ```bash
 # Linux/macOS
@@ -261,6 +263,7 @@ npm run dev
 ## 🛑 Stopping Services
 
 **Stop all Docker containers:**
+
 ```powershell
 # PowerShell
 docker stop civicfix-issue-verifier civicfix-issue-identifier civicfix-es
@@ -278,6 +281,7 @@ docker-compose down
 ```
 
 **Stop backend and frontend:**
+
 - Press `Ctrl+C` in their respective terminals
 
 ---
@@ -291,9 +295,11 @@ docker-compose down
 5. **Frontend**: `http://localhost:5173` (Web UI)
 
 **Check Docker network:**
+
 ```powershell
 docker network inspect civicfix-net
 ```
+
 You should see `civicfix-es`, `civicfix-issue-identifier`, and `civicfix-issue-verifier` listed.
 
 ---
@@ -311,17 +317,21 @@ You should see `civicfix-es`, `civicfix-issue-identifier`, and `civicfix-issue-v
 ## 🐛 Troubleshooting
 
 **Issue Identifier can't connect to Elasticsearch:**
+
 - Verify both containers are on `civicfix-net`: `docker network inspect civicfix-net`
 - Check ES_URL is set to `http://civicfix-es:9200` for Docker containers
 
 **Issue Verifier can't find fix documents:**
+
 - Make sure you ran seed.py after creating the fixes index
 - Verify fixes exist: `curl http://localhost:9200/fixes/_count`
 - Re-run seed.py if needed to generate fix documents with embeddings
 
 **Seed script can't connect:**
+
 - Use `ES_URL=http://localhost:9200` for host-based scripts
 - Verify Elasticsearch is running: `curl http://localhost:9200`
 
 **Port conflicts:**
+
 - If port 8000, 8001 or 9200 is in use, stop conflicting services or change ports in docker-compose.yml/run commands

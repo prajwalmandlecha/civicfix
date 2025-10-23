@@ -182,21 +182,25 @@ const ProfileScreen = () => {
         <Text style={styles.username}>{getUserDisplayName()}</Text>
         <Text style={styles.userEmail}>{auth.currentUser?.email}</Text>
         <View style={styles.userTypeBadge}>
-          <Ionicons
-            name={
-              userData?.userType === "volunteer" || userData?.userType === "ngo"
-                ? "construct"
-                : "person"
-            }
-            size={16}
-            color="#fff"
-            style={{ marginRight: 6 }}
-          />
-          <Text style={styles.userTypeText}>
-            {userData?.userType === "volunteer" || userData?.userType === "ngo"
-              ? "Volunteer"
-              : "Citizen"}
-          </Text>
+          <View style={styles.userTypeBadgeInner}>
+            <Ionicons
+              name={
+                userData?.userType === "volunteer" ||
+                userData?.userType === "ngo"
+                  ? "construct"
+                  : "person"
+              }
+              size={16}
+              color="#4CAF79"
+              style={{ marginRight: 6 }}
+            />
+            <Text style={styles.userTypeText}>
+              {userData?.userType === "volunteer" ||
+              userData?.userType === "ngo"
+                ? "Volunteer"
+                : "Citizen"}
+            </Text>
+          </View>
         </View>
         <View style={styles.headerStats}>
           <View style={styles.headerStatItem}>
@@ -439,6 +443,10 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     borderRadius: 20,
     marginBottom: 20,
+  },
+  userTypeBadgeInner: {
+    flexDirection: "row",
+    alignItems: "center",
   },
   userTypeText: {
     fontSize: 13,

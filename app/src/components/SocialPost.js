@@ -8,7 +8,7 @@ import {
   Dimensions,
   Alert,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@expo/vector-icons";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
 import api from "../services/api";
 
@@ -212,7 +212,7 @@ const SocialPost = ({
         {status?.toLowerCase() === "closed" && (
           <View style={styles.fixedOverlay}>
             <View style={styles.fixedBadge}>
-              <Ionicons name="checkmark-circle" size={32} color="#4CAF50" />
+              <Ionicons name="checkmark-circle" size={20} color="#fff" />
               <Text style={styles.fixedText}>FIXED</Text>
             </View>
           </View>
@@ -394,37 +394,32 @@ const styles = StyleSheet.create({
   },
   fixedOverlay: {
     position: "absolute",
-    top: 0,
-    left: 0,
-    right: 0,
-    bottom: 0,
-    backgroundColor: "rgba(76, 175, 80, 0.15)",
-    justifyContent: "center",
-    alignItems: "center",
+    top: 10,
+    right: 10,
     zIndex: 10,
   },
   fixedBadge: {
-    backgroundColor: "rgba(255, 255, 255, 0.95)",
-    paddingHorizontal: 24,
-    paddingVertical: 12,
-    borderRadius: 12,
+    backgroundColor: "rgba(76, 175, 80, 0.9)",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
     flexDirection: "row",
     alignItems: "center",
-    gap: 8,
+    gap: 6,
     shadowColor: "#000",
     shadowOffset: {
       width: 0,
-      height: 2,
+      height: 1,
     },
-    shadowOpacity: 0.25,
-    shadowRadius: 3.84,
-    elevation: 5,
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
   },
   fixedText: {
-    fontSize: 18,
+    fontSize: 12,
     fontWeight: "700",
-    color: "#4CAF50",
-    letterSpacing: 1,
+    color: "#fff",
+    letterSpacing: 0.5,
   },
   issueTagsContainer: {
     position: "absolute",

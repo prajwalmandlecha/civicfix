@@ -18,7 +18,7 @@ import MapView, {
   Callout,
 } from "react-native-maps";
 import * as Location from "expo-location";
-import Ionicons from "@expo/vector-icons/Ionicons";
+import { Ionicons } from "@expo/vector-icons";
 import { useUserContext } from "../context/UserContext";
 import api from "../services/api";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";

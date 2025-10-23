@@ -223,9 +223,7 @@ const IssueUploadScreen = ({ navigation }) => {
           ) : (
             <View style={styles.uploadPlaceholder}>
               <Text style={styles.uploadIcon}>📦</Text>
-              <Text style={styles.uploadText}>
-                Drag & drop photos
-              </Text>
+              <Text style={styles.uploadText}>Drag & drop photos</Text>
               <Text style={styles.uploadSubtext}>or click to browse</Text>
             </View>
           )}
@@ -319,7 +317,7 @@ const IssueUploadScreen = ({ navigation }) => {
           </View>
 
           <GooglePlacesTextInput
-            apiKey="AIzaSyCOIcuht3KsQIKVszM9xWNOKim65JopzOk"
+            apiKey=""
             placeHolderText="Search for a location"
             value={address}
             fetchDetails={true}
