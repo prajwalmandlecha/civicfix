@@ -586,6 +586,15 @@ async def submit_issue(
         analyzer_response.raise_for_status()
         analysis_result = analyzer_response.json()
         logger.info(f"Analyzer OK for {reporter_id}. Response: {analysis_result}")
+
+        db.collection("users").document(reporter_id).set({
+            "stats": {
+                "issues_reported": firestore.Increment(1),
+            },
+            "karma": firestore.Increment(10),  
+            "issues_reported": firestore.ArrayUnion([analysis_result.get("issue_id")]),
+        }, merge=True)
+
         return {
             "image_url": public_url,
             "analysis": analysis_result,
@@ -730,10 +739,13 @@ async def submit_issue_multi(
 
 @app.post("/api/issues/{issue_id}/upvote")
 async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
-    # ... (This is your existing, working code) ...
     logger.info(f"User {user.get('uid')} upvoting {issue_id}")
-    if not es_client:
+    if not es_client or not db:
         raise HTTPException(503, "DB unavailable")
+    
+    user_uid = user.get("uid")
+    upvote_doc_id = f"{issue_id}__{user_uid}"
+
     try:
         # Single update operation with script that handles different statuses
         script = {
@@ -1107,3 +1119,80 @@ async def get_ngo_leaderboard():
         raise HTTPException(500, "Failed to fetch NGO leaderboard")
 
 
+@app.get("/api/users/{user_id}/stats")
+async def get_user_stats(user_id: str):
+    """Fetches user statistics from Firestore."""
+    if not db:
+        raise HTTPException(503, "Firestore client not available")
+    try:
+        logger.info(f"Fetching stats for user: {user_id}")
+        
+        # Get user document from Firestore
+        user_ref = db.collection("users").document(user_id)
+        user_doc = user_ref.get()
+        
+        if not user_doc.exists:
+            raise HTTPException(404, f"User {user_id} not found")
+        
+        user_data = user_doc.to_dict()
+        
+        # Get stats from the user document
+        stats = user_data.get("stats", {})
+        karma = user_data.get("karma", 0)
+        user_type = user_data.get("userType", "citizen")
+        
+        # Calculate rank by counting users with higher karma
+        users_ref = db.collection("users")
+        higher_karma_query = users_ref.where(field_path="karma", op_string=">", value=karma)
+        higher_karma_docs = list(higher_karma_query.stream())
+        current_rank = len(higher_karma_docs) + 1
+        
+        # Build response based on user type
+        response_stats = {
+            "karma": karma,
+            "currentRank": current_rank,
+            "issuesReported": stats.get("issues_reported", 0),
+            "issuesResolved": stats.get("issues_resolved", 0),
+            "co2Saved": 0,  # Placeholder for future implementation
+            "badges": []  # Placeholder for future implementation
+        }
+        
+        # Add volunteer-specific stats
+        if user_type == "volunteer":
+            response_stats["issuesFixed"] = stats.get("issues_fixed", 0)
+        
+        logger.info(f"Returning stats for user {user_id}: {response_stats}")
+        return {"stats": response_stats}
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.exception(f"Error fetching user stats for {user_id}: {e}")
+        raise HTTPException(500, f"Failed to fetch user stats: {str(e)}")
+
+
+@app.get("/api/issues/{issue_id}/upvote-status")
+async def get_upvote_status(issue_id: str, user: dict = Depends(get_current_user)):
+    """Check if current user has upvoted this issue"""
+    if not db:
+        raise HTTPException(503, "Firestore unavailable")
+    
+    user_uid = user.get("uid")
+    upvote_doc_id = f"{issue_id}__{user_uid}"
+    
+    try:
+        upvote_doc = db.collection("upvotes").document(upvote_doc_id).get()
+        
+        if upvote_doc.exists:
+            upvote_data = upvote_doc.to_dict()
+            return {
+                "hasUpvoted": upvote_data.get("isActive", False),
+                "upvotedAt": upvote_data.get("upvotedAt"),
+                "lastUpdated": upvote_data.get("lastUpdated")
+            }
+        else:
+            return {"hasUpvoted": False}
+            
+    except Exception as e:
+        logger.exception(f"Error checking upvote status for {issue_id}")
+        raise HTTPException(500, f"Server error: {e}")
