@@ -203,9 +203,9 @@ const IssueUploadScreen = ({ navigation }) => {
     } catch (error) {
       console.error("Upload error:", error);
       Alert.alert(
-        "Error",
+        "Upload Failed",
         error.response?.data?.detail ||
-          "Failed to upload issue. Please try again."
+          "Failed to upload issue. Please check your connection and ensure all fields are filled correctly."
       );
     } finally {
       setUploading(false);

@@ -9,6 +9,7 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
+  Platform,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -29,7 +30,10 @@ const FixUploadScreen = ({ route, navigation }) => {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        alert("Please grant camera roll permissions to upload images.");
+        Alert.alert(
+          "Permission Required",
+          "Please grant camera roll permissions in your device settings to upload images."
+        );
         return;
       }
 
@@ -52,7 +56,10 @@ const FixUploadScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error("Error picking images:", error);
-      alert("Failed to pick images. Please try again.");
+      Alert.alert(
+        "Error",
+        "Failed to access camera roll. Please check your permissions and try again."
+      );
     }
   };
 
@@ -60,7 +67,10 @@ const FixUploadScreen = ({ route, navigation }) => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
-        alert("Please grant camera permissions to take photos.");
+        Alert.alert(
+          "Permission Required",
+          "Please grant camera permissions in your device settings to take photos."
+        );
         return;
       }
 
@@ -81,7 +91,10 @@ const FixUploadScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error("Error taking photo:", error);
-      alert("Failed to take photo. Please try again.");
+      Alert.alert(
+        "Error",
+        "Failed to access camera. Please check your permissions and try again."
+      );
     }
   };
 
@@ -91,17 +104,26 @@ const FixUploadScreen = ({ route, navigation }) => {
 
   const handleSubmit = async () => {
     if (!auth.currentUser) {
-      alert("You are not signed in. Please restart the app and log in.");
+      Alert.alert(
+        "Authentication Required",
+        "You are not signed in. Please restart the app and log in."
+      );
       return;
     }
 
     if (images.length === 0) {
-      alert("Please add at least one image of the fix.");
+      Alert.alert(
+        "Missing Images",
+        "Please add at least one photo showing the completed fix work."
+      );
       return;
     }
 
     if (!issueId) {
-      alert("Issue ID is missing. Please try again.");
+      Alert.alert(
+        "Error",
+        "Issue ID is missing. Please go back and try selecting the issue again."
+      );
       return;
     }
 
@@ -113,12 +135,14 @@ const FixUploadScreen = ({ route, navigation }) => {
       const formData = new FormData();
       formData.append("description", description || "");
 
-      // Backend expects a single file with key "file"
-      // Send only the first image
-      formData.append("file", {
-        uri: images[0].uri,
-        type: images[0].type,
-        name: images[0].name,
+      // Backend now expects multiple files with key "files"
+      // Send all images
+      images.forEach((image, index) => {
+        formData.append("files", {
+          uri: image.uri,
+          type: image.type,
+          name: image.name,
+        });
       });
 
       const response = await api.post(
@@ -133,33 +157,78 @@ const FixUploadScreen = ({ route, navigation }) => {
       );
 
       if (response.status === 200) {
-        // Alert.alert(
-        //   "Success",
-        //   "Fix submitted successfully! Your contribution has been recorded.",
-        //   [
-        //     {
-        //       text: "OK",
-        //       onPress: () => {
-        //         setImages([]);
-        //         setDescription("");
-        //         setUploading(false);
-        //         navigation.goBack();
-        //       },
-        //     },
-        //   ]
-        // );
-        alert(
-          "Success",
-          "Fix submitted successfully! Your contribution has been recorded."
-        );
-        navigation.goBack();
+        const verificationResult = response.data.verification_result;
+
+        if (verificationResult && verificationResult.overall_outcome) {
+          const outcome = verificationResult.overall_outcome;
+
+          let alertTitle = "Fix Submitted";
+          let alertMessage = "";
+
+          switch (outcome) {
+            case "closed":
+              alertTitle = "Fix Verified ✓";
+              alertMessage = `Your fix has been verified and accepted! ${images.length} image(s) processed successfully. You earned karma points for this contribution.`;
+              break;
+            case "partially_closed":
+              alertTitle = "Partial Fix Verified ⚠️";
+              alertMessage = `Your fix has been partially verified. Some issues were successfully resolved while others need additional work. ${images.length} image(s) processed. Partial karma points have been awarded for the completed work.`;
+              break;
+            case "rejected":
+              alertTitle = "Fix Verification Failed ❌";
+              alertMessage = `Unfortunately, your fix could not be verified. The evidence shows the issues remain unaddressed. ${images.length} image(s) were reviewed. No karma points awarded. Please ensure your photos clearly show the completed repair work and try again.`;
+              break;
+            case "needs_manual_review":
+              alertTitle = "Manual Review Required ⏳";
+              alertMessage = `Your fix submission requires manual review by our team due to unclear or insufficient evidence. We'll verify it within 24-48 hours and update you via the app. ${images.length} image(s) submitted for review. Thank you for your patience.`;
+              break;
+            default:
+              alertTitle = "Fix Submitted";
+              alertMessage = `Fix submitted successfully with ${images.length} image(s)! Your contribution has been recorded.`;
+          }
+
+          Alert.alert(alertTitle, alertMessage, [
+            {
+              text: "OK",
+              onPress: () => {
+                setImages([]);
+                setDescription("");
+                setUploading(false);
+                navigation.goBack();
+              },
+            },
+          ]);
+        } else {
+          // Fallback for when verification_result is not available
+          Alert.alert(
+            "Fix Submitted",
+            `Fix submitted successfully with ${images.length} image(s)! Your contribution has been recorded.`,
+            [
+              {
+                text: "OK",
+                onPress: () => {
+                  setImages([]);
+                  setDescription("");
+                  setUploading(false);
+                  navigation.goBack();
+                },
+              },
+            ]
+          );
+        }
       }
     } catch (error) {
-      console.error("Error submitting fix:", JSON.stringify(error, null, 2));
-      const errorMessage =
-        error.response?.data?.detail ||
-        "Failed to submit fix. Please try again.";
-      alert(errorMessage);
+      console.error("Error submitting fix:", error.message || error);
+      let errorMessage =
+        "Failed to submit fix. Please check your connection and try again.";
+
+      if (error.response?.data?.detail) {
+        errorMessage = error.response.data.detail;
+      } else if (error.message) {
+        errorMessage = error.message;
+      }
+
+      Alert.alert("Submission Failed", errorMessage);
       setUploading(false);
     }
   };

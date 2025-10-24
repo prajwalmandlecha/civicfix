@@ -26,7 +26,7 @@ const ProfileScreen = () => {
     currentRank: 0,
     totalKarma: 0,
   });
-  const [badges, setBadges] = useState([]);
+  // const [badges, setBadges] = useState([]);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [loadingStats, setLoadingStats] = useState(true);
 
@@ -44,13 +44,13 @@ const ProfileScreen = () => {
       const data = userDoc.data();
       setUserData(data);
 
-      // Fetch detailed stats from backend API
+      // Fetch detailed stats from backend API (using Firebase-based endpoint)
       const response = await api.get(
-        `/api/users/${auth.currentUser.uid}/stats`
+        `/api/users/${auth.currentUser.uid}/stats-firebase`
       );
       const statsData = response.data.stats;
 
-      console.log("User Stats from Backend:", statsData);
+      console.log("User Stats from Firebase Backend:", statsData);
 
       // Update stats state
       setStats({
@@ -64,29 +64,29 @@ const ProfileScreen = () => {
         totalKarma: statsData.karma || profile?.karma || 0,
       });
 
-      // Update badges if available
-      if (statsData.badges && statsData.badges.length > 0) {
-        setBadges(statsData.badges);
-      } else {
-        // Set default badges based on achievements
-        const earnedBadges = [];
-        if (statsData.issuesReported >= 1) {
-          earnedBadges.push({ emoji: "🌟", title: "First Report" });
-        }
-        if (statsData.issuesReported >= 10) {
-          earnedBadges.push({ emoji: "⭐", title: "10 Reports" });
-        }
-        if (statsData.karma >= 100) {
-          earnedBadges.push({ emoji: "🏆", title: "100 Karma" });
-        }
-        if (statsData.issuesResolved >= 5) {
-          earnedBadges.push({ emoji: "✅", title: "Problem Solver" });
-        }
-        if (statsData.issuesFixed >= 5) {
-          earnedBadges.push({ emoji: "🔧", title: "Community Fixer" });
-        }
-        setBadges(earnedBadges);
-      }
+      // Update badges if available - commented out
+      // if (statsData.badges && statsData.badges.length > 0) {
+      //   setBadges(statsData.badges);
+      // } else {
+      //   // Set default badges based on achievements
+      //   const earnedBadges = [];
+      //   if (statsData.issuesReported >= 1) {
+      //     earnedBadges.push({ emoji: "🌟", title: "First Report" });
+      //   }
+      //   if (statsData.issuesReported >= 10) {
+      //     earnedBadges.push({ emoji: "⭐", title: "10 Reports" });
+      //   }
+      //   if (statsData.karma >= 100) {
+      //     earnedBadges.push({ emoji: "", title: "100 Karma" });
+      //   }
+      //   if (statsData.issuesResolved >= 5) {
+      //     earnedBadges.push({ emoji: "✅", title: "Problem Solver" });
+      //   }
+      //   if (statsData.issuesFixed >= 5) {
+      //     earnedBadges.push({ emoji: "🔧", title: "Community Fixer" });
+      //   }
+      //   setBadges(earnedBadges);
+      // }
     } catch (error) {
       console.error("Error fetching user data:", error);
       Alert.alert(
@@ -160,17 +160,13 @@ const ProfileScreen = () => {
         <Text style={styles.username}>{getUserDisplayName()}</Text>
         <Text style={styles.userEmail}>{auth.currentUser?.email}</Text>
         <View style={styles.userTypeBadge}>
-          <View style={styles.userTypeBadgeInner}>
-            <Ionicons
-              name={userData?.userType === "ngo" ? "construct" : "person"}
-              size={16}
-              color="#4CAF79"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.userTypeText}>
-              {userData?.userType === "ngo" ? "NGO" : "Citizen"}
-            </Text>
-          </View>
+          <Text style={styles.userTypeText}>
+            {userData?.userType === "ngo"
+              ? " NGO"
+              : userData?.userType === "volunteer"
+              ? " Volunteer"
+              : " Citizen"}
+          </Text>
         </View>
         <View style={styles.headerStats}>
           <View style={styles.headerStatItem}>
@@ -243,7 +239,7 @@ const ProfileScreen = () => {
             <>
               <View style={styles.statCardWrapper}>
                 <StatCard
-                  icon="camera"
+                  icon="document-text"
                   number={stats.issuesUploaded}
                   label="Issues Reported"
                   size="small"
@@ -262,8 +258,8 @@ const ProfileScreen = () => {
         </View>
       </View>
 
-      {/* Badges Section */}
-      <View style={styles.section}>
+      {/* Badges Section - Commented out */}
+      {/* <View style={styles.section}>
         <View style={styles.sectionTitleRow}>
           <Ionicons name="ribbon" size={20} color="#333" />
           <Text style={styles.sectionTitle}>Badges & Achievements</Text>
@@ -278,7 +274,7 @@ const ProfileScreen = () => {
             ))}
           </View>
         </Card>
-      </View>
+      </View> */}
 
       {/* Bottom Padding */}
       <View style={styles.bottomPadding} />

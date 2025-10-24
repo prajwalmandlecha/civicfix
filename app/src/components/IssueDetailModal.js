@@ -175,7 +175,11 @@ const IssueDetailModal = ({
                 "You have already reported this issue."
               );
             } else {
-              Alert.alert("Error", "Failed to report issue. Please try again.");
+              Alert.alert(
+                "Error",
+                error.response?.data?.detail ||
+                  "Failed to report issue. Please check your connection and try again."
+              );
             }
           } finally {
             setIsReporting(false);
@@ -497,10 +501,25 @@ const IssueDetailModal = ({
                 <View style={styles.outcomeOverallCard}>
                   <View style={styles.outcomeRow}>
                     <Text style={styles.outcomeLabel}>Overall Outcome:</Text>
-                    <Text style={[styles.outcomeValue, styles.outcomeSuccess]}>
-                      {fixDetails.overall_outcome === "closed"
-                        ? "✓ Fully Resolved"
-                        : "✗ Rejected"}
+                    <Text
+                      style={[
+                        styles.outcomeValue,
+                        fixDetails.overall_outcome === "closed"
+                          ? styles.outcomeSuccess
+                          : fixDetails.overall_outcome === "partially_closed"
+                          ? styles.outcomePartial
+                          : styles.outcomeRejected,
+                      ]}
+                    >
+                      {fixDetails.overall_outcome === "closed" &&
+                        "✓ Fully Resolved"}
+                      {fixDetails.overall_outcome === "partially_closed" &&
+                        "⚠️ Partially Resolved"}
+                      {fixDetails.overall_outcome === "rejected" &&
+                        "✗ Rejected"}
+                      {fixDetails.overall_outcome === "needs_manual_review" &&
+                        "⏳ Manual Review"}
+                      {!fixDetails.overall_outcome && "✓ Resolved"}
                     </Text>
                   </View>
                   <View style={styles.outcomeRow}>
@@ -532,12 +551,20 @@ const IssueDetailModal = ({
                           styles.fixStatusBadge,
                           {
                             backgroundColor:
-                              outcome.fixed === "yes" ? "#4CAF79" : "#FF6B6B",
+                              outcome.fixed === "yes"
+                                ? "#4CAF79"
+                                : outcome.fixed === "partial"
+                                ? "#FF9800"
+                                : "#F44336",
                           },
                         ]}
                       >
                         <Text style={styles.fixStatusText}>
-                          {outcome.fixed === "yes" ? "FIXED" : "NOT FIXED"}
+                          {outcome.fixed === "yes"
+                            ? "FIXED"
+                            : outcome.fixed === "partial"
+                            ? "PARTIAL"
+                            : "NOT FIXED"}
                         </Text>
                       </View>
                     </View>
@@ -1300,6 +1327,12 @@ const styles = StyleSheet.create({
   },
   outcomeSuccess: {
     color: "#4CAF79",
+  },
+  outcomePartial: {
+    color: "#FF9800",
+  },
+  outcomeRejected: {
+    color: "#F44336",
   },
   co2SavedText: {
     color: "#4CAF79",

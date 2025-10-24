@@ -127,7 +127,11 @@ const SocialPost = ({
       }
     } catch (error) {
       console.error("Error upvoting issue:", error);
-      Alert.alert("Error", "Failed to upvote. Please try again.");
+      Alert.alert(
+        "Error",
+        error.response?.data?.detail ||
+          "Failed to upvote. Please check your connection and try again."
+      );
 
       // Revert optimistic update on error
       setIsUpvoted(previousUpvoted);
@@ -199,7 +203,11 @@ const SocialPost = ({
                 "You have already reported this issue."
               );
             } else {
-              Alert.alert("Error", "Failed to report issue. Please try again.");
+              Alert.alert(
+                "Error",
+                error.response?.data?.detail ||
+                  "Failed to report issue. Please check your connection and try again."
+              );
             }
           } finally {
             setIsReporting(false);

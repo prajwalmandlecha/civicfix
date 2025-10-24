@@ -394,7 +394,10 @@ const HomeScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error("Error setting location:", error);
-      Alert.alert("Error", "Failed to update location. Please try again.");
+      Alert.alert(
+        "Location Error",
+        "Failed to update location. Please check your device settings and try again."
+      );
     } finally {
       setLoadingLocation(false);
     }
