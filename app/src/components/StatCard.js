@@ -1,12 +1,17 @@
 import React from "react";
 import { View, Text, StyleSheet } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 
-const StatCard = ({ emoji, number, label, size = "medium" }) => {
+const StatCard = ({ icon, number, label, size = "medium" }) => {
   const isSmall = size === "small";
 
   return (
     <View style={[styles.container, isSmall && styles.containerSmall]}>
-      <Text style={[styles.emoji, isSmall && styles.emojiSmall]}>{emoji}</Text>
+      <View
+        style={[styles.iconContainer, isSmall && styles.iconContainerSmall]}
+      >
+        <Ionicons name={icon} size={isSmall ? 28 : 36} color="#4CAF79" />
+      </View>
       <Text style={[styles.number, isSmall && styles.numberSmall]}>
         {number}
       </Text>
@@ -31,12 +36,19 @@ const styles = StyleSheet.create({
     borderRadius: 16,
     padding: 16,
   },
-  emoji: {
-    fontSize: 40,
+  iconContainer: {
+    width: 56,
+    height: 56,
+    borderRadius: 28,
+    backgroundColor: "#E8F5E9",
+    justifyContent: "center",
+    alignItems: "center",
     marginBottom: 12,
   },
-  emojiSmall: {
-    fontSize: 32,
+  iconContainerSmall: {
+    width: 48,
+    height: 48,
+    borderRadius: 24,
     marginBottom: 8,
   },
   number: {

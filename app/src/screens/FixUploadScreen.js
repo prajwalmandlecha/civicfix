@@ -14,6 +14,8 @@ import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
 import { auth } from "../services/firebase";
 import api from "../services/api";
+import { getIssueDisplayName } from "../utils/issueTypeMapping";
+import { Ionicons } from "@expo/vector-icons";
 
 const FixUploadScreen = ({ route, navigation }) => {
   const { issueId, issueData } = route.params || {};
@@ -26,15 +28,12 @@ const FixUploadScreen = ({ route, navigation }) => {
       const { status } =
         await ImagePicker.requestMediaLibraryPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Please grant camera roll permissions to upload images."
-        );
+        alert("Please grant camera roll permissions to upload images.");
         return;
       }
 
       const result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ImagePicker.MediaTypeOptions.Images,
+        mediaType: ["images"],
         allowsMultipleSelection: true,
         quality: 0.8,
         selectionLimit: 5,
@@ -52,7 +51,7 @@ const FixUploadScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error("Error picking images:", error);
-      Alert.alert("Error", "Failed to pick images. Please try again.");
+      alert("Failed to pick images. Please try again.");
     }
   };
 
@@ -60,10 +59,7 @@ const FixUploadScreen = ({ route, navigation }) => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
       if (status !== "granted") {
-        Alert.alert(
-          "Permission Required",
-          "Please grant camera permissions to take photos."
-        );
+        alert("Please grant camera permissions to take photos.");
         return;
       }
 
@@ -84,7 +80,7 @@ const FixUploadScreen = ({ route, navigation }) => {
       }
     } catch (error) {
       console.error("Error taking photo:", error);
-      Alert.alert("Error", "Failed to take photo. Please try again.");
+      alert("Failed to take photo. Please try again.");
     }
   };
 
@@ -93,13 +89,18 @@ const FixUploadScreen = ({ route, navigation }) => {
   };
 
   const handleSubmit = async () => {
+    if (!auth.currentUser) {
+      alert("You are not signed in. Please restart the app and log in.");
+      return;
+    }
+
     if (images.length === 0) {
-      Alert.alert("Error", "Please add at least one image of the fix.");
+      alert("Please add at least one image of the fix.");
       return;
     }
 
     if (!issueId) {
-      Alert.alert("Error", "Issue ID is missing. Please try again.");
+      alert("Issue ID is missing. Please try again.");
       return;
     }
 
@@ -108,21 +109,17 @@ const FixUploadScreen = ({ route, navigation }) => {
     try {
       const token = await auth.currentUser.getIdToken();
 
-      // Create FormData
       const formData = new FormData();
-      formData.append("issue_id", issueId);
       formData.append("description", description || "");
 
-      // Append images
-      images.forEach((image, index) => {
-        formData.append("files", {
-          uri: image.uri,
-          type: image.type,
-          name: image.name,
-        });
+      // Backend expects a single file with key "file"
+      // Send only the first image
+      formData.append("file", {
+        uri: images[0].uri,
+        type: images[0].type,
+        name: images[0].name,
       });
 
-      // Submit to backend
       const response = await api.post(
         `/api/issues/${issueId}/submit-fix`,
         formData,
@@ -135,27 +132,33 @@ const FixUploadScreen = ({ route, navigation }) => {
       );
 
       if (response.status === 200) {
-        Alert.alert(
+        // Alert.alert(
+        //   "Success",
+        //   "Fix submitted successfully! Your contribution has been recorded.",
+        //   [
+        //     {
+        //       text: "OK",
+        //       onPress: () => {
+        //         setImages([]);
+        //         setDescription("");
+        //         setUploading(false);
+        //         navigation.goBack();
+        //       },
+        //     },
+        //   ]
+        // );
+        alert(
           "Success",
-          "Fix submitted successfully! Your contribution has been recorded.",
-          [
-            {
-              text: "OK",
-              onPress: () => navigation.goBack(),
-            },
-          ]
+          "Fix submitted successfully! Your contribution has been recorded."
         );
-        // Reset form
-        setImages([]);
-        setDescription("");
+        navigation.goBack();
       }
     } catch (error) {
-      console.error("Error submitting fix:", error);
+      console.error("Error submitting fix:", JSON.stringify(error, null, 2));
       const errorMessage =
         error.response?.data?.detail ||
         "Failed to submit fix. Please try again.";
-      Alert.alert("Error", errorMessage);
-    } finally {
+      alert(errorMessage);
       setUploading(false);
     }
   };
@@ -174,10 +177,15 @@ const FixUploadScreen = ({ route, navigation }) => {
             />
           )}
           <View style={styles.issueInfo}>
-            <Text style={styles.issueLocation}>📍 {issueData.location}</Text>
+            <View style={styles.issueLocationRow}>
+              <Ionicons name="location" size={16} color="#666" />
+              <Text style={styles.issueLocation}>{issueData.location}</Text>
+            </View>
             {issueData.issueTypes && issueData.issueTypes.length > 0 && (
               <Text style={styles.issueType}>
-                {issueData.issueTypes.map((t) => t.type).join(", ")}
+                {issueData.issueTypes
+                  .map((t) => getIssueDisplayName(t.type))
+                  .join(", ")}
               </Text>
             )}
           </View>

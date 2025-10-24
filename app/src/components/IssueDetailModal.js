@@ -1,4 +1,4 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -8,10 +8,11 @@ import {
   StyleSheet,
   Image,
   Dimensions,
+  ActivityIndicator,
 } from "react-native";
-import Ionicons from "@expo/vector-icons/Ionicons";
-import FontAwesome from "@expo/vector-icons/FontAwesome";
+import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
+import api from "../services/api";
 
 const { width } = Dimensions.get("window");
 
@@ -23,6 +24,44 @@ const IssueDetailModal = ({
   onUploadFix,
 }) => {
   const [isLiked, setIsLiked] = useState(false);
+  const [fixDetails, setFixDetails] = useState(null);
+  const [loadingFix, setLoadingFix] = useState(false);
+  const [currentFixImageIndex, setCurrentFixImageIndex] = useState(0);
+
+  // Fetch fix details when modal opens for closed issues
+  useEffect(() => {
+    const fetchFixDetails = async () => {
+      if (
+        visible &&
+        issueData?.status?.toLowerCase() === "closed" &&
+        issueData?.detailedData?.issue_id
+      ) {
+        setLoadingFix(true);
+        try {
+          const response = await api.get(
+            `/api/issues/${issueData.detailedData.issue_id}/fix-details`
+          );
+          if (response.data.has_fix) {
+            setFixDetails(response.data);
+          }
+        } catch (error) {
+          console.error("Error fetching fix details:", error);
+        } finally {
+          setLoadingFix(false);
+        }
+      }
+    };
+
+    fetchFixDetails();
+  }, [visible, issueData]);
+
+  // Reset fix details when modal closes
+  useEffect(() => {
+    if (!visible) {
+      setFixDetails(null);
+      setCurrentFixImageIndex(0);
+    }
+  }, [visible]);
 
   if (!issueData) return null;
 
@@ -72,7 +111,12 @@ const IssueDetailModal = ({
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Location</Text>
               <View style={styles.locationRow}>
-                <Text style={styles.locationIcon}>📍</Text>
+                <Ionicons
+                  name="location"
+                  size={16}
+                  color="#666"
+                  style={{ marginRight: 4 }}
+                />
                 <Text style={styles.locationText}>{issueData.location}</Text>
               </View>
             </View>
@@ -101,6 +145,149 @@ const IssueDetailModal = ({
                 </View>
               </View>
             </View>
+
+            {/* Fix Details - Only for Closed Issues - MOVED HERE ABOVE DESCRIPTION */}
+            {issueData.status?.toLowerCase() === "closed" && (
+              <View style={styles.section}>
+                <Text style={styles.sectionTitle}>Fix Information</Text>
+                {loadingFix ? (
+                  <View style={styles.loadingFixContainer}>
+                    <ActivityIndicator size="small" color="#4CAF79" />
+                    <Text style={styles.loadingFixText}>
+                      Loading fix details...
+                    </Text>
+                  </View>
+                ) : fixDetails ? (
+                  <View style={styles.fixDetailsContainer}>
+                    {/* Fix Images Gallery */}
+                    {fixDetails.image_urls &&
+                      fixDetails.image_urls.length > 0 && (
+                        <View style={styles.fixImagesSection}>
+                          <Text style={styles.fixSubtitle}>Fix Photos</Text>
+                          <View style={styles.fixImageGallery}>
+                            <Image
+                              source={{
+                                uri: fixDetails.image_urls[
+                                  currentFixImageIndex
+                                ],
+                              }}
+                              style={styles.fixMainImage}
+                            />
+                            {fixDetails.image_urls.length > 1 && (
+                              <View style={styles.fixImageNavigation}>
+                                <TouchableOpacity
+                                  style={styles.fixImageNavButton}
+                                  onPress={() =>
+                                    setCurrentFixImageIndex((prev) =>
+                                      prev > 0
+                                        ? prev - 1
+                                        : fixDetails.image_urls.length - 1
+                                    )
+                                  }
+                                >
+                                  <Ionicons
+                                    name="chevron-back"
+                                    size={20}
+                                    color="#fff"
+                                  />
+                                </TouchableOpacity>
+                                <Text style={styles.fixImageCounter}>
+                                  {currentFixImageIndex + 1} /{" "}
+                                  {fixDetails.image_urls.length}
+                                </Text>
+                                <TouchableOpacity
+                                  style={styles.fixImageNavButton}
+                                  onPress={() =>
+                                    setCurrentFixImageIndex((prev) =>
+                                      prev < fixDetails.image_urls.length - 1
+                                        ? prev + 1
+                                        : 0
+                                    )
+                                  }
+                                >
+                                  <Ionicons
+                                    name="chevron-forward"
+                                    size={20}
+                                    color="#fff"
+                                  />
+                                </TouchableOpacity>
+                              </View>
+                            )}
+                          </View>
+                        </View>
+                      )}
+
+                    {/* Fixed By Information */}
+                    <View style={styles.fixedBySection}>
+                      <Text style={styles.fixSubtitle}>Fixed By</Text>
+                      <View style={styles.fixedByCard}>
+                        <View style={styles.fixedByHeader}>
+                          <Ionicons
+                            name="person-circle"
+                            size={40}
+                            color="#4CAF79"
+                          />
+                          <View style={styles.fixedByInfo}>
+                            <Text style={styles.fixedByName}>
+                              {fixDetails.fixed_by.name}
+                            </Text>
+                            {fixDetails.fixed_by.organization && (
+                              <View style={styles.organizationRow}>
+                                <Ionicons
+                                  name="business"
+                                  size={14}
+                                  color="#666"
+                                />
+                                <Text style={styles.organizationText}>
+                                  {fixDetails.fixed_by.organization}
+                                </Text>
+                              </View>
+                            )}
+                            <View style={styles.volunteerBadge}>
+                              <Ionicons
+                                name="construct"
+                                size={12}
+                                color="#4CAF79"
+                              />
+                              <Text style={styles.volunteerBadgeText}>
+                                {fixDetails.fixed_by.userType === "ngo"
+                                  ? "NGO"
+                                  : "Volunteer"}
+                              </Text>
+                            </View>
+                          </View>
+                        </View>
+                      </View>
+                    </View>
+
+                    {/* Fix Description */}
+                    {fixDetails.description && (
+                      <View style={styles.fixDescriptionSection}>
+                        <Text style={styles.fixSubtitle}>Fix Description</Text>
+                        <Text style={styles.fixDescriptionText}>
+                          {fixDetails.description}
+                        </Text>
+                      </View>
+                    )}
+
+                    {/* Fix Date */}
+                    {fixDetails.created_at && (
+                      <View style={styles.fixDateSection}>
+                        <Ionicons name="calendar" size={14} color="#666" />
+                        <Text style={styles.fixDateText}>
+                          Fixed on{" "}
+                          {new Date(fixDetails.created_at).toLocaleString()}
+                        </Text>
+                      </View>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={styles.noFixDataText}>
+                    Fix information not available
+                  </Text>
+                )}
+              </View>
+            )}
 
             {/* Description */}
             {issueData.detailedData?.description && (
@@ -172,50 +359,12 @@ const IssueDetailModal = ({
                 </Text>
               </View>
             )}
-
-            {/* Fix Status - Only for Closed Issues */}
-            {issueData.status?.toLowerCase() === "closed" &&
-              issueData.detailedData?.fix_status && (
-                <View style={styles.section}>
-                  <Text style={styles.sectionTitle}>Fix Status</Text>
-                  <View style={styles.fixStatusContainer}>
-                    <View style={styles.fixStatusItem}>
-                      <Text style={styles.fixStatusLabel}>Is Fixed:</Text>
-                      <Text
-                        style={[
-                          styles.fixStatusValue,
-                          issueData.detailedData.fix_status.is_fixed &&
-                            styles.fixStatusValueFixed,
-                        ]}
-                      >
-                        {issueData.detailedData.fix_status.is_fixed
-                          ? "✅ Yes"
-                          : "❌ No"}
-                      </Text>
-                    </View>
-                    <View style={styles.fixStatusItem}>
-                      <Text style={styles.fixStatusLabel}>Is Not Fixed:</Text>
-                      <Text
-                        style={[
-                          styles.fixStatusValue,
-                          issueData.detailedData.fix_status.is_not_fixed &&
-                            styles.fixStatusValueNotFixed,
-                        ]}
-                      >
-                        {issueData.detailedData.fix_status.is_not_fixed
-                          ? "✅ Yes"
-                          : "❌ No"}
-                      </Text>
-                    </View>
-                  </View>
-                </View>
-              )}
           </ScrollView>
 
           {/* Action Buttons Footer */}
           <View style={styles.actionFooter}>
-            {/* Upload Fix Button - Only for volunteers on open issues */}
-            {userType === "volunteer" &&
+            {/* Upload Fix Button - ONLY for volunteers/NGOs on OPEN issues */}
+            {(userType === "volunteer" || userType === "ngo") &&
             issueData.status?.toLowerCase() === "open" ? (
               <TouchableOpacity
                 style={[styles.actionButton, styles.uploadFixButton]}
@@ -236,27 +385,14 @@ const IssueDetailModal = ({
               </TouchableOpacity>
             ) : null}
 
-            {/* Upload Fix Button - Only for citizens on closed issues */}
-            {userType !== "volunteer" &&
-            issueData.status?.toLowerCase() === "closed" ? (
-              <TouchableOpacity
-                style={[styles.actionButton, styles.uploadFixButton]}
-                onPress={() => {
-                  onClose();
-                  onUploadFix && onUploadFix(issueData);
-                }}
-              >
-                <Ionicons name="construct" size={20} color="#fff" />
-                <Text
-                  style={[
-                    styles.actionButtonText,
-                    styles.actionButtonTextActive,
-                  ]}
-                >
-                  Upload Fix
-                </Text>
-              </TouchableOpacity>
-            ) : null}
+            {/* Close Button - For closed issues, just show a close button */}
+            <TouchableOpacity
+              style={[styles.actionButton, styles.closeButton]}
+              onPress={onClose}
+            >
+              <Ionicons name="close-circle" size={20} color="#666" />
+              <Text style={styles.actionButtonText}>Close</Text>
+            </TouchableOpacity>
           </View>
         </View>
       </View>
@@ -516,6 +652,142 @@ const styles = StyleSheet.create({
   },
   fixStatusValueNotFixed: {
     color: "#dc3545",
+  },
+  loadingFixContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    padding: 20,
+    gap: 10,
+  },
+  loadingFixText: {
+    fontSize: 14,
+    color: "#666",
+  },
+  fixDetailsContainer: {
+    gap: 16,
+  },
+  fixImagesSection: {
+    marginBottom: 12,
+  },
+  fixSubtitle: {
+    fontSize: 15,
+    fontWeight: "600",
+    color: "#333",
+    marginBottom: 10,
+  },
+  fixImageGallery: {
+    position: "relative",
+    borderRadius: 12,
+    overflow: "hidden",
+  },
+  fixMainImage: {
+    width: "100%",
+    height: 200,
+    resizeMode: "cover",
+    backgroundColor: "#f0f0f0",
+  },
+  fixImageNavigation: {
+    position: "absolute",
+    bottom: 10,
+    left: 0,
+    right: 0,
+    flexDirection: "row",
+    justifyContent: "center",
+    alignItems: "center",
+    gap: 12,
+  },
+  fixImageNavButton: {
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    borderRadius: 20,
+    width: 36,
+    height: 36,
+    justifyContent: "center",
+    alignItems: "center",
+  },
+  fixImageCounter: {
+    backgroundColor: "rgba(0, 0, 0, 0.6)",
+    color: "#fff",
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 12,
+    fontSize: 13,
+    fontWeight: "600",
+  },
+  fixedBySection: {
+    marginBottom: 12,
+  },
+  fixedByCard: {
+    backgroundColor: "rgba(255, 255, 255, 0.7)",
+    borderRadius: 12,
+    padding: 12,
+    borderLeftWidth: 4,
+    borderLeftColor: "#4CAF79",
+  },
+  fixedByHeader: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 12,
+  },
+  fixedByInfo: {
+    flex: 1,
+  },
+  fixedByName: {
+    fontSize: 16,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 4,
+  },
+  organizationRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    marginBottom: 6,
+  },
+  organizationText: {
+    fontSize: 13,
+    color: "#666",
+    fontWeight: "500",
+  },
+  volunteerBadge: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 4,
+    backgroundColor: "#E8F5E9",
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 12,
+    alignSelf: "flex-start",
+  },
+  volunteerBadgeText: {
+    fontSize: 11,
+    fontWeight: "600",
+    color: "#4CAF79",
+  },
+  fixDescriptionSection: {
+    marginBottom: 12,
+  },
+  fixDescriptionText: {
+    fontSize: 14,
+    color: "#555",
+    lineHeight: 20,
+  },
+  fixDateSection: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+  },
+  fixDateText: {
+    fontSize: 13,
+    color: "#666",
+    fontStyle: "italic",
+  },
+  noFixDataText: {
+    fontSize: 14,
+    color: "#999",
+    textAlign: "center",
+    padding: 20,
+    fontStyle: "italic",
   },
 });
 

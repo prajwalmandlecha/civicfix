@@ -635,6 +635,13 @@ async def get_latest_issues(
 ):
     """
     Get the latest issues sorted by reported time.
+<<<<<<< HEAD
+=======
+
+    Args:
+        limit: Maximum number of results (default 10)
+        days_back: Only include issues from last N days (optional)
+>>>>>>> bb8d065ae2688ef29bbc3846cd5964549b1f1bfc
     """
     if not es_client:
         raise HTTPException(503, "DB unavailable")
@@ -1071,32 +1078,26 @@ async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
     #     raise HTTPException(status_code=404, detail=f"Issue {issue_id} not found")
 
     try:
-        # --- Get current issue details FIRST (for status and reporter) ---
-        get_resp = await es_client.get(index="issues", id=issue_id)
-        source_doc = get_resp["_source"]
-        current_status = source_doc.get("status", "open")
-        reporter_uid = source_doc.get("reported_by")  # Get reporter ID for potential karma
-
-        # --- Check if upvote document exists in Firestore ---
+<<<<<<< HEAD
+        # Check if upvote document exists in Firestore
         upvote_ref = db.collection("upvotes").document(upvote_doc_id)
         upvote_doc = upvote_ref.get()
-
+        
         now = datetime.utcnow().isoformat() + "Z"
         new_active_state = True  # Default for new upvotes
-        is_first_upvote = False  # Track if this is the first time upvoting (for karma)
-
+        
         if upvote_doc.exists:
             # Toggle existing upvote
             upvote_data = upvote_doc.to_dict()
             is_active = upvote_data.get("isActive", False)
             new_active_state = not is_active
-
+            
             # Update Firestore with new state
             upvote_ref.update({
                 "isActive": new_active_state,
                 "lastUpdated": now
             })
-
+            
             logger.info(f"Toggling upvote from {is_active} to {new_active_state}")
         else:
             # Create new upvote document with isActive=True
@@ -1108,10 +1109,9 @@ async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
                 "lastUpdated": now
             })
             new_active_state = True
-            is_first_upvote = True  # Mark as first upvote for karma award
             logger.info(f"Creating new upvote for user {user_uid}")
-
-        # --- Update Elasticsearch count based on new state ---
+        
+        # Update Elasticsearch count based on new state
         if new_active_state:
             # Activating upvote - increment count
             script = {
@@ -1148,14 +1148,56 @@ async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
             }
 
         # Perform update operation in Elasticsearch
+=======
+        # --- Get current issue details FIRST ---
+        get_resp = await es_client.get(index="issues", id=issue_id)
+        source_doc = get_resp["_source"]
+        current_status = source_doc.get("status", "open")
+        reporter_uid = source_doc.get(
+            "reported_by"
+        )  # Get reporter ID for potential karma
+
+        # --- Determine script and if karma should be awarded ---
+        script_source = ""
+        was_open_upvote = False  # Flag to track if karma should be awarded
+        if current_status == "open":
+            script_source = """
+                if (!ctx._source.containsKey('upvotes')) { ctx._source.upvotes = ['open': 0, 'closed': 0]; }
+                ctx._source.upvotes.open += 1;
+            """
+            was_open_upvote = True  # Mark that this was an upvote on an open issue
+        elif current_status == "closed":
+            script_source = """
+                if (!ctx._source.containsKey('upvotes')) { ctx._source.upvotes = ['open': 0, 'closed': 0]; }
+                ctx._source.upvotes.closed += 1;
+            """
+        # --- Add handling for 'verified' status if needed ---
+        # elif current_status == "verified":
+        #    script_source = """
+        #        if (!ctx._source.containsKey('upvotes')) { ctx._source.upvotes = ['open': 0, 'closed': 0, 'verified': 0]; } # Add verified if needed
+        #        ctx._source.upvotes.verified += 1;
+        #    """
+        else:  # Handle unexpected statuses gracefully (treat as open)
+            logger.warning(
+                f"Upvoting issue {issue_id} with status: {current_status}. Treating as open."
+            )
+            script_source = """
+                if (!ctx._source.containsKey('upvotes')) { ctx._source.upvotes = ['open': 0, 'closed': 0]; }
+                ctx._source.upvotes.open += 1;
+            """
+            was_open_upvote = True
+
+        # --- Update Elasticsearch ---
+>>>>>>> bb8d065ae2688ef29bbc3846cd5964549b1f1bfc
         await es_client.update(
             index="issues",
             id=issue_id,
-            script=script,
+            script={"source": script_source, "lang": "painless"},
             refresh="wait_for",  # Use wait_for for consistency before awarding karma
             retry_on_conflict=3,
         )
 
+<<<<<<< HEAD
         # Retrieve updated document from Elasticsearch
         get_response = await es_client.get(index="issues", id=issue_id)
         updated_source = get_response['_source']
@@ -1163,9 +1205,33 @@ async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
         logger.info(
             f"Upvote toggled for {issue_id}. isActive: {new_active_state}, New counts: {updated_source.get('upvotes')}"
         )
+        
+        return {
+            "success": True,
+            "message": "Upvoted" if new_active_state else "Upvote removed",
+            "isActive": new_active_state,
+            "hasUpvoted": new_active_state,  # For frontend compatibility
+            "updated_issue": updated_source,
+            "upvotes": updated_source.get('upvotes', {})
+        }
+        
+    except NotFoundError:
+        logger.warning(f"Upvote fail: Issue {issue_id} not found in Elasticsearch.")
+        raise HTTPException(404, f"Issue {issue_id} not found")
+    except Exception as e:
+        logger.exception(f"Unexpected error while toggling upvote for {issue_id}")
+        raise HTTPException(500, f"Server error: {e}")
+=======
+        # --- Fetch the updated document (needed for response) ---
+        updated_doc_resp = await es_client.get(index="issues", id=issue_id)
+        updated_source = updated_doc_resp["_source"]
 
-        # --- AWARD KARMA LOGIC (only on first upvote activation for open issues) ---
-        if is_first_upvote and new_active_state and current_status == "open":
+        logger.info(
+            f"Upvote OK for {issue_id}. New counts: {updated_source.get('upvotes')}"
+        )
+
+        # --- AWARD KARMA LOGIC ---
+        if was_open_upvote:
             if reporter_uid and reporter_uid != "anonymous":
                 current_voter_uid = user.get("uid")
                 # --- Prevent self-vote karma ---
@@ -1198,21 +1264,15 @@ async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
                 )
         # --- END AWARD KARMA LOGIC ---
 
-        return {
-            "success": True,
-            "message": "Upvoted" if new_active_state else "Upvote removed",
-            "isActive": new_active_state,
-            "hasUpvoted": new_active_state,  # For frontend compatibility
-            "updated_issue": updated_source,
-            "upvotes": updated_source.get('upvotes', {})
-        }
-        
+        return {"message": "Upvoted", "updated_issue": updated_source}
+
     except NotFoundError:
-        logger.warning(f"Upvote fail: Issue {issue_id} not found in Elasticsearch.")
-        raise HTTPException(404, f"Issue {issue_id} not found")
+        logger.warning(f"Upvote failed: Issue {issue_id} not found.")
+        raise HTTPException(status_code=404, detail=f"Issue {issue_id} not found")
     except Exception as e:
-        logger.exception(f"Unexpected error while toggling upvote for {issue_id}")
-        raise HTTPException(500, f"Server error: {e}")
+        logger.exception(f"Unexpected error during upvote for issue {issue_id}")
+        raise HTTPException(status_code=500, detail=f"Server error during upvote: {e}")
+>>>>>>> bb8d065ae2688ef29bbc3846cd5964549b1f1bfc
 
 
 # --- Unlike Endpoint (Deprecated - use /upvote to toggle) ---
@@ -1581,84 +1641,6 @@ async def submit_fix(
 # OR just use the string "DESCENDING"
 
 
-@app.get("/api/issues/{issue_id}/fix-details")
-async def get_issue_fix_details(issue_id: str):
-    """
-    Fetch fix details for a closed issue, including fix images and volunteer/NGO info.
-    """
-    if not es_client:
-        raise HTTPException(503, "Elasticsearch unavailable")
-    if not db:
-        raise HTTPException(503, "Firestore client not available")
-    
-    try:
-        # 1. Fetch the issue from Elasticsearch
-        issue_query = {"query": {"term": {"issue_id": {"value": issue_id}}}}
-        issue_response = await es_client.search(index="issues", body=issue_query, size=1)
-        issue_hits = issue_response.get("hits", {}).get("hits", [])
-        
-        if not issue_hits:
-            raise HTTPException(404, f"Issue {issue_id} not found")
-        
-        issue_data = issue_hits[0]["_source"]
-        
-        # 2. Check if issue is closed
-        if issue_data.get("status") != "closed":
-            return {"has_fix": False, "message": "Issue is not closed yet"}
-        
-        # 3. Get closed_by user ID
-        closed_by_uid = issue_data.get("closed_by")
-        if not closed_by_uid:
-            return {"has_fix": False, "message": "No fix information available"}
-        
-        # 4. Fetch fix details from fixes index
-        fix_query = {"query": {"term": {"issue_id": {"value": issue_id}}}}
-        fix_response = await es_client.search(index="fixes", body=fix_query, size=1)
-        fix_hits = fix_response.get("hits", {}).get("hits", [])
-        
-        if not fix_hits:
-            return {"has_fix": False, "message": "Fix details not found"}
-        
-        fix_data = fix_hits[0]["_source"]
-        
-        # 5. Fetch user information from Firestore
-        user_doc = db.collection("users").document(closed_by_uid).get()
-        user_info = {}
-        
-        if user_doc.exists:
-            user_data = user_doc.to_dict()
-            user_info = {
-                "name": user_data.get("name", "Anonymous Volunteer"),
-                "organization": user_data.get("organization", None),
-                "userType": user_data.get("userType", "volunteer"),
-            }
-        else:
-            user_info = {
-                "name": "Anonymous Volunteer",
-                "organization": None,
-                "userType": "volunteer",
-            }
-        
-        # 6. Return fix details
-        return {
-            "has_fix": True,
-            "fix_id": fix_data.get("fix_id"),
-            "image_urls": fix_data.get("image_urls", []),
-            "description": fix_data.get("description", ""),
-            "title": fix_data.get("title", ""),
-            "created_at": fix_data.get("created_at"),
-            "fixed_by": user_info,
-            "co2_saved": fix_data.get("co2_saved", 0),
-            "success_rate": fix_data.get("success_rate", 0),
-        }
-        
-    except HTTPException:
-        raise
-    except Exception as e:
-        logger.exception(f"Error fetching fix details for issue {issue_id}: {e}")
-        raise HTTPException(500, f"Failed to fetch fix details: {str(e)}")
-
-
 @app.get("/api/leaderboard/citizens")
 async def get_citizen_leaderboard():
     """Fetches top 10 citizens by karma from Firestore."""
@@ -1814,5 +1796,3 @@ async def get_upvote_status(issue_id: str, user: dict = Depends(get_current_user
     except Exception as e:
         logger.exception(f"Error checking upvote status for {issue_id}")
         raise HTTPException(500, f"Server error: {e}")
-
-

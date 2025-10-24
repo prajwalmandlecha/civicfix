@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useLayoutEffect } from "react";
+import React, { useState, useEffect } from "react";
 import {
   View,
   Text,
@@ -9,12 +9,15 @@ import {
   Modal,
   ScrollView,
   ActivityIndicator,
+  Alert,
 } from "react-native";
+import { Ionicons } from "@expo/vector-icons";
 import SocialPost from "../components/SocialPost";
 import IssueDetailModal from "../components/IssueDetailModal";
 import api from "../services/api";
 import { useUserContext } from "../context/UserContext";
 import * as Location from "expo-location";
+import { getCurrentLocation } from "../services/getLocation";
 
 const HomeScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
@@ -23,16 +26,24 @@ const HomeScreen = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [filters, setFilters] = useState({
-    status: "all", // all, open, closed
+    status: "open", // Default to OPEN issues only
     severity: "all", // all, high, medium, low
     sortBy: "severity", // severity, date, likes
   });
 
-  const { lastLocation, userType } = useUserContext();
+  const {
+    lastLocation,
+    userType,
+    updateLastLocation,
+    loading: contextLoading,
+  } = useUserContext();
+  const [loadingLocation, setLoadingLocation] = useState(false);
 
   useEffect(() => {
-    getPosts();
-  }, [lastLocation, filters]);
+    if (!contextLoading) {
+      getPosts();
+    }
+  }, [lastLocation, filters, contextLoading]);
 
   // Apply filters to posts
   const getFilteredPosts = () => {
@@ -85,7 +96,7 @@ const HomeScreen = ({ navigation }) => {
   // Reset filters
   const resetFilters = () => {
     setFilters({
-      status: "all",
+      status: "open", // Reset to open issues
       severity: "all",
       sortBy: "severity",
     });
@@ -119,28 +130,40 @@ const HomeScreen = ({ navigation }) => {
 
       if (response.data && response.data.issues) {
         const newIssues = await Promise.all(
-          response.data.issues.map(async (issue) => ({
-            id: issue.issue_id,
-            issueTypes: issue.detected_issues,
-            location: await formatLocation(issue.location),
-            postImage: {
-              uri: issue.photo_url,
-            },
-            impactLevel:
-              issue.severity_score > 7
-                ? "High"
-                : issue.severity_score > 4
-                ? "Medium"
-                : "Low",
-            co2Impact: issue.co2Impact,
-            likes: issue.upvotes?.open || 0,
-            status: issue.status,
-            description: issue.description,
-            createdAt: issue.created_at,
-            severityScore: issue.severity_score,
-            distanceKm: issue.distance_km,
-            detailedData: issue,
-          }))
+          response.data.issues.map(async (issue) => {
+            // Show correct upvote count based on issue status
+            const isClosed = issue.status?.toLowerCase() === "closed";
+            const upvoteCount = isClosed
+              ? issue.upvotes?.closed || 0
+              : issue.upvotes?.open || 0;
+
+            return {
+              id: issue.issue_id,
+              issueTypes: issue.detected_issues,
+              location: await formatLocation(issue.location),
+              postImage: {
+                uri: issue.photo_url,
+              },
+              impactLevel:
+                issue.severity_score > 7
+                  ? "High"
+                  : issue.severity_score > 4
+                  ? "Medium"
+                  : "Low",
+              co2Impact: issue.co2Impact,
+              likes: upvoteCount,
+              status: issue.status,
+              description: issue.description,
+              createdAt: issue.created_at,
+              severityScore: issue.severity_score,
+              distanceKm: issue.distance_km,
+              detailedData: issue,
+              userStatus: issue.userStatus || {
+                hasUpvoted: false,
+                hasReported: false,
+              },
+            };
+          })
         );
 
         console.log(
@@ -210,7 +233,13 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const getPosts = async () => {
+    if (contextLoading) {
+      console.log("Context still loading, skipping posts fetch");
+      return;
+    }
+
     if (!lastLocation || !lastLocation.coords) {
+      console.log("No location available, cannot fetch posts");
       setPosts([]);
       return;
     }
@@ -237,28 +266,40 @@ const HomeScreen = ({ navigation }) => {
       }
 
       const issues = await Promise.all(
-        response.data.issues.map(async (issue) => ({
-          id: issue.issue_id,
-          issueTypes: issue.detected_issues,
-          location: await formatLocation(issue.location),
-          postImage: {
-            uri: issue.photo_url,
-          },
-          impactLevel:
-            issue.severity_score > 7
-              ? "High"
-              : issue.severity_score > 4
-              ? "Medium"
-              : "Low",
-          co2Impact: issue.co2Impact,
-          likes: issue.upvotes?.open || 0,
-          status: issue.status,
-          description: issue.description,
-          createdAt: issue.created_at,
-          severityScore: issue.severity_score,
-          distanceKm: issue.distance_km,
-          detailedData: issue,
-        }))
+        response.data.issues.map(async (issue) => {
+          // Show correct upvote count based on issue status
+          const isClosed = issue.status?.toLowerCase() === "closed";
+          const upvoteCount = isClosed
+            ? issue.upvotes?.closed || 0
+            : issue.upvotes?.open || 0;
+
+          return {
+            id: issue.issue_id,
+            issueTypes: issue.detected_issues,
+            location: await formatLocation(issue.location),
+            postImage: {
+              uri: issue.photo_url,
+            },
+            impactLevel:
+              issue.severity_score > 7
+                ? "High"
+                : issue.severity_score > 4
+                ? "Medium"
+                : "Low",
+            co2Impact: issue.co2Impact,
+            likes: upvoteCount,
+            status: issue.status,
+            description: issue.description,
+            createdAt: issue.created_at,
+            severityScore: issue.severity_score,
+            distanceKm: issue.distance_km,
+            detailedData: issue,
+            userStatus: issue.userStatus || {
+              hasUpvoted: false,
+              hasReported: false,
+            },
+          };
+        })
       );
 
       issues.sort((a, b) => b.severityScore - a.severityScore);
@@ -322,6 +363,49 @@ const HomeScreen = ({ navigation }) => {
     setRefreshing(false);
   };
 
+  const handleSetLocation = async () => {
+    try {
+      setLoadingLocation(true);
+      const { addressParts, location, error } = await getCurrentLocation(
+        setLoadingLocation
+      );
+      if (error) {
+        Alert.alert(
+          "Location Error",
+          "Unable to get your location. Please check your location settings."
+        );
+        return;
+      }
+      if (location && addressParts) {
+        const formattedAddress = [
+          addressParts.street,
+          addressParts.city,
+          addressParts.region,
+          addressParts.postalCode,
+          addressParts.country,
+        ]
+          .filter(Boolean)
+          .join(", ");
+
+        const locationData = {
+          coords: {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+          },
+          address: formattedAddress,
+        };
+
+        await updateLastLocation(locationData);
+        Alert.alert("Success", "Location updated! Loading nearby issues...");
+      }
+    } catch (error) {
+      console.error("Error setting location:", error);
+      Alert.alert("Error", "Failed to update location. Please try again.");
+    } finally {
+      setLoadingLocation(false);
+    }
+  };
+
   return (
     <View style={styles.container}>
       {/* Filter Button */}
@@ -337,56 +421,90 @@ const HomeScreen = ({ navigation }) => {
         </Text>
       </View>
 
-      <FlatList
-        data={getFilteredPosts()}
-        renderItem={({ item }) => (
-          <SocialPost
-            postId={item.id}
-            issueTypes={item.issueTypes}
-            location={item.location}
-            postImage={item.postImage}
-            impactLevel={item.impactLevel}
-            co2Impact={item.co2Impact}
-            likes={item.likes}
-            status={item.status}
-            description={item.description}
-            createdAt={item.createdAt}
-            severityScore={item.severityScore}
-            distanceKm={item.distanceKm}
-            detailedData={item.detailedData}
-            userType={userType}
-            onFixToggle={() => handleFixToggle(item.id)}
-            onSameIssue={() => handleSameIssue(item.id)}
-            onPress={() => handlePostPress(item)}
-            onUploadFix={() => handleUploadFix(item)}
-          />
-        )}
-        keyExtractor={(item) => item.id.toString()}
-        showsVerticalScrollIndicator={false}
-        contentContainerStyle={styles.listContent}
-        refreshControl={
-          <RefreshControl
-            refreshing={refreshing}
-            onRefresh={onRefresh}
-            tintColor="#4285f4"
-            colors={["#4285f4"]}
-          />
-        }
-        onEndReached={handleLoadMore}
-        onEndReachedThreshold={0.5}
-        ListFooterComponent={
-          loadingMore ? (
-            <View style={styles.loadingFooter}>
-              <ActivityIndicator size="large" color="#4285f4" />
-              <Text style={styles.loadingText}>Loading more issues...</Text>
-            </View>
-          ) : !hasMore && posts.length > 0 ? (
-            <View style={styles.endFooter}>
-              <Text style={styles.endText}>No more issues to load</Text>
-            </View>
-          ) : null
-        }
-      />
+      {/* No Location Empty State */}
+      {!contextLoading && (!lastLocation || !lastLocation.coords) && (
+        <View style={styles.emptyState}>
+          <Ionicons name="location-outline" size={64} color="#ccc" />
+          <Text style={styles.emptyStateTitle}>Location Required</Text>
+          <Text style={styles.emptyStateText}>
+            We need your location to show nearby civic issues.
+          </Text>
+          <TouchableOpacity
+            style={styles.setLocationButton}
+            onPress={handleSetLocation}
+            disabled={loadingLocation}
+          >
+            {loadingLocation ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <Text style={styles.setLocationButtonText}>Set My Location</Text>
+            )}
+          </TouchableOpacity>
+        </View>
+      )}
+
+      {/* Loading State */}
+      {contextLoading && (
+        <View style={styles.loadingContainer}>
+          <ActivityIndicator size="large" color="#4285f4" />
+          <Text style={styles.loadingText}>Loading...</Text>
+        </View>
+      )}
+
+      {/* Issues List */}
+      {!contextLoading && lastLocation && lastLocation.coords && (
+        <FlatList
+          data={getFilteredPosts()}
+          renderItem={({ item }) => (
+            <SocialPost
+              postId={item.id}
+              issueTypes={item.issueTypes}
+              location={item.location}
+              postImage={item.postImage}
+              impactLevel={item.impactLevel}
+              co2Impact={item.co2Impact}
+              likes={item.likes}
+              status={item.status}
+              description={item.description}
+              createdAt={item.createdAt}
+              severityScore={item.severityScore}
+              distanceKm={item.distanceKm}
+              detailedData={item.detailedData}
+              userType={userType}
+              userStatus={item.userStatus}
+              onFixToggle={() => handleFixToggle(item.id)}
+              onSameIssue={() => handleSameIssue(item.id)}
+              onPress={() => handlePostPress(item)}
+              onUploadFix={() => handleUploadFix(item)}
+            />
+          )}
+          keyExtractor={(item) => item.id.toString()}
+          showsVerticalScrollIndicator={false}
+          contentContainerStyle={styles.listContent}
+          refreshControl={
+            <RefreshControl
+              refreshing={refreshing}
+              onRefresh={onRefresh}
+              tintColor="#4285f4"
+              colors={["#4285f4"]}
+            />
+          }
+          onEndReached={handleLoadMore}
+          onEndReachedThreshold={0.5}
+          ListFooterComponent={
+            loadingMore ? (
+              <View style={styles.loadingFooter}>
+                <ActivityIndicator size="large" color="#4285f4" />
+                <Text style={styles.loadingText}>Loading more issues...</Text>
+              </View>
+            ) : !hasMore && posts.length > 0 ? (
+              <View style={styles.endFooter}>
+                <Text style={styles.endText}>No more issues to load</Text>
+              </View>
+            ) : null
+          }
+        />
+      )}
 
       {/* Filter Modal */}
       <Modal
@@ -529,7 +647,6 @@ const styles = StyleSheet.create({
   },
   listContent: {
     padding: 16,
-    // paddingBottom: 100, // Account for bottom tab bar + extra spacing
   },
   filterBar: {
     flexDirection: "row",
@@ -658,6 +775,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
+  loadingContainer: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingVertical: 60,
+  },
   loadingText: {
     marginTop: 10,
     fontSize: 14,
@@ -671,6 +794,49 @@ const styles = StyleSheet.create({
     fontSize: 14,
     color: "#999",
     fontStyle: "italic",
+  },
+  emptyState: {
+    flex: 1,
+    justifyContent: "center",
+    alignItems: "center",
+    paddingHorizontal: 40,
+    paddingVertical: 60,
+  },
+  emptyStateIcon: {
+    fontSize: 64,
+    marginBottom: 20,
+  },
+  emptyStateTitle: {
+    fontSize: 22,
+    fontWeight: "700",
+    color: "#333",
+    marginBottom: 12,
+    textAlign: "center",
+  },
+  emptyStateText: {
+    fontSize: 16,
+    color: "#666",
+    textAlign: "center",
+    marginBottom: 32,
+    lineHeight: 24,
+  },
+  setLocationButton: {
+    backgroundColor: "#4285f4",
+    paddingHorizontal: 32,
+    paddingVertical: 14,
+    borderRadius: 25,
+    minWidth: 200,
+    alignItems: "center",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
+  },
+  setLocationButtonText: {
+    color: "#fff",
+    fontSize: 16,
+    fontWeight: "700",
   },
 });
 

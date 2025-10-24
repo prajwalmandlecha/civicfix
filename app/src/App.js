@@ -112,8 +112,8 @@ const TabNav = () => {
           ),
         }}
       />
-      {/* Only show IssueUpload tab for citizens */}
-      {userType !== "volunteer" && (
+      {/* Only show IssueUpload tab for citizens (NOT volunteers/NGOs) */}
+      {userType === "citizen" && (
         <Tab.Screen
           name="IssueUpload"
           component={IssueUploadScreen}
