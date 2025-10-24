@@ -60,6 +60,7 @@ db = None
 try:
     import os
     import firebase_admin
+    import json
 
     # Check if Firebase is already initialized
     try:
@@ -67,19 +68,29 @@ try:
         logger.info("✓ Firebase app already initialized, reusing existing instance")
     except ValueError:
         # Firebase not initialized yet, initialize it
-        service_account_path = os.path.join(
-            os.path.dirname(__file__), "serviceAccountKey.json"
-        )
-        logger.info(
-            f"Attempting to load Firebase credentials from: {service_account_path}"
-        )
-
-        if not os.path.exists(service_account_path):
-            raise FileNotFoundError(
-                f"serviceAccountKey.json not found at {service_account_path}"
+        # Try to load from environment variable first (Cloud Run with secrets)
+        firebase_creds_json = os.getenv("FIREBASE_SERVICE_ACCOUNT_JSON")
+        
+        if firebase_creds_json:
+            # Running in Cloud Run with secret as env var
+            logger.info("Loading Firebase credentials from environment variable")
+            cred = credentials.Certificate(json.loads(firebase_creds_json))
+        else:
+            # Running locally - load from file
+            service_account_path = os.path.join(
+                os.path.dirname(__file__), "serviceAccountKey.json"
+            )
+            logger.info(
+                f"Attempting to load Firebase credentials from: {service_account_path}"
             )
 
-        cred = credentials.Certificate(service_account_path)
+            if not os.path.exists(service_account_path):
+                raise FileNotFoundError(
+                    f"serviceAccountKey.json not found at {service_account_path}"
+                )
+
+            cred = credentials.Certificate(service_account_path)
+        
         default_app = initialize_app(cred)
         logger.info("✓ Firebase Admin initialized successfully")
 
@@ -275,13 +286,28 @@ app.add_middleware(
 )
 
 try:
-    # Initialize GCS client with GCS service account credentials (different from Firebase)
-    storage_client = storage.Client.from_service_account_json(
-        "../secrets/civicfix-474613-613212b7d832.json"
-    )
-    logger.info("GCS client initialized successfully.")
+    # Try to load GCS credentials from environment variable first (Cloud Run)
+    gcs_creds_json = os.getenv("GCS_SERVICE_ACCOUNT_JSON")
+    
+    if gcs_creds_json:
+        # Running in Cloud Run with secret as env var
+        logger.info("Initializing GCS client from environment variable")
+        import json
+        from google.oauth2 import service_account
+        
+        gcs_creds_dict = json.loads(gcs_creds_json)
+        gcs_credentials = service_account.Credentials.from_service_account_info(gcs_creds_dict)
+        storage_client = storage.Client(credentials=gcs_credentials)
+    else:
+        # Running locally - load from file
+        logger.info("Initializing GCS client from service account file")
+        storage_client = storage.Client.from_service_account_json(
+            "civicfix-474613-613212b7d832.json"
+        )
+    
+    logger.info("✓ GCS client initialized successfully.")
 except Exception as gcs_err:
-    logger.error(f"GCS client initialization failed: {gcs_err}")
+    logger.error(f"✗ GCS client initialization failed: {gcs_err}", exc_info=True)
     storage_client = None
 geolocator = Nominatim(user_agent="civicfix_backend_app_v6")
 
