@@ -2,6 +2,8 @@
 import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
 import { initializeAuthListener } from './auth.js';
 
+const API_BASE = 'https://civicfix-backend-809180458813.asia-south1.run.app';
+
 // --- Reverted to single file variable ---
 let uploadedFile = null;
 
@@ -124,7 +126,7 @@ function initUploadArea() {
 
         try {
             // --- Point to the SINGLE-FILE backend endpoint ---
-            const response = await fetch('http://localhost:8000/submit-issue', { // Changed URL
+            const response = await fetch(`${API_BASE}/submit-issue`, { // Changed URL
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${idToken}`

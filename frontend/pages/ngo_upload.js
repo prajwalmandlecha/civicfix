@@ -7,6 +7,8 @@ import { initializeAuthListener } from './auth.js';
 import { auth } from '../firebaseConfig.js';
 import { onAuthStateChanged, getIdToken } from "firebase/auth";
 
+const API_BASE = 'https://civicfix-backend-809180458813.asia-south1.run.app';
+
 // --- REMOVED: protectPage() call ---
 
 // --- Define variables in the global scope for this script ---
@@ -27,7 +29,7 @@ async function loadOpenIssues() {
     }
 
     try {
-        const response = await fetch('http://localhost:8000/api/issues', {
+        const response = await fetch(`${API_BASE}/api/issues`, {
              headers: {
                  'Authorization': `Bearer ${currentToken}` // Send token
              }
@@ -217,7 +219,7 @@ document.addEventListener('DOMContentLoaded', () => {
         formData.append('description', fixDescription);
 
         try {
-            const response = await fetch(`http://localhost:8000/api/issues/${selectedIssueId}/submit-fix`, {
+            const response = await fetch(`${API_BASE}/api/issues/${selectedIssueId}/submit-fix`, {
                 method: 'POST',
                 headers: {
                     'Authorization': `Bearer ${currentToken}`

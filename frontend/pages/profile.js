@@ -1,123 +1,117 @@
 // frontend/pages/profile.js
 
-// ... (keep existing imports)
-import { initThemeToggle, initMobileMenu, showToast } from './shared.js'; // Added showToast
+import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
 import { initializeAuthListener } from './auth.js';
-import { auth, db } from '../firebaseConfig.js';
+import { auth } from '../firebaseConfig.js';
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc } from "firebase/firestore";
+import { getIdToken } from "firebase/auth";
+
+const API_BASE = 'https://civicfix-backend-809180458813.asia-south1.run.app';
 
 /**
- * Fetches the current user's profile data from Firestore and updates the page.
+ * Fetches the current user's stats from the backend API and updates the page.
  * @param {object} user - The Firebase Auth user object.
  */
 async function loadUserProfile(user) {
     if (!user) {
         console.log("No user passed to loadUserProfile.");
-        // Redirect if somehow called without a user (auth listener should prevent this)
         window.location.replace('/login.html');
         return;
     }
 
-    // Get references to the HTML elements we need to update
-    const avatarNameEl = document.querySelector('.profile-avatar .avatar-hash');
-    const nameFallback = 'Citizen'; // Default if name not found
-
-    // --- Selectors for stats (adjust if HTML changes) ---
-    const karmaStatEl = document.querySelector('.profile-stat span.stat-value'); // First stat
-    const rankStatEl = document.querySelector('.profile-stats .profile-stat:nth-child(2) span.stat-value'); // Second stat
-
-    // --- Selectors for other dynamic elements (Add these if needed) ---
-    // const badgeGridEl = document.querySelector('.badge-grid');
-    // const activityListEl = document.querySelector('.activity-list');
-    // const chartContainerEl = document.querySelector('.chart-container');
-
-    // --- Set loading states ---
-    if (avatarNameEl) avatarNameEl.textContent = 'Loading...';
-    if (karmaStatEl) karmaStatEl.textContent = '...';
-    if (rankStatEl) rankStatEl.textContent = '#?'; // Keep rank placeholder
+    // Show loading, hide content
+    const loadingIndicator = document.getElementById('loading-indicator');
+    const profileContent = document.getElementById('profile-content');
+    
+    if (loadingIndicator) loadingIndicator.style.display = 'block';
+    if (profileContent) profileContent.style.display = 'none';
 
     try {
-        // --- 1. Fetch user document from Firestore ---
-        const userDocRef = doc(db, "users", user.uid);
-        const userDoc = await getDoc(userDocRef);
+        // Get Firebase ID token for authentication
+        const idToken = await getIdToken(user);
 
-        if (userDoc.exists()) {
-            // --- FIX: Use .data() instead of .to_dict() ---
-            const userData = userDoc.data();
-            console.log("User data fetched:", userData);
-
-            // --- 2. Update Profile Card ---
-            if (avatarNameEl) {
-                // Display the user's name or fallback
-                avatarNameEl.textContent = userData.name || nameFallback;
+        // Fetch user stats from backend
+        const response = await fetch(`${API_BASE}/api/users/${user.uid}/stats`, {
+            headers: {
+                'Authorization': `Bearer ${idToken}`
             }
-            if (karmaStatEl) {
-                // Update Karma (used for CO2 display placeholder)
-                const karma = userData.karma || 0;
-                karmaStatEl.textContent = karma.toLocaleString(); // Format number
-            }
-            // Rank needs a separate query or calculation - keep placeholder
-            if (rankStatEl) {
-                rankStatEl.textContent = '#?';
-            }
+        });
 
-            // --- Update Badges (Placeholder - remove static HTML) ---
-            // You'll need to fetch/calculate badges later based on userData
-            // const badgeGridEl = document.querySelector('.badge-grid');
-            // if (badgeGridEl) {
-            //    badgeGridEl.innerHTML = ''; // Clear static badges
-            //    // Add dynamic badges here based on userData.karma or other stats
-            //    // e.g., if (userData.karma > 100) badgeGridEl.innerHTML += '<span class="badge">🔥</span>';
-            // }
-
-        } else {
-            console.error("No user document found in Firestore for UID:", user.uid);
-            if (avatarNameEl) avatarNameEl.textContent = 'Not Found';
-            showToast('❌ User profile data not found.');
+        if (!response.ok) {
+            throw new Error(`Failed to fetch stats: ${response.status}`);
         }
 
-        // --- 3. Update Recent Activity & Chart (Placeholder) ---
-        // These are still static in your HTML. Clear or add "Coming Soon".
-        const activityListEl = document.querySelector('.activity-list');
-        const chartContainerEl = document.querySelector('.chart-container svg'); // Target the SVG inside
-         if (activityListEl) {
-             activityListEl.innerHTML = '<p style="text-align: center; color: var(--grey-text);">Activity feed coming soon!</p>';
-         }
-         if (chartContainerEl) {
-             chartContainerEl.innerHTML = '<text x="50%" y="50%" dominant-baseline="middle" text-anchor="middle" fill="var(--grey-text)">Chart coming soon</text>';
-         }
+        const data = await response.json();
+        const stats = data.stats;
+
+        console.log("User stats fetched:", stats);
+
+        // Hide loading, show content
+        if (loadingIndicator) loadingIndicator.style.display = 'none';
+        if (profileContent) profileContent.style.display = 'block';
+
+        // Update Profile Header
+        const avatarInitial = document.getElementById('avatar-initial');
+        const username = document.getElementById('profile-username');
+        const email = document.getElementById('profile-email');
+        const karmaValue = document.getElementById('profile-karma-value');
+        const rankValue = document.getElementById('profile-rank-value');
+
+        const displayName = user.displayName || user.email?.split('@')[0] || 'User';
+        
+        if (avatarInitial) avatarInitial.textContent = displayName.charAt(0).toUpperCase();
+        if (username) username.textContent = displayName;
+        if (email) email.textContent = user.email || '';
+        if (karmaValue) karmaValue.textContent = (stats.karma || 0).toLocaleString();
+        if (rankValue) rankValue.textContent = stats.currentRank > 0 ? `#${stats.currentRank}` : 'N/A';
+
+        // Update stats grid
+        const statReported = document.getElementById('stat-issues-reported');
+        const statResolved = document.getElementById('stat-issues-resolved');
+        const statFixed = document.getElementById('stat-issues-fixed');
+        const statCo2 = document.getElementById('stat-co2-saved');
+
+        // Show/hide stats based on user type (we'll assume citizen for now)
+        if (stats.issuesReported !== undefined && statReported) {
+            statReported.style.display = 'block';
+            statReported.querySelector('.stat-value').textContent = stats.issuesReported;
+        }
+        
+        if (stats.issuesResolved !== undefined && statResolved) {
+            statResolved.style.display = 'block';
+            statResolved.querySelector('.stat-value').textContent = stats.issuesResolved;
+        }
+        
+        if (stats.issuesFixed !== undefined && stats.issuesFixed > 0 && statFixed) {
+            statFixed.style.display = 'block';
+            statFixed.querySelector('.stat-value').textContent = stats.issuesFixed;
+        }
+        
+        if (statCo2) {
+            statCo2.querySelector('.stat-value').textContent = `${stats.co2Saved || 0} kg`;
+        }
 
     } catch (error) {
         console.error("Error fetching user profile:", error);
-        if (avatarNameEl) avatarNameEl.textContent = 'Error';
         showToast(`❌ Error loading profile: ${error.message}`);
+        
+        // Hide loading, show content anyway
+        if (loadingIndicator) loadingIndicator.style.display = 'none';
+        if (profileContent) profileContent.style.display = 'block';
     }
 }
 
-// --- Main execution block when the page loads (No changes needed here) ---
+// Main execution block when the page loads
 document.addEventListener('DOMContentLoaded', () => {
-    // 1. Initialize auth first (handles redirects, adds logout button)
     initializeAuthListener();
-
-    // 2. Initialize standard UI elements
     initThemeToggle();
     initMobileMenu();
 
-    // 3. Listen for the auth state to load the profile
     onAuthStateChanged(auth, (user) => {
         if (user) {
-            // User is logged in, load their profile data
             loadUserProfile(user);
         } else {
-            // User is not logged in.
-            // initializeAuthListener() should have already redirected,
-            // but as a fallback:
             console.log("No user found, redirecting to login.");
-            // No need for explicit redirect here, initializeAuthListener handles it earlier
         }
     });
-
-    // 4. NOTE: The logout button logic is now handled inside auth.js
-    // We don't need the old 'logoutBtn' listener here anymore.
 });

@@ -61,11 +61,26 @@
             <div class="filter-group">
               <label>🔖 Issue Type</label>
               <div class="checkbox-group">
-                <label><input type="checkbox" name="type-filter" value="ROAD_POTHOLE"> Pothole</label>
-                <label><input type="checkbox" name="type-filter" value="WASTE_BULKY_DUMP"> Garbage</label>
-                <label><input type="checkbox" name="type-filter" value="STREETLIGHT_OUTAGE"> Streetlight</label>
-                <label><input type="checkbox" name="type-filter" value="DRAIN_BLOCKAGE"> Drain</label>
-                <label><input type="checkbox" name="type-filter" value="ILLEGAL_CONSTRUCTION_DEBRIS"> Construction</label>
+                <label><input type="checkbox" name="type-filter" value="drain_blockage"> Drain Blockage</label>
+                <label><input type="checkbox" name="type-filter" value="fallen_tree"> Fallen Tree</label>
+                <label><input type="checkbox" name="type-filter" value="flooding_surface"> Surface Flooding</label>
+                <label><input type="checkbox" name="type-filter" value="graffiti_vandalism"> Graffiti/Vandalism</label>
+                <label><input type="checkbox" name="type-filter" value="greenspace_maintenance"> Greenspace Maintenance</label>
+                <label><input type="checkbox" name="type-filter" value="illegal_construction_debris"> Construction Debris</label>
+                <label><input type="checkbox" name="type-filter" value="manhole_missing_or_damaged"> Manhole Issue</label>
+                <label><input type="checkbox" name="type-filter" value="power_pole_line_damage"> Power Line Damage</label>
+                <label><input type="checkbox" name="type-filter" value="public_infrastructure_damaged"> Infrastructure Damaged</label>
+                <label><input type="checkbox" name="type-filter" value="public_toilet_unsanitary"> Unsanitary Toilet</label>
+                <label><input type="checkbox" name="type-filter" value="road_pothole"> Road Pothole</label>
+                <label><input type="checkbox" name="type-filter" value="sidewalk_damage"> Sidewalk Damage</label>
+                <label><input type="checkbox" name="type-filter" value="small_fire_hazard"> Fire Hazard</label>
+                <label><input type="checkbox" name="type-filter" value="stray_animals"> Stray Animals</label>
+                <label><input type="checkbox" name="type-filter" value="streetlight_outage"> Streetlight Outage</label>
+                <label><input type="checkbox" name="type-filter" value="traffic_obstruction"> Traffic Obstruction</label>
+                <label><input type="checkbox" name="type-filter" value="traffic_sign_damage"> Traffic Sign Damage</label>
+                <label><input type="checkbox" name="type-filter" value="waste_bulky_dump"> Bulky Waste</label>
+                <label><input type="checkbox" name="type-filter" value="waste_litter_small"> Small Litter</label>
+                <label><input type="checkbox" name="type-filter" value="water_leak_surface"> Water Leak</label>
               </div>
             </div>
 
@@ -102,27 +117,12 @@
             <h3>Legend &amp; Stats</h3>
             <div class="stats-panel">
               <div class="density-legend">
-                <h4>Issue Types</h4>
+                <h4>Severity Levels</h4>
                 <div class="legend-grid">
-                  <div class="legend-item"><span class="legend-color" style="background: #FF6B6B;"></span> Pothole</div>
-                  <div class="legend-item"><span class="legend-color" style="background: #FFD93D;"></span> Streetlight</div>
-                  <div class="legend-item"><span class="legend-color" style="background: #6FCF97;"></span> Garbage</div>
-                  <div class="legend-item"><span class="legend-color" style="background: #A8E6CF;"></span> Drain</div>
-                  <div class="legend-item"><span class="legend-color" style="background: #9CA3AF;"></span> Construction</div>
+                  <div class="legend-item"><span class="legend-color" style="background: #22C55E;"></span> Low (0-3.9)</div>
+                  <div class="legend-item"><span class="legend-color" style="background: #EAB308;"></span> Medium (4-7.9)</div>
+                  <div class="legend-item"><span class="legend-color" style="background: #EF4444;"></span> High (8-10)</div>
                 </div>
-              </div>
-              <div class="map-info">
-                <h4>About Clustering</h4>
-                <p class="info-text"><strong>Zoom &lt; 12:</strong> Issues are grouped into clusters showing aggregate counts.</p>
-                <p class="info-text"><strong>Zoom ≥ 12:</strong> Individual issue pins are displayed with full details.</p>
-              </div>
-              <div class="map-info">
-                <h4>Interaction</h4>
-                <ul class="info-list">
-                  <li>Click clusters to see breakdown</li>
-                  <li>Click pins for issue details</li>
-                  <li>Zoom in/out to toggle views</li>
-                </ul>
               </div>
             </div>
           </aside>

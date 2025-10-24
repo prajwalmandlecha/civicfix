@@ -5,7 +5,7 @@ import { onAuthStateChanged, getIdToken } from "firebase/auth";
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-const API_BASE = 'http://localhost:8000'; // Your Python backend
+const API_BASE = 'https://civicfix-backend-809180458813.asia-south1.run.app';
 const HEATMAP_ZOOM_THRESHOLD = 12; // Zoom level to switch between heatmap and points
 
 let map = null;
@@ -110,8 +110,15 @@ function initMap() {
             source: 'issues-source',
             minzoom: HEATMAP_ZOOM_THRESHOLD -1, // Start appearing just before heatmap fades
             paint: {
-                 // Color by severity score (same as before)
-                'circle-color': ['interpolate', ['linear'], ['coalesce', ['get', 'severity_score'], 5], 0, '#22C55E', 3, '#EAB308', 5, '#F97316', 7, '#EF4444', 10, '#991B1B'],
+                 // Color by severity score - 3 levels only
+                 // Low (0-3.9): Green, Medium (4-7.9): Yellow, High (8-10): Red
+                'circle-color': [
+                    'step',
+                    ['coalesce', ['get', 'severity_score'], 5],
+                    '#22C55E', // Green for 0-3.9 (Low)
+                    4, '#EAB308', // Yellow for 4-7.9 (Medium)
+                    8, '#EF4444'  // Red for 8-10 (High)
+                ],
                 'circle-radius': 8,
                 'circle-stroke-width': 2,
                 'circle-stroke-color': '#ffffff',
