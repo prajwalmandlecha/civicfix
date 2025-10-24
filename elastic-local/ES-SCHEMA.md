@@ -75,7 +75,7 @@ PUT /issues
 					    "closed": { "type": "integer" }
 					}
 				},
-			  "is_spam":{"type":"boolean"},  /* true if the reports.open >10 for open issues or true if the reports.closed >10 for closed issues */
+			  "is_spam":{"type":"boolean"},  /* true if the reports.open >10(or max-threshold) for open issues or true if the reports.closed >10(or max-threshold) for closed issues */
 			}
 		}
 }
