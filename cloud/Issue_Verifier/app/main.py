@@ -35,9 +35,7 @@ ISSUES_INDEX = "issues"
 FIXES_INDEX = "fixes"
 
 if not GEMINI_API_KEY:
-    logger.warning(
-        "GEMINI_API_KEY not set; ensure you export your Google AI Studio key in env"
-    )
+    logger.warning("GEMINI_API_KEY not set; ensure you export your Google AI Studio key in env")
 
 client = genai.Client(api_key=GEMINI_API_KEY)
 
@@ -50,7 +48,7 @@ es_config = {
 if ES_PASSWORD:
     es_config["basic_auth"] = (ES_USER, ES_PASSWORD)
     logger.info("Elasticsearch client initialized with authentication")
-
+    
 # Disable SSL verification if using HTTPS (for self-signed certs)
 if ES_URL.startswith("https://"):
     es_config["verify_certs"] = False
@@ -67,7 +65,7 @@ def repair_json(text: str) -> str:
     """
     # Fix pattern: `null\n    ,` -> `null\n    },`
     # This handles missing } before comma in array elements
-    text = re.sub(r'(null|true|false|"\w+"|\d+)\s*\n\s*,', r"\1\n    },", text)
+    text = re.sub(r'(null|true|false|"\w+"|\d+)\s*\n\s*,', r'\1\n    },', text)
     return text
 
 
@@ -81,7 +79,7 @@ def sanitize_json_string(text: str) -> str:
     """
     # Remove non-ASCII characters (keep ASCII 32-126 plus newlines, tabs)
     # This handles Hebrew/Arabic/other Unicode that Gemini sometimes injects
-    cleaned = re.sub(r"[^\x20-\x7E\n\r\t]", "", text)
+    cleaned = re.sub(r'[^\x20-\x7E\n\r\t]', '', text)
     return cleaned
 
 
@@ -115,25 +113,23 @@ CANONICAL_LABELS: List[str] = [
     "TRAFFIC_SIGN_DAMAGE",
     "WASTE_BULKY_DUMP",
     "WASTE_LITTER_SMALL",
-    "WATER_LEAK_SURFACE",
+    "WATER_LEAK_SURFACE"
 ]
-
 
 def get_issue(issue_id: str) -> Dict[str, Any]:
     """
     Fetch issue doc by issue_id. We assume issue_id is stored as a field `issue_id`.
     """
-    q = {"query": {"term": {"issue_id": {"value": issue_id}}}}
+    q = {
+        "query": {"term": {"issue_id": {"value": issue_id}}}
+    }
     resp = es.search(index=ISSUES_INDEX, body=q, size=1)
     hits = resp.get("hits", {}).get("hits", [])
     if not hits:
         raise KeyError(f"Issue {issue_id} not found")
     return hits[0]["_source"]
 
-
-def hybrid_retrieve_context(
-    issue_doc: Dict[str, Any], fix_description: str, top_k: int = 3
-) -> List[Dict[str, Any]]:
+def hybrid_retrieve_context(issue_doc: Dict[str, Any], fix_description: str, top_k: int = 3) -> List[Dict[str, Any]]:
     """
     Hybrid retrieval for fix documents using kNN vector search with filters (like Issue Identifier).
     Falls back to traditional search if vector search fails.
@@ -151,33 +147,36 @@ def hybrid_retrieve_context(
 
     # Get issue types from issue doc for filtering
     issue_types = issue_doc.get("issue_types", [])
-
+    
     # Call embeddings API using Google GenAI SDK
     qvec = None
     try:
-        emb_resp = client.models.embed_content(model=EMBED_MODEL, contents=context_text)
+        emb_resp = client.models.embed_content(
+            model=EMBED_MODEL,
+            contents=context_text
+        )
         # Extract embedding from result
-        if hasattr(emb_resp, "embeddings") and emb_resp.embeddings:
+        if hasattr(emb_resp, 'embeddings') and emb_resp.embeddings:
             embedding = emb_resp.embeddings[0]
-            if hasattr(embedding, "values"):
+            if hasattr(embedding, 'values'):
                 qvec = list(embedding.values)
-
+        
         if qvec is None:
-            logger.warning(
-                "Embedding result has unexpected structure, falling back to traditional search"
-            )
+            logger.warning("Embedding result has unexpected structure, falling back to traditional search")
     except Exception as e:
         logger.exception("Embedding call failed, will use traditional search")
 
     # Try kNN vector search with filters if we have an embedding
     if qvec and len(qvec) == 3072:
         logger.info("Using kNN vector search for fixes retrieval")
-
+        
         # Build filter for related issue types
         filter_conditions = []
         if issue_types:
-            filter_conditions.append({"terms": {"related_issue_types": issue_types}})
-
+            filter_conditions.append({
+                "terms": {"related_issue_types": issue_types}
+            })
+        
         # kNN search body
         body = {
             "size": top_k,
@@ -185,25 +184,15 @@ def hybrid_retrieve_context(
                 "field": "text_embedding",
                 "query_vector": qvec,
                 "k": top_k * 2,  # Fetch more candidates for filtering
-                "num_candidates": 100,
+                "num_candidates": 100
             },
-            "_source": [
-                "fix_id",
-                "title",
-                "summary",
-                "related_issue_types",
-                "co2_saved",
-                "success_rate",
-                "fix_outcomes",
-            ],
+            "_source": ["fix_id", "title", "description", "related_issue_types", "co2_saved", "success_rate", "fix_outcomes"]
         }
-
+        
         # Add filters if we have any
         if filter_conditions:
-            body["knn"]["filter"] = {
-                "bool": {"should": filter_conditions, "minimum_should_match": 1}
-            }
-
+            body["knn"]["filter"] = {"bool": {"should": filter_conditions, "minimum_should_match": 1}}
+        
         try:
             res = es.search(index=FIXES_INDEX, body=body)
             hits = res.get("hits", {}).get("hits", [])
@@ -211,48 +200,37 @@ def hybrid_retrieve_context(
             logger.info(f"kNN search returned {len(results)} fixes")
             return results
         except Exception as e:
-            logger.exception(
-                "kNN vector search failed, falling back to traditional search"
-            )
-
+            logger.exception("kNN vector search failed, falling back to traditional search")
+    
     # Fallback: Traditional filtered search (no vector)
     logger.info("Using traditional filtered search for fixes retrieval")
-
+    
     # Build filter query
     filter_conditions = []
     if issue_types:
-        filter_conditions.append({"terms": {"related_issue_types": issue_types}})
-
+        filter_conditions.append({
+            "terms": {"related_issue_types": issue_types}
+        })
+    
     if filter_conditions:
         fallback_body = {
             "size": top_k,
-            "query": {"bool": {"should": filter_conditions, "minimum_should_match": 1}},
-            "_source": [
-                "fix_id",
-                "title",
-                "summary",
-                "related_issue_types",
-                "co2_saved",
-                "success_rate",
-                "fix_outcomes",
-            ],
+            "query": {
+                "bool": {
+                    "should": filter_conditions,
+                    "minimum_should_match": 1
+                }
+            },
+            "_source": ["fix_id", "title", "description", "related_issue_types", "co2_saved", "success_rate", "fix_outcomes"]
         }
     else:
         # No filters available, just match_all
         fallback_body = {
             "size": top_k,
             "query": {"match_all": {}},
-            "_source": [
-                "fix_id",
-                "title",
-                "summary",
-                "related_issue_types",
-                "co2_saved",
-                "success_rate",
-                "fix_outcomes",
-            ],
+            "_source": ["fix_id", "title", "description", "related_issue_types", "co2_saved", "success_rate", "fix_outcomes"]
         }
-
+    
     try:
         res = es.search(index=FIXES_INDEX, body=fallback_body)
         hits = res.get("hits", {}).get("hits", [])
@@ -263,21 +241,16 @@ def hybrid_retrieve_context(
         logger.exception("Fallback search also failed")
         return []
 
-
-def call_gemini_with_images(
-    issue_doc: Dict[str, Any],
-    image_bytes_list: List[bytes],
-    image_mimes: List[str],
-    fix_description: str,
-    similar_fixes: List[Dict[str, Any]],
-) -> Dict[str, Any]:
+def call_gemini_with_images(issue_doc: Dict[str, Any],
+                            image_bytes_list: List[bytes],
+                            image_mimes: List[str],
+                            fix_description: str,
+                            similar_fixes: List[Dict[str, Any]]) -> Dict[str, Any]:
     """
     Attach images as parts and call Gemini generate_content with strict JSON prompt.
     Returns parsed JSON object or raises.
     """
-    prompt = build_prompt(
-        issue_doc, fix_description, similar_fixes, image_count=len(image_bytes_list)
-    )
+    prompt = build_prompt(issue_doc, fix_description, similar_fixes, image_count=len(image_bytes_list))
 
     parts = []
     # attach each image as types.Part
@@ -291,87 +264,42 @@ def call_gemini_with_images(
     # deterministic
     # Note: some SDK versions support temperature in different places; here we pass prompt + config
     try:
-        resp = client.models.generate_content(
-            model=GEMINI_MODEL, contents=parts, config=config
-        )
+        resp = client.models.generate_content(model=GEMINI_MODEL, contents=parts, config=config)
     except Exception as e:
         logger.exception("Gemini generate_content failed")
         raise
 
     # try parsed
     parsed = None
-    raw = ""  # Define raw here to ensure it's available in except block
-    raw_json = ""  # Define raw_json here
-
     if hasattr(resp, "parsed") and resp.parsed:
         parsed = resp.parsed
     else:
         # fallback: try to grab text and parse JSON
         try:
             # resp.output[0].content[0].text? depends on SDK
+            raw = ""
             if hasattr(resp, "text"):
                 raw = resp.text
-            # --- Safely access candidates structure ---
-            elif hasattr(resp, "candidates") and resp.candidates:
-                first_candidate = resp.candidates[0]
-                if hasattr(first_candidate, "content") and first_candidate.content:
-                    if (
-                        hasattr(first_candidate.content, "parts")
-                        and first_candidate.content.parts
-                    ):
-                        first_part = first_candidate.content.parts[0]
-                        if hasattr(first_part, "text"):
-                            raw = first_part.text
-            # --- Fallback if text/candidates structure not found ---
-            if not raw:
-                raw = str(resp)  # Last resort: stringify the whole response
-
+            else:
+                raw = str(resp)
+            
             # Clean and repair JSON
             raw = sanitize_json_string(raw)
             raw = repair_json(raw)
-
+            
             # find first brace
             start = raw.find("{")
             if start >= 0:
                 raw_json = raw[start:]
-                # --- THIS IS WHERE THE PARSING HAPPENS ---
                 parsed = json.loads(raw_json)
-            else:  # Handle case where '{' is not found
-                logger.error(
-                    "Could not find start of JSON object ('{') in Gemini response."
-                )
-                logger.error(
-                    f"Raw response: {raw[:1000]}"
-                )  # Log the raw response if '{' isn't found
-                raise ValueError("Model response does not contain a JSON object.")
-
         except Exception as e:
             logger.exception("Failed to parse Gemini raw response")
-            # --- ADDED LOGGING HERE ---
-            if raw_json:  # Check if raw_json has content (means parsing '{...}' failed)
-                logger.error(
-                    f"Raw JSON causing error: {raw_json[:1000]}"
-                )  # Log first 1000 chars of JSON part
-            elif raw:  # Check if raw has content (means finding '{' or cleaning failed)
-                logger.error(
-                    f"Raw response (before finding '{{'): {raw[:1000]}"
-                )  # Log original raw if '{' wasn't found
-            else:
-                logger.error(
-                    f"Raw response was empty or could not be extracted from Gemini object: {str(resp)[:1000]}"
-                )
-            # --- END ADD ---
-            raise  # Re-raise the exception after logging
+            raise
 
     if not isinstance(parsed, dict):
-        # Log the non-dict response before raising
-        logger.error(
-            f"Model returned a non-dictionary type: {type(parsed)}. Content: {str(parsed)[:1000]}"
-        )
-        raise ValueError("Model returned unparsable response (expected a JSON object)")
+        raise ValueError("Model returned unparsable response")
 
     return parsed
-
 
 @app.post("/verify_fix/", response_model=VerifyOut)
 def verify_fix(payload: VerifyIn):
@@ -398,29 +326,21 @@ def verify_fix(payload: VerifyIn):
             image_mimes.append(mime)
         except Exception as e:
             logger.exception("Failed to fetch image: %s", url)
-            raise HTTPException(
-                status_code=400, detail=f"Could not fetch image url: {url}: {e}"
-            )
+            raise HTTPException(status_code=400, detail=f"Could not fetch image url: {url}: {e}")
 
     # 3. hybrid context retrieval
     similar = hybrid_retrieve_context(issue, payload.fix_description, top_k=3)
 
     # 4. call gemini with images + prompt
     try:
-        model_output = call_gemini_with_images(
-            issue, image_bytes, image_mimes, payload.fix_description, similar
-        )
+        model_output = call_gemini_with_images(issue, image_bytes, image_mimes, payload.fix_description, similar)
     except Exception as e:
         logger.exception("Gemini call failed")
         raise HTTPException(status_code=500, detail=f"Model call failed: {e}")
 
     # 5. validate model_output and map into per_issue_results
     try:
-        fix_summary = (
-            model_output.get("fix_summary", "")
-            if isinstance(model_output, dict)
-            else ""
-        )
+        fix_summary = model_output.get("fix_summary", "") if isinstance(model_output, dict) else ""
         per_results_raw = model_output.get("per_issue_results", [])
         overall_outcome = model_output.get("overall_outcome", "needs_manual_review")
         suggested_success_rate = float(model_output.get("suggested_success_rate", 0.0))
@@ -433,48 +353,45 @@ def verify_fix(payload: VerifyIn):
                 fixed=str(r.get("fixed")),
                 confidence=float(r.get("confidence", 0.0)),
                 evidence_photos=[int(x) for x in r.get("evidence_photos", [])],
-                notes=r.get("notes"),
+                notes=r.get("notes")
             )
             per_results.append(pir)
     except ValidationError as ve:
         logger.exception("Schema validation error when parsing model output")
-        raise HTTPException(
-            status_code=500, detail=f"Model returned invalid schema: {ve}"
-        )
+        raise HTTPException(status_code=500, detail=f"Model returned invalid schema: {ve}")
     except Exception as e:
         logger.exception("Failed parsing model output")
-        raise HTTPException(
-            status_code=500, detail="Model returned unparsable response"
-        )
+        raise HTTPException(status_code=500, detail="Model returned unparsable response")
 
     # 6. store fix doc into ES
     fix_id = make_fix_id(payload.issue_id, payload.ngo_id)
-
+    
     # Use timestamp from payload (user-provided or current time from schema default)
     created_at = payload.timestamp
-
+    
     # Get CO2 saved from issue's fate_risk_co2
     co2_saved = issue.get("fate_risk_co2", 0.0)
-
+    
     # Build embedding text: [Fixes] -- title -- description -- related_issue_types -- fix_outcomes -- success_rate
-    fix_outcomes_text = " | ".join([f"{r.issue_type}:{r.fixed}" for r in per_results])
+    fix_outcomes_text = " | ".join([
+        f"{r.issue_type}:{r.fixed}" for r in per_results
+    ])
     embedding_text = (
         f"[Fixes] -- {fix_summary} -- {payload.fix_description or ''} -- "
         f"{', '.join(issue.get('issue_types', []))} -- {fix_outcomes_text} -- "
         f"success_rate:{suggested_success_rate}"
-    )[
-        :12000
-    ]  # Limit to 12k chars
-
+    )[:12000]  # Limit to 12k chars
+    
     # Generate embedding for fix document
     text_embedding = None
     try:
         emb_resp = client.models.embed_content(
-            model=EMBED_MODEL, contents=embedding_text
+            model=EMBED_MODEL,
+            contents=embedding_text
         )
-        if hasattr(emb_resp, "embeddings") and emb_resp.embeddings:
+        if hasattr(emb_resp, 'embeddings') and emb_resp.embeddings:
             embedding = emb_resp.embeddings[0]
-            if hasattr(embedding, "values"):
+            if hasattr(embedding, 'values'):
                 text_embedding = list(embedding.values)
         logger.info("Generated embedding for fix document")
     except Exception as e:
@@ -491,15 +408,10 @@ def verify_fix(payload: VerifyIn):
         "photo_count": len(payload.image_urls),
         "co2_saved": co2_saved,
         "success_rate": suggested_success_rate,
-        "city": (
-            issue.get("location", {}).get("city")
-            if isinstance(issue.get("location"), dict)
-            else None
-        ),
         "related_issue_types": issue.get("issue_types", []),
         "fix_outcomes": [r.dict() for r in per_results],
-        "text_embedding": None,  # optional: you can embed summary here
-        "source_doc_ids": [payload.issue_id],
+        "text_embedding": text_embedding,
+        "source_doc_ids": [payload.issue_id]
     }
 
     try:
@@ -525,21 +437,14 @@ def verify_fix(payload: VerifyIn):
                 update_fields = {
                     "status": new_status,
                     "closed_by": payload.ngo_id,
-                    "closed_at": created_at,
-                    "updated_at": created_at,
-                    "co2_kg_saved": co2_saved,
-                }
-            elif overall_outcome == "partially_closed":
-                new_status = "verified"
-                update_fields = {
-                    "status": new_status,
-                    "updated_at": created_at,
-                    "co2_kg_saved": co2_saved,
+                    "closed_at": payload.timestamp,
+                    "updated_at": payload.timestamp,
+                    "co2_kg_saved": co2_saved
                 }
             else:
                 update_fields = {
                     "status": issue_source.get("status", "open"),
-                    "updated_at": created_at,
+                    "updated_at": payload.timestamp
                 }
 
             # append evidence_ids
@@ -557,7 +462,7 @@ def verify_fix(payload: VerifyIn):
         per_issue_results=per_results,
         overall_outcome=overall_outcome,
         suggested_success_rate=suggested_success_rate,
-        created_at=created_at,
+        created_at=payload.timestamp
     )
 
     return out

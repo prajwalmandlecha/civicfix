@@ -750,5 +750,3 @@ Contributions are welcome! Please:
 For bugs or feature requests, open an issue on GitHub.
 
 ---
-
-**Built with ❤️ for better cities**
