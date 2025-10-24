@@ -134,9 +134,9 @@ export const demoIssues = [
 ];
 
 export const citizenLeaderboard = [
-  { rank: 4, name: '#user789', co2: 842, badges: ['🌟', '⭐', '🔧'] },
+  { rank: 4, name: '#user789', co2: 842, badges: ['🌟', '⭐', ''] },
   { rank: 5, name: '#leader234', co2: 756, badges: ['🌟', '⭐'] },
-  { rank: 6, name: '#civic567', co2: 689, badges: ['🌟', '🔧'] },
+  { rank: 6, name: '#civic567', co2: 689, badges: ['🌟', ''] },
   { rank: 7, name: '#hero890', co2: 623, badges: ['🌟'] },
   { rank: 8, name: '#fix123', co2: 587, badges: ['🌟', '⭐', '🔥'] },
   { rank: 9, name: '#green456', co2: 534, badges: ['🌟'] },
@@ -144,9 +144,9 @@ export const citizenLeaderboard = [
 ];
 
 export const ngoLeaderboard = [
-  { rank: 4, name: 'EcoWarriors Collective', co2: 9876, badges: ['🏆', '🌟', '⭐'] },
-  { rank: 5, name: 'Urban Renewal Group', co2: 8543, badges: ['🏆', '🌟'] },
-  { rank: 6, name: 'Community First Initiative', co2: 7234, badges: ['🏆'] },
+  { rank: 4, name: 'EcoWarriors Collective', co2: 9876, badges: ['', '🌟', '⭐'] },
+  { rank: 5, name: 'Urban Renewal Group', co2: 8543, badges: ['', '🌟'] },
+  { rank: 6, name: 'Community First Initiative', co2: 7234, badges: [''] },
   { rank: 7, name: 'Green Tomorrow Foundation', co2: 6789, badges: ['🌟', '⭐'] },
   { rank: 8, name: 'City Helpers Alliance', co2: 5432, badges: ['🌟'] },
   { rank: 9, name: 'Neighborhood Watch Org', co2: 4567, badges: ['⭐'] },

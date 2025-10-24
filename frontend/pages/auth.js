@@ -51,22 +51,22 @@ export function initializeAuthListener() {
             if (userType === 'ngo') {
                 // NGO Navbar
                 addNavLinks([
-                    { href: '/feed.html', text: '📰 StreetFeed' },
-                    { href: '/map.html', text: '🗺️ StreetHeat' },
-                    { href: '/ngo_upload.html', text: '🔧 Upload Fix' }, // NGO Link
-                    { href: '/leaderboard.html', text: '🏆 Leaderboard' },
-                    { href: '/profile.html', text: '👤 Profile' },
-                    { href: '#', text: '🚪 Logout', id: 'logout-button' }
+                    { href: '/feed.html', text: ' StreetFeed' },
+                    { href: '/map.html', text: ' StreetHeat' },
+                    { href: '/ngo_upload.html', text: ' Upload Fix' }, // NGO Link
+                    { href: '/leaderboard.html', text: ' Leaderboard' },
+                    { href: '/profile.html', text: ' Profile' },
+                    { href: '#', text: ' Logout', id: 'logout-button' }
                 ]);
             } else {
                 // Citizen Navbar (default)
                 addNavLinks([
-                    { href: '/feed.html', text: '📰 StreetFeed' },
-                    { href: '/map.html', text: '🗺️ StreetHeat' },
-                    { href: '/upload.html', text: '📸 Upload' }, // Citizen Link
-                    { href: '/leaderboard.html', text: '🏆 Leaderboard' },
-                    { href: '/profile.html', text: '👤 Profile' },
-                    { href: '#', text: '🚪 Logout', id: 'logout-button' }
+                    { href: '/feed.html', text: ' StreetFeed' },
+                    { href: '/map.html', text: ' StreetHeat' },
+                    { href: '/upload.html', text: ' Upload' }, // Citizen Link
+                    { href: '/leaderboard.html', text: ' Leaderboard' },
+                    { href: '/profile.html', text: ' Profile' },
+                    { href: '#', text: ' Logout', id: 'logout-button' }
                 ]);
             }
             // --- END MODIFICATION ---
@@ -76,9 +76,9 @@ export function initializeAuthListener() {
             // Remove Profile/Logout, add Login/Signup
             removeNavLinks(['/profile.html', '/upload.html', '/ngo_upload.html', '/map.html', '/feed.html', '/leaderboard.html']);
             addNavLinks([
-                { href: '/feed.html', text: '📰 StreetFeed' },
-                { href: '/map.html', text: '🗺️ StreetHeat' },
-                { href: '/leaderboard.html', text: '🏆 Leaderboard' },
+                { href: '/feed.html', text: ' StreetFeed' },
+                { href: '/map.html', text: ' StreetHeat' },
+                { href: '/leaderboard.html', text: ' Leaderboard' },
                 { href: '/login.html', text: 'Citizen Login' },
                 { href: '/ngo_login.html', text: 'NGO Login' }
             ]);

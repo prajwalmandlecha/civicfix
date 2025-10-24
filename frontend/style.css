@@ -1176,7 +1176,7 @@ section {
 .street-you {
   background: var(--grey-surface);
 }
-
+/* 
 .profile-layout {
   display: grid;
   grid-template-columns: 1fr 1.5fr;
@@ -1314,7 +1314,7 @@ section {
   fill: var(--black);
   font-weight: 700;
   text-anchor: middle;
-}
+} */
 
 .footer {
   background: var(--black);
@@ -2192,4 +2192,238 @@ section {
     order: -1;
     height: 500px;
   }
+}
+
+
+/* --- ADDED: NEW STYLES FOR PROFILE PAGE --- */
+
+.street-you .container {
+  max-width: 1000px; /* Max width for profile content */
+}
+
+/* Loading Spinner (if not already defined) */
+.loading-spinner {
+  border: 4px solid var(--grey-border);
+  border-top: 4px solid var(--mint-green);
+  border-radius: 50%;
+  width: 40px;
+  height: 40px;
+  animation: spin 1s linear infinite;
+  margin: 40px auto;
+}
+
+@keyframes spin {
+  0% { transform: rotate(0deg); }
+  100% { transform: rotate(360deg); }
+}
+
+/* New Profile Header Card */
+.profile-header-card {
+  background: var(--white);
+  border-radius: 20px;
+  padding: 32px 24px;
+  box-shadow: 0 4px 16px var(--shadow);
+  text-align: center;
+  margin-bottom: 32px;
+}
+
+.profile-avatar-large {
+  width: 100px;
+  height: 100px;
+  border-radius: 50%;
+  background: var(--gradient-mint);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 3rem;
+  font-weight: 700;
+  color: var(--white);
+  margin: 0 auto 16px;
+  box-shadow: 0 4px 12px rgba(111, 207, 151, 0.4);
+}
+
+.profile-username {
+  font-size: 2rem;
+  font-weight: 700;
+  color: var(--black);
+  margin-bottom: 4px;
+}
+
+.profile-email {
+  font-size: 1rem;
+  color: var(--grey-text);
+  margin-bottom: 12px;
+}
+
+.profile-type-badge {
+  display: inline-block;
+  background: rgba(111, 207, 151, 0.2);
+  color: var(--mint-dark);
+  padding: 6px 16px;
+  border-radius: 50px;
+  font-weight: 600;
+  font-size: 0.875rem;
+  margin-bottom: 24px;
+}
+
+.profile-header-stats {
+  display: flex;
+  justify-content: center;
+  gap: 24px;
+  padding-top: 24px;
+  border-top: 1px solid var(--grey-border);
+}
+
+.profile-header-stat {
+  flex: 1;
+  max-width: 150px;
+  text-align: center;
+}
+.profile-header-stat .stat-value {
+  font-size: 1.75rem;
+  font-weight: 700;
+  color: var(--mint-dark);
+}
+.profile-header-stat .stat-name {
+  font-size: 0.8rem;
+  color: var(--grey-text);
+  text-transform: uppercase;
+}
+
+.profile-header-divider {
+  width: 1px;
+  background: var(--grey-border);
+}
+
+/* Card Sections */
+.profile-card-section {
+  margin-bottom: 32px;
+  max-width: 800px; /* Center content nicely */
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.section-heading {
+  font-size: 1.5rem;
+  color: var(--black);
+  margin-bottom: 16px;
+}
+
+.profile-data-card {
+  background: var(--white);
+  border-radius: 20px;
+  padding: 24px 32px;
+  box-shadow: 0 4px 16px var(--shadow);
+}
+
+.card-text {
+  font-size: 1rem;
+  color: var(--grey-text);
+  margin-bottom: 20px;
+  min-height: 1.5em; /* Prevent layout shift */
+}
+
+/* Card Buttons */
+.card-button {
+  padding: 10px 20px;
+  border-radius: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  border: none;
+  font-family: inherit;
+  font-size: 0.9rem;
+}
+.card-button.primary {
+  background: var(--mint-green);
+  color: var(--white);
+}
+.card-button.primary:hover:not(:disabled) {
+  background: var(--mint-dark);
+}
+.card-button.secondary {
+  background: var(--grey-surface);
+  color: var(--black);
+  border: 2px solid var(--grey-border);
+}
+.card-button.secondary:hover:not(:disabled) {
+  background: var(--grey-border);
+}
+.card-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.button-row {
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  margin-top: 16px;
+}
+
+/* New Stats Grid */
+.stats-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+  gap: 20px;
+}
+
+/* Re-using stat-item from popup for consistency, but with overrides */
+.stats-grid .stat-item {
+  background: var(--white);
+  border-radius: 16px;
+  padding: 24px;
+  text-align: center;
+  box-shadow: 0 4px 16px var(--shadow);
+  /* Override popup styles if any */
+  display: block; 
+  align-items: initial;
+  justify-content: initial;
+  gap: initial;
+}
+.stats-grid .stat-item .stat-value {
+  font-size: 2.25rem;
+  color: var(--mint-dark);
+  display: block;
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
+.stats-grid .stat-item .stat-name {
+  font-size: 0.9rem;
+  color: var(--grey-text);
+  font-weight: 500;
+  text-transform: none;
+}
+
+/* Badge Grid (New) */
+.badge-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(100px, 1fr));
+  gap: 20px;
+  text-align: center;
+}
+.badge-item {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+}
+.badge-icon {
+  font-size: 2.5rem;
+  line-height: 1;
+}
+.badge-title {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: var(--grey-text);
+}
+
+/* Remove old profile layout styles */
+/* This ensures the old .profile-card doesn't conflict */
+.street-you .profile-layout {
+  display: block; /* Change from grid */
+}
+.street-you .profile-card,
+.street-you .profile-chart {
+  display: none; /* Hide old cards */
 }

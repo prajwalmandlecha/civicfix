@@ -7,6 +7,7 @@ AI-powered civic infrastructure issue detection and analysis using Google Gemini
 ## 🎯 What It Does
 
 **Input:**
+
 - `image_url` (string): URL of the civic issue image
 - `description` (string, optional): Reporter's description
 - `location` (object): `{latitude: float, longitude: float}`
@@ -17,6 +18,7 @@ AI-powered civic infrastructure issue detection and analysis using Google Gemini
 - `source` (string): Report source (`citizen`, `ngo`, `anonymous`)
 
 **Processing:**
+
 1. **Visual Analysis**: Gemini 2.5 Flash inspects the image and detects all visible civic infrastructure issues
 2. **Cross-Verification**: Validates user-selected labels against actual image content (prevents false positives)
 3. **Multi-Label Detection**: Identifies ALL issue types present (waterlogging, garbage, broken infrastructure, etc.)
@@ -29,6 +31,7 @@ AI-powered civic infrastructure issue detection and analysis using Google Gemini
 10. **Auto-Indexing**: Stores complete issue document in Elasticsearch with geospatial indexing
 
 **Output:**
+
 ```json
 {
   "issue_id": "uuid",
@@ -47,12 +50,13 @@ AI-powered civic infrastructure issue detection and analysis using Google Gemini
   ],
   "auto_review": false,
   "no_issues_found": false,
-  "location": {"latitude": 18.5223, "longitude": 73.8571},
+  "location": { "latitude": 18.5223, "longitude": 73.8571 },
   "timestamp": "2025-10-18T08:00:00+05:30"
 }
 ```
 
 **Elasticsearch Document Created:**
+
 - Full issue metadata with `detected_issues` (nested), `issue_types` (array), `label_confidences`, `severity_score`
 - Geospatial `location` (geo_point) for map clustering
 - Weather snapshot, impact metrics, upvotes/reports counters
@@ -63,6 +67,7 @@ AI-powered civic infrastructure issue detection and analysis using Google Gemini
 ## 🏗️ Architecture
 
 **Tech Stack:**
+
 - **FastAPI**: High-performance async web framework
 - **Google Gemini 2.5 Flash**: Vision-language model for multi-modal analysis
 - **Elasticsearch 8.11**: Geospatial search and aggregation
@@ -70,6 +75,7 @@ AI-powered civic infrastructure issue detection and analysis using Google Gemini
 - **Pydantic**: Request/response validation
 
 **Key Features:**
+
 - **Multi-label detection**: Single image can have multiple issue types
 - **Smart confidence filtering**: Auto-excludes low-confidence detections (< 0.6)
 - **Review flagging**: Issues with 0.6-0.85 confidence require human verification
@@ -111,6 +117,7 @@ AI-powered civic infrastructure issue detection and analysis using Google Gemini
 ## 🚀 Setup & Installation
 
 ### Prerequisites
+
 - Docker Desktop installed and running
 - Python 3.10+
 - Google Gemini API key ([Get one here](https://aistudio.google.com/apikey))
@@ -145,12 +152,13 @@ curl http://localhost:9200
 ```
 
 **Expected response:**
+
 ```json
 {
-  "name" : "civicfix-es",
-  "cluster_name" : "docker-cluster",
-  "version" : {
-    "number" : "8.11.1"
+  "name": "civicfix-es",
+  "cluster_name": "docker-cluster",
+  "version": {
+    "number": "8.11.1"
   }
 }
 ```
@@ -214,6 +222,7 @@ docker logs -f civicfix-issue-identifier
 ```
 
 **Service will be available at:**
+
 - API: `http://localhost:8000`
 - Swagger UI: `http://localhost:8000/docs`
 - Elasticsearch: `http://localhost:9200`
@@ -257,6 +266,7 @@ docker run -d --name civicfix-issue-identifier \
 Deploy the Issue Identifier service to Google Cloud Run for production.
 
 ### Prerequisites
+
 - Google Cloud account with billing enabled
 - `gcloud` CLI installed and authenticated
 - Docker installed locally
@@ -310,6 +320,7 @@ gcloud run deploy civicfix-issue-identifier \
 ```
 
 **Recommended settings:**
+
 - **Memory**: 2Gi (handles image processing + Gemini API calls)
 - **CPU**: 2 vCPU (parallel API operations)
 - **Timeout**: 300s (5 minutes for complex image analysis)
@@ -401,6 +412,7 @@ gcloud run services update civicfix-issue-identifier \
 ```
 
 **Cloud Run Pricing Estimate (us-central1):**
+
 - Request: $0.40 per million requests
 - CPU: $0.00002400 per vCPU-second
 - Memory: $0.00000250 per GiB-second
@@ -408,16 +420,18 @@ gcloud run services update civicfix-issue-identifier \
 
 ---
 
-## 💻 Local Development (without Docker)
+## Local Development (without Docker)
 
 ### 1. Environment Setup
 
 **Create virtual environment:**
+
 ```bash
 python -m venv .venv
 ```
 
 **Activate:**
+
 ```bash
 # Linux/macOS/WSL:
 source .venv/bin/activate
@@ -427,6 +441,7 @@ source .venv/bin/activate
 ```
 
 **Install dependencies:**
+
 ```bash
 pip install -r requirements.txt
 ```
@@ -434,6 +449,7 @@ pip install -r requirements.txt
 ### 2. Configuration
 
 **Create `.env` file:**
+
 ```bash
 GEMINI_API_KEY=your_gemini_api_key_here
 GEMINI_MODEL=gemini-2.5-flash
@@ -451,10 +467,12 @@ ES_URL=http://localhost:9200
 **Elasticsearch Setup:**
 
 **Option 1: Local Elasticsearch (no authentication)**
+
 - Use `ES_URL=http://localhost:9200`
 - No need to set `ES_USER` and `ES_PASSWORD`
 
 **Option 2: Remote Elasticsearch VM (with HTTPS & authentication)**
+
 - Use `ES_URL=https://your-vm-ip:9200`
 - Set `ES_USER=elastic` (or your username)
 - Set `ES_PASSWORD=your_password`
@@ -463,11 +481,13 @@ ES_URL=http://localhost:9200
 **Testing Elasticsearch Connection:**
 
 **Local (HTTP):**
+
 ```bash
 curl http://localhost:9200
 ```
 
 **Remote (HTTPS with auth):**
+
 ```bash
 curl -k -u elastic:your_password https://your-vm-ip:9200
 ```
@@ -477,11 +497,13 @@ curl -k -u elastic:your_password https://your-vm-ip:9200
 ### 3. Run the Service
 
 **Development mode (with auto-reload):**
+
 ```bash
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 **Production mode:**
+
 ```bash
 uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 ```
@@ -496,6 +518,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000 --workers 4
 ### Quick Test with Sample Issue
 
 **PowerShell:**
+
 ```powershell
 $body = @{
   image_url = "https://encrypted-tbn0.gstatic.com/images?q=tbn:ANd9GcSZSXrPAgJBktPfO2yhnuWpTGL5CncwZ76lxQ&s"
@@ -520,6 +543,7 @@ Invoke-RestMethod -Uri "https://your-vm-ip:9200/issues/_search" -Method Post -Co
 ```
 
 **cURL:**
+
 ```bash
 # Test the endpoint
 curl -X POST http://localhost:8000/analyze/ \
@@ -547,6 +571,7 @@ curl -k -u elastic:your_password -X POST https://your-vm-ip:9200/issues/_search?
 ```
 
 **Expected logs in Docker:**
+
 ```
 INFO: Using kNN hybrid search with vector similarity (3072 dims) for lat=18.5589, lon=73.8087
 INFO: ES returned 0-5 evidence issues within 5km and 180 days
@@ -555,6 +580,7 @@ INFO: 127.0.0.1:xxxxx - "POST /analyze/ HTTP/1.1" 200 OK
 ```
 
 **Expected response:**
+
 ```json
 {
   "issue_id": "abc-123-...",
@@ -584,7 +610,7 @@ INFO: 127.0.0.1:xxxxx - "POST /analyze/ HTTP/1.1" 200 OK
   ],
   "auto_review": false,
   "no_issues_found": false,
-  "location": {"latitude": 18.5589, "longitude": 73.8087},
+  "location": { "latitude": 18.5589, "longitude": 73.8087 },
   "timestamp": "2025-10-21T10:00:00Z"
 }
 ```
@@ -596,6 +622,7 @@ INFO: 127.0.0.1:xxxxx - "POST /analyze/ HTTP/1.1" 200 OK
 ### Docker Setup (Local Elasticsearch)
 
 **Stop all containers:**
+
 ```powershell
 # PowerShell
 docker stop civicfix-issue-identifier civicfix-es
@@ -617,6 +644,7 @@ docker-compose down
 ```
 
 **Remove Docker network (optional):**
+
 ```bash
 docker network rm civicfix-net
 ```
@@ -653,18 +681,23 @@ gcloud compute networks vpc-access connectors delete civicfix-connector --region
 ### Docker Setup Verification
 
 **Check Docker network:**
+
 ```bash
 docker network inspect civicfix-net
 ```
+
 Both `civicfix-es` and `civicfix-issue-identifier` should be listed.
 
 **Check containers are running:**
+
 ```bash
 docker ps
 ```
+
 Should show both `civicfix-es` and `civicfix-issue-identifier` with status "Up".
 
 **Check Elasticsearch:**
+
 ```bash
 # Local Docker
 curl http://localhost:9200/_cat/indices?v
@@ -674,17 +707,20 @@ curl -k -u elastic:password https://your-vm-ip:9200/_cat/indices?v
 ```
 
 **Check Issue Identifier logs:**
+
 ```bash
 docker logs civicfix-issue-identifier
 ```
 
 You should see:
+
 ```
 INFO: Elasticsearch client initialized with authentication for https://...
 INFO: Application startup complete.
 ```
 
 **Test connectivity between containers:**
+
 ```bash
 # Execute shell in Issue Identifier container
 docker exec -it civicfix-issue-identifier /bin/sh
@@ -697,16 +733,19 @@ curl http://civicfix-es:9200
 ### Cloud Run Verification
 
 **Check service status:**
+
 ```bash
 gcloud run services describe civicfix-issue-identifier --region us-central1
 ```
 
 **Check recent logs:**
+
 ```bash
 gcloud run services logs read civicfix-issue-identifier --region us-central1 --limit 50
 ```
 
 **Test health:**
+
 ```bash
 export SERVICE_URL=$(gcloud run services describe civicfix-issue-identifier --region us-central1 --format 'value(status.url)')
 curl $SERVICE_URL/
@@ -719,6 +758,7 @@ curl $SERVICE_URL/
 ### Example: Image with Multiple Issues (No User Labels)
 
 **PowerShell:**
+
 ```powershell
 $body = @{
   image_url = "https://images.indianexpress.com/2025/01/delhi-civic-issues.png"
@@ -745,6 +785,7 @@ ForEach-Object {
 ```
 
 **cURL:**
+
 ```bash
 curl -X POST http://localhost:8000/analyze/ \
   -H "Content-Type: application/json" \
@@ -761,7 +802,8 @@ curl -X POST http://localhost:8000/analyze/ \
 ```
 
 **Response:**
-```json
+
+````json
 {
   "issue_id": "a7cebf69-ffa5-4b5b-8f3e-102feb87e50b",
   "detected_issues": [
@@ -822,7 +864,7 @@ curl -X POST http://localhost:8000/analyze/ \
 | **0.6 - 0.85** | Medium confidence - needs human review | `true` |
 | **< 0.6** | Low confidence - **excluded from results** | N/A (filtered out) |
 
-**Document-level `auto_review` flag:**  
+**Document-level `auto_review` flag:**
 Set to `true` if **ANY** detected issue has `auto_review_flag=true` (i.e., confidence 0.6-0.85).
 
 ---
@@ -842,18 +884,20 @@ Set to `true` if **ANY** detected issue has `auto_review_flag=true` (i.e., confi
 **Sample Query (Get Issue by ID):**
 ```powershell
 Invoke-RestMethod -Uri "http://localhost:9200/issues/_search" -Method Post -ContentType "application/json" -Body '{"query": {"term": {"issue_id": "a7cebf69-ffa5-4b5b-8f3e-102feb87e50b"}}}' | ConvertTo-Json -Depth 10
-```
+````
 
 ---
 
 ## 🧪 Testing & Validation
 
 **Check service health:**
+
 ```bash
 curl http://localhost:8000/
 ```
 
 **Run with test image:**
+
 ```bash
 python -c "
 import requests
@@ -870,6 +914,7 @@ print(r.json())
 ```
 
 **Check Elasticsearch indexing:**
+
 ```bash
 curl http://localhost:9200/issues/_count
 ```
@@ -879,6 +924,7 @@ curl http://localhost:9200/issues/_count
 ## 🛠️ Development
 
 **Project Structure:**
+
 ```
 cloud/Issue_Identifier/
 ├── app/
@@ -895,6 +941,7 @@ cloud/Issue_Identifier/
 ```
 
 **Key Functions:**
+
 - `analyze()`: Main endpoint handler
 - `call_gemini_with_backoff()`: Retry logic for API calls
 - `build_prompt()`: Constructs Gemini vision prompt
@@ -937,6 +984,7 @@ Part of the CivicFix platform. See main repository for license details.
 ## 🤝 Contributing
 
 This service is part of the larger CivicFix ecosystem. For contributions:
+
 1. Test changes with diverse civic issue images
 2. Ensure Elasticsearch schema compatibility
 3. Validate confidence thresholds with real data

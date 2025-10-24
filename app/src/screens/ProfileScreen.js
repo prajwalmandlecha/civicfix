@@ -77,7 +77,7 @@ const ProfileScreen = () => {
           earnedBadges.push({ emoji: "⭐", title: "10 Reports" });
         }
         if (statsData.karma >= 100) {
-          earnedBadges.push({ emoji: "🏆", title: "100 Karma" });
+          earnedBadges.push({ emoji: "", title: "100 Karma" });
         }
         if (statsData.issuesResolved >= 5) {
           earnedBadges.push({ emoji: "✅", title: "Problem Solver" });
@@ -160,17 +160,9 @@ const ProfileScreen = () => {
         <Text style={styles.username}>{getUserDisplayName()}</Text>
         <Text style={styles.userEmail}>{auth.currentUser?.email}</Text>
         <View style={styles.userTypeBadge}>
-          <View style={styles.userTypeBadgeInner}>
-            <Ionicons
-              name={userData?.userType === "ngo" ? "construct" : "person"}
-              size={16}
-              color="#4CAF79"
-              style={{ marginRight: 6 }}
-            />
-            <Text style={styles.userTypeText}>
-              {userData?.userType === "ngo" ? "NGO" : "Citizen"}
-            </Text>
-          </View>
+          <Text style={styles.userTypeText}>
+            {userData?.userType === "volunteer" ? " Volunteer" : " Citizen"}
+          </Text>
         </View>
         <View style={styles.headerStats}>
           <View style={styles.headerStatItem}>
@@ -243,7 +235,7 @@ const ProfileScreen = () => {
             <>
               <View style={styles.statCardWrapper}>
                 <StatCard
-                  icon="camera"
+                  emoji=""
                   number={stats.issuesUploaded}
                   label="Issues Reported"
                   size="small"

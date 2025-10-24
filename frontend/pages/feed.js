@@ -1,4 +1,3 @@
-// frontend/pages/feed.js
 import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
 import { initializeAuthListener } from './auth.js';
 import { auth } from '../firebaseConfig.js'; // Import auth instance
@@ -16,24 +15,24 @@ function renderIssueCard(issue) {
     card.className = `issue-card ${statusClass}`;
     card.setAttribute('data-status', statusClass);
 
-    // --- Updated Status Text Logic ---
+    // --- Status Text Logic ---
     let statusText = '';
     if (statusClass === 'closed') {
         if (issue.closed_by && issue.closed_by !== 'community_report') {
-            statusText = '✅ Fixed by NGO'; // Specific message for NGO closure
+            statusText = '✅ Fixed by NGO';
         } else {
-            statusText = '✅ Closed'; // Closed by community reports or unknown
+            statusText = '✅ Closed';
         }
     } else if (statusClass === 'verified') {
-        statusText = '🟡 Verified'; // Status set by Issue Verifier if partially closed
+        statusText = '🟡 Verified';
     } else if (statusClass === 'spam') {
         statusText = '🚫 Spam';
-    } else { // Default to open
+    } else {
         statusText = '🟠 Open';
     }
     // --- End Status Text Logic ---
 
-    // --- Existing variable definitions (ensure these are correct based on your ES schema) ---
+    // --- Variable definitions ---
     const issueTypes = Array.isArray(issue.issue_types) ? issue.issue_types : [issue.issue_types || 'unknown'];
     const primaryType = issue.detected_issues && issue.detected_issues.length > 0
                           ? issue.detected_issues[0].type
@@ -42,23 +41,23 @@ function renderIssueCard(issue) {
     const severityColor = severityScore >= 7 ? '#FF6B6B' : severityScore >= 4 ? '#FFD93D' : '#6FCF97';
     const severityLabel = severityScore >= 7 ? 'high' : severityScore >= 4 ? 'medium' : 'low';
     const openUpvotes = (issue.upvotes && typeof issue.upvotes.open === 'number') ? issue.upvotes.open : 0;
-    const closedUpvotes = (issue.upvotes && typeof issue.upvotes.closed === 'number') ? issue.upvotes.closed : 0; // Added for closed display
+    const closedUpvotes = (issue.upvotes && typeof issue.upvotes.closed === 'number') ? issue.upvotes.closed : 0;
     const openReports = (issue.reports && typeof issue.reports.open === 'number') ? issue.reports.open : 0;
     const closedReports = (issue.reports && typeof issue.reports.closed === 'number') ? issue.reports.closed : 0;
     const displayReports = statusClass === 'closed' ? closedReports : openReports;
-    const displayUpvotes = statusClass === 'closed' ? closedUpvotes : openUpvotes; // Show closed or open upvotes
+    const displayUpvotes = statusClass === 'closed' ? closedUpvotes : openUpvotes;
     const fateRisk = typeof issue.fate_risk_co2 === 'number' ? issue.fate_risk_co2 : 0;
     const descriptionText = issue.description || issue.auto_caption || 'No description provided';
-    const photoUrl = issue.photo_url || 'placeholder.png';
+    const photoUrl = issue.photo_url || 'placeholder.png'; // Original photo
     const issueId = issue.issue_id || '';
-    // --- End Existing variable definitions ---
+    // --- End Variable definitions ---
 
-    // --- UPDATED: Location text with optional distance ---
+    // --- Location text ---
     const locationText = `📍 ${issue.display_address || 'Address Unavailable'}`;
     const distanceText = typeof issue.distance_km === 'number'
         ? `<span class="issue-distance" style="margin-left: 8px; font-size: 0.8em; color: var(--grey-text);">(${issue.distance_km} km away)</span>`
-        : ''; // Show distance if available
-    // --- END UPDATE ---
+        : '';
+    // --- End ---
 
     card.innerHTML = `
       <img src="${photoUrl}" alt="${primaryType}" class="issue-thumbnail" onerror="this.onerror=null; this.src='placeholder.png'; this.style.objectFit='contain';">
@@ -71,7 +70,7 @@ function renderIssueCard(issue) {
         <div class="issue-description" style="font-size: 0.875rem; color: var(--grey-text); margin: 8px 0; max-height: 4.5em; overflow: hidden;">${descriptionText}</div>
         <div class="issue-stats" style="display: flex; gap: 12px; margin: 8px 0; font-size: 0.8rem;">
           <span>⚠️ ${fateRisk.toFixed(1)} kg CO₂ risk</span>
-          <span class="report-count">📊 ${displayReports} reports</span>
+          <span class="report-count"> ${displayReports} reports</span>
           <span class="status-badge">${statusText}</span>
         </div>
         <div class="issue-footer">
@@ -87,7 +86,7 @@ function renderIssueCard(issue) {
                <div style="font-size: 0.7rem; color: var(--grey-text); margin-top: 2px;">${statusClass === 'closed' ? 'Not Fixed?' : 'Not an Issue?'}</div>
             </div>
           </div>
-          <span class="source-badge" style="font-size: 0.75rem; color: var(--grey-text);">👤 ${issue.source || 'citizen'}</span>
+          <span class="source-badge" style="font-size: 0.75rem; color: var(--grey-text);"> ${issue.source || 'citizen'}</span>
         </div>
       </div>
     `;
@@ -136,7 +135,6 @@ function initFilterPills() {
       renderIssues();
     });
   });
-  // Ensure 'All Issues' is active initially if present
   const allPill = document.querySelector('.filter-pill[data-filter="all"]');
   if (allPill) allPill.classList.add('active');
 }
@@ -150,170 +148,124 @@ function initVoteButtons() {
 
     grid.addEventListener('click', async (e) => {
         const button = e.target.closest('.vote-button');
-        if (!button) return; // Ignore clicks that aren't on vote buttons
+        if (!button || button.disabled) return;
 
-        // --- Prevent double-clicks ---
-        if (button.disabled) {
-            return;
-        }
-
-        const action = button.dataset.action; // 'upvote' or 'report'
+        const action = button.dataset.action;
         const issueId = button.dataset.id;
         if (!issueId || !action) {
             console.warn("Vote button missing data-id or data-action");
             return;
         }
 
-        // --- UPDATED: Authentication Check with Token Refresh ---
-        const user = auth.currentUser; // Get the currently signed-in user
+        const user = auth.currentUser;
         if (!user) {
             showToast('⚠️ Please log in to vote or report.');
-            localStorage.setItem('redirectAfterLogin', window.location.pathname); // Save current page
-            window.location.href = '/login.html'; // Redirect to login
-            return; // Stop the action
+            localStorage.setItem('redirectAfterLogin', window.location.pathname);
+            window.location.href = '/login.html';
+            return;
         }
 
         let idToken;
         try {
-            // Force refresh the token if it's expired or close to expiring
             idToken = await getIdToken(user, /* forceRefresh */ true);
-            // Optionally update localStorage if needed elsewhere, but refresh is key
-            localStorage.setItem('firebaseIdToken', idToken);
-            console.log("Token refreshed successfully for voting/reporting.");
+            localStorage.setItem('firebaseIdToken', idToken); // Keep token updated
+            console.log("Token refreshed for voting/reporting.");
         } catch (error) {
             console.error("Error refreshing ID token:", error);
-            showToast('⚠️ Your session may have expired. Please log in again.');
-            // Clear potentially bad token and user info
+            showToast('⚠️ Session expired. Please log in again.');
             localStorage.removeItem('firebaseIdToken');
             localStorage.removeItem('userEmail');
             localStorage.removeItem('userType');
-            window.location.href = '/login.html'; // Redirect to login
-            return; // Stop the action
+            window.location.href = '/login.html';
+            return;
         }
-        // --- End Auth Check Update ---
 
-        // --- Visual Feedback & Disable Button ---
         button.disabled = true;
         button.classList.add('voted');
 
-        // Optimistic UI updates (will be reverted on error)
+        // Optimistic UI updates
         const card = button.closest('.issue-card');
         const upvoteCountSpan = card?.querySelector('.upvote-count');
-        const reportCountSpan = card?.querySelector('.report-count'); // The visible one with text
+        const reportCountSpan = card?.querySelector('.report-count');
         let currentUpvoteCount = 0;
         let currentReportCount = 0;
-
-        if (upvoteCountSpan) {
-            currentUpvoteCount = parseInt(upvoteCountSpan.textContent) || 0;
-        }
+        if (upvoteCountSpan) currentUpvoteCount = parseInt(upvoteCountSpan.textContent) || 0;
         if (reportCountSpan) {
-             const match = reportCountSpan.textContent.match(/(\d+)/); // Extract number from "📊 X reports"
+             const match = reportCountSpan.textContent.match(/(\d+)/);
              currentReportCount = match ? parseInt(match[1]) : 0;
         }
-
-        // Apply optimistic update
-        if (action === 'upvote' && upvoteCountSpan) {
-            upvoteCountSpan.textContent = currentUpvoteCount + 1;
-        } else if (action === 'report' && reportCountSpan) {
-            reportCountSpan.textContent = `📊 ${currentReportCount + 1} reports`;
-        }
-        // --- End Optimistic UI ---
+        if (action === 'upvote' && upvoteCountSpan) upvoteCountSpan.textContent = currentUpvoteCount + 1;
+        else if (action === 'report' && reportCountSpan) reportCountSpan.textContent = ` ${currentReportCount + 1} reports`;
 
         try {
-            // --- Send request with Refreshed Authorization Header ---
             const response = await fetch(`http://localhost:8000/api/issues/${issueId}/${action}`, {
                 method: 'POST',
                 headers: {
                     'Content-Type': 'application/json',
-                    'Authorization': `Bearer ${idToken}` // Send the potentially refreshed token
+                    'Authorization': `Bearer ${idToken}`
                 },
-                // No body needed for simple upvote/report POSTs
             });
-            // --- End Header ---
 
             if (!response.ok) {
                 let errorMsg = `Failed to ${action}`;
-                // Handle specific auth errors first
                 if (response.status === 401 || response.status === 403) {
                      errorMsg = "Authentication failed. Please log in again.";
-                     // Clear local storage and redirect
                      localStorage.removeItem('firebaseIdToken');
                      localStorage.removeItem('userEmail');
                      localStorage.removeItem('userType');
                      window.location.href = '/login.html';
                 } else {
-                     // Try to get detailed error from backend JSON response
-                     try {
-                         const errData = await response.json();
-                         errorMsg = errData.detail || errorMsg; // Use backend detail if available
-                     } catch (e) {
-                         /* ignore json parse error if response wasn't JSON */
-                         errorMsg = `${errorMsg} (Status: ${response.status})`; // Add status code if no detail
-                     }
+                     try { const errData = await response.json(); errorMsg = errData.detail || errorMsg; }
+                     catch (e) { errorMsg = `${errorMsg} (Status: ${response.status})`; }
                 }
-                throw new Error(errorMsg); // Throw error to be caught below
+                throw new Error(errorMsg);
             }
 
-            // --- Success ---
             const result = await response.json();
             console.log(`${action} successful:`, result);
             showToast(action === 'upvote' ? '👍 Upvoted!' : '👎 Reported!');
 
-            // Update the local data store `allIssues` and re-render if backend returns updated issue
+            // Update local data and re-render
             if (result.updated_issue) {
                 const issueIndex = allIssues.findIndex(issue => issue.issue_id === issueId);
                 if (issueIndex !== -1) {
-                    allIssues[issueIndex] = result.updated_issue; // Update the data in our global array
-                    console.log(`Updated issue ${issueId} data in allIssues array.`);
-                    renderIssues(); // Re-render the entire grid based on updated data and current filter
+                    allIssues[issueIndex] = result.updated_issue;
+                    console.log(`Updated issue ${issueId} data locally.`);
+                    renderIssues(); // Re-render grid
                 } else {
-                     console.warn(`Issue ${issueId} not found in allIssues array after update response.`);
-                     // Fallback: Re-fetch everything if local update fails unexpectedly
-                     await fetchAndRenderIssues();
+                    console.warn(`Issue ${issueId} not found locally after update.`);
+                    await fetchAndRenderIssues(); // Fallback: full refresh
                 }
             } else {
-                 // If backend didn't return updated data, maybe just re-render optimistically
-                 // Or trigger a full refresh if state logic is complex
-                 console.warn(`Backend did not return updated_issue for ${action} on ${issueId}. Re-rendering.`);
-                 renderIssues(); // Re-render with potentially stale local data (relying on optimistic UI)
+                 console.warn(`Backend didn't return updated_issue for ${action} on ${issueId}. Re-rendering.`);
+                 renderIssues(); // Re-render optimistically
             }
 
         } catch (error) {
             console.error(`Error submitting ${action}:`, error);
-            showToast(`⚠️ ${error.message}`); // Show the specific error message
+            showToast(`⚠️ ${error.message}`);
 
-            // Revert optimistic UI changes on error
-            if (action === 'upvote' && upvoteCountSpan) {
-                 upvoteCountSpan.textContent = currentUpvoteCount;
+            // Revert optimistic UI on error
+            if (action === 'upvote' && upvoteCountSpan) upvoteCountSpan.textContent = currentUpvoteCount;
+            if (action === 'report' && reportCountSpan) reportCountSpan.textContent = ` ${currentReportCount} reports`;
+
+            // Re-enable button if not an auth redirect
+            if (!error.message.includes("Authentication failed")) {
+                button.disabled = false;
+                button.classList.remove('voted');
             }
-            if (action === 'report' && reportCountSpan) {
-                 reportCountSpan.textContent = `📊 ${currentReportCount} reports`;
-            }
-            // Re-enable button ONLY if we didn't redirect due to auth error
-             if (!error.message.includes("Authentication failed")) {
-                 button.disabled = false;
-                 button.classList.remove('voted');
-             }
 
         } finally {
-             // Clean up visual state after a short delay, unless already handled by error/redirect
+             // Clean up visual state after delay
              setTimeout(() => {
-                 // Find the button again in case the DOM re-rendered
                  const currentButton = document.querySelector(`.vote-button[data-id="${issueId}"][data-action="${action}"]`);
                  if(currentButton) {
-                    currentButton.classList.remove('voted');
-                    // Ensure button is enabled unless the issue state changed (e.g., closed) or auth failed
-                    const latestIssueData = allIssues.find(issue => issue.issue_id === issueId);
-                    const isLoggedIn = !!localStorage.getItem('firebaseIdToken'); // Check login status again
-                    if (isLoggedIn && latestIssueData && latestIssueData.status !== 'closed' && latestIssueData.status !== 'spam') {
-                         currentButton.disabled = false;
-                    } else if (!isLoggedIn) {
-                         // Keep disabled if user somehow got logged out during the process
-                         currentButton.disabled = true;
-                    }
-                    // If issue closed/spam, it remains disabled from initial click
+                     currentButton.classList.remove('voted');
+                     // Re-enable logic (simplified)
+                     const isLoggedIn = !!localStorage.getItem('firebaseIdToken');
+                     if (isLoggedIn) currentButton.disabled = false; // Re-enable if still logged in
                  }
-             }, 600); // 600ms delay
+             }, 600);
         }
     });
 }
@@ -348,21 +300,19 @@ function openIssueModal(issue) {
 
     const co2Saved = typeof issue.co2_kg_saved === 'number' ? issue.co2_kg_saved : 0;
     const fateRisk = typeof issue.fate_risk_co2 === 'number' ? issue.fate_risk_co2 : 0;
-    const co2Text = co2Saved > 0 ? `🌱 ${co2Saved.toFixed(1)} kg CO₂ saved` : `⚠️ ${fateRisk.toFixed(1)} kg CO₂ risk`;
+    const co2Text = co2Saved > 0 ? ` ${co2Saved.toFixed(1)} kg CO₂ saved` : `⚠️ ${fateRisk.toFixed(1)} kg CO₂ risk`;
 
     const issueTypes = Array.isArray(issue.issue_types) ? issue.issue_types : (issue.issue_types ? [issue.issue_types] : ['unknown']);
     const severityScore = typeof issue.severity_score === 'number' ? issue.severity_score : 5.0;
 
-    // --- Location text with optional distance for modal ---
     const locationText = `📍 ${issue.display_address || 'Address Unavailable'}`;
-     const distanceText = typeof issue.distance_km === 'number'
+    const distanceText = typeof issue.distance_km === 'number'
         ? `<span style="font-size: 0.9em; color: var(--grey-text);"> (${issue.distance_km} km away)</span>`
         : '';
-    // --- End ---
 
     const reportedDate = issue.reported_at ? new Date(issue.reported_at).toLocaleDateString() : 'Unknown Date';
     const descriptionText = issue.description || issue.auto_caption || 'No description available';
-    const photoUrl = issue.photo_url || 'placeholder.png';
+    const photoUrl = issue.photo_url || 'placeholder.png'; // Original photo
     const issueIdShort = issue.issue_id ? issue.issue_id.substring(0, 8) : 'N/A';
     const sourceText = issue.source || 'citizen';
     const openUpvotes = (issue.upvotes && typeof issue.upvotes.open === 'number') ? issue.upvotes.open : 0;
@@ -373,12 +323,13 @@ function openIssueModal(issue) {
     if (issue.reports) {
         if (statusClass === 'open') relevantReportCount = issue.reports.open || 0;
         else if (statusClass === 'closed') relevantReportCount = issue.reports.closed || 0;
-        else if (statusClass === 'verified') relevantReportCount = issue.reports.verified || 0; // Added verified reports if schema supports
-        else if (statusClass === 'spam') relevantReportCount = issue.reports.spam || 0; // Added spam reports if schema supports
+        else if (statusClass === 'verified') relevantReportCount = issue.reports.verified || 0;
+        else if (statusClass === 'spam') relevantReportCount = issue.reports.spam || 0;
     }
     const predictedFixText = issue.predicted_fix || 'No fix prediction available';
     const fixConfidence = typeof issue.predicted_fix_confidence === 'number' ? issue.predicted_fix_confidence : 0;
 
+    // --- AI Detected Issues HTML ---
     let detectedIssuesHtml = '<p>No specific issues detected by AI.</p>';
     if (Array.isArray(issue.detected_issues) && issue.detected_issues.length > 0) {
       detectedIssuesHtml = issue.detected_issues.map(detected => {
@@ -395,6 +346,27 @@ function openIssueModal(issue) {
                 </div>`;
       }).join('');
     }
+    // --- End AI Detected Issues ---
+
+    // --- Fix Proof Photos HTML ---
+    let fixPhotosHtml = '';
+    // Assume backend provides `fix_photo_urls` as an array for closed issues
+    if (statusClass === 'closed' && Array.isArray(issue.fix_photo_urls) && issue.fix_photo_urls.length > 0) {
+        fixPhotosHtml = `
+            <div style="margin-top: 12px; border-top: 1px solid var(--grey-border, #eee); padding-top: 12px;">
+                <h5 style="margin-bottom: 8px; font-size: 0.9em; color: var(--success-text, #004d40);">Fix Proof</h5>
+                <div class="fix-photos-gallery" style="display: flex; flex-wrap: wrap; gap: 8px;">
+                    ${issue.fix_photo_urls.map(url => `
+                        <a href="${url}" target="_blank" rel="noopener noreferrer">
+                            <img src="${url}" alt="Fix proof photo" style="width: 60px; height: 60px; object-fit: cover; border-radius: 6px; border: 1px solid var(--grey-border);">
+                        </a>
+                    `).join('')}
+                </div>
+                ${issue.fix_description ? `<p style="font-size: 0.8em; margin: 8px 0 0 0; color: #444;">${issue.fix_description}</p>` : ''}
+            </div>
+        `;
+    }
+    // --- End Fix Photos ---
 
     modalBody.innerHTML = `
       <img src="${photoUrl}" alt="${issueTypes[0]}" class="modal-media" onerror="this.onerror=null; this.src='placeholder.png'; this.style.objectFit='contain';">
@@ -402,17 +374,23 @@ function openIssueModal(issue) {
         <h3 class="modal-title">${issueTypes.join(' + ').replace(/_/g, ' ')} Issue</h3>
         <div class="modal-meta">
           <span>${locationText}${distanceText}</span>
-          <span>👤 ${sourceText}</span>
-          <span>📅 ${reportedDate}</span>
+          <span> ${sourceText}</span>
+          <span> ${reportedDate}</span>
           <span class="status-badge">${statusText}</span>
         </div>
       </div>
       <div class="issue-details">
         <p class="modal-description">${descriptionText}</p>
+
         <div style="background: var(--grey-surface); padding: 16px; border-radius: 12px; margin-top: 16px;">
-          <h4 style="margin-bottom: 8px;">📊 AI Detected Issues</h4>
+          <h4 style="margin-bottom: 8px;"> AI Detected Issues</h4>
           ${detectedIssuesHtml}
+          <!-- *** MOVED FIX PHOTOS HERE *** -->
+          ${fixPhotosHtml} 
         </div>
+
+        <!-- Removed separate fix photo section -->
+
         <div class="issue-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0;">
           <div class="stat-item">
             <span class="stat-label">Overall Severity:</span>
@@ -433,7 +411,7 @@ function openIssueModal(issue) {
         </div>
         ${predictedFixText !== 'No fix prediction available' ? `
         <div style="background: var(--grey-surface); padding: 16px; border-radius: 12px; margin-top: 16px;">
-            <h4 style="margin-bottom: 8px;">🔧 Predicted Fix (Confidence: ${(fixConfidence * 100).toFixed(0)}%)</h4>
+            <h4 style="margin-bottom: 8px;"> Predicted Fix (Confidence: ${(fixConfidence * 100).toFixed(0)}%)</h4>
             <p style="font-size: 0.875rem; margin: 4px 0;">${predictedFixText}</p>
         </div>` : ''}
       </div>
@@ -492,22 +470,14 @@ function getUserLocation() {
                 (error) => {
                     console.error("Error getting location:", error);
                     let message = "⚠️ Could not get location. Showing all issues.";
-                    if (error.code === error.PERMISSION_DENIED) {
-                        message = "⚠️ Location permission denied. Showing all issues.";
-                    } else if (error.code === error.POSITION_UNAVAILABLE) {
-                         message = "⚠️ Location info unavailable. Showing all issues.";
-                    } else if (error.code === error.TIMEOUT) {
-                         message = "⚠️ Location request timed out. Showing all issues.";
-                    }
+                    if (error.code === error.PERMISSION_DENIED) message = "⚠️ Location permission denied. Showing all issues.";
+                    else if (error.code === error.POSITION_UNAVAILABLE) message = "⚠️ Location info unavailable. Showing all issues.";
+                    else if (error.code === error.TIMEOUT) message = "⚠️ Location request timed out. Showing all issues.";
                     showToast(message);
                     userLocation = null; // Ensure location is null on error
                     reject(error); // Reject the promise
                 },
-                {
-                     enableHighAccuracy: false,
-                     timeout: 10000, // 10 seconds
-                     maximumAge: 60000 // 1 minute cache
-                }
+                { enableHighAccuracy: false, timeout: 10000, maximumAge: 60000 }
             );
         }
     });
@@ -518,10 +488,9 @@ async function fetchAndRenderIssues() {
     const grid = document.getElementById('issues-grid');
     if (grid) grid.innerHTML = '<div class="loading-spinner"></div>'; // Show loading spinner
 
-    // Build API URL with optional location params
     let apiUrl = 'http://localhost:8000/api/issues';
     if (userLocation) {
-        apiUrl += `?latitude=${userLocation.latitude}&longitude=${userLocation.longitude}&radius_km=10`; // Example radius: 10km
+        apiUrl += `?latitude=${userLocation.latitude}&longitude=${userLocation.longitude}&radius_km=10`; // Example radius
     }
     console.log(`Fetching issues from: ${apiUrl}`);
 
@@ -529,42 +498,39 @@ async function fetchAndRenderIssues() {
         const response = await fetch(apiUrl);
         if (!response.ok) {
             let errorMsg = `HTTP error! status: ${response.status}`;
-            try { const errData = await response.json(); errorMsg = errData.detail || errorMsg; } catch (e) { /* Ignore json parse error */ }
+            try { const errData = await response.json(); errorMsg = errData.detail || errorMsg; } catch (e) { /* Ignore */ }
             throw new Error(errorMsg);
         }
         const data = await response.json();
-        allIssues = data.issues || []; // Store fetched issues globally
+        allIssues = data.issues || []; // Store globally
 
         console.log("Fetched issues:", allIssues.length);
-        renderIssues(); // Render based on the fetched data and current filter
+        renderIssues(); // Render based on fetched data
 
     } catch (error) {
         console.error("Failed to fetch issues:", error);
         showToast(`⚠️ Failed to load issues: ${error.message}`);
-        allIssues = []; // Clear issues on error
+        allIssues = []; // Clear on error
         if (grid) grid.innerHTML = `<p style="text-align: center; color: var(--error-color);">Failed to load issues: ${error.message}</p>`;
-        renderIssues(); // Render the error message or empty state
+        //renderIssues(); // Render empty state
     }
 }
 
 
 // --- UPDATED DOMContentLoaded ---
 document.addEventListener('DOMContentLoaded', async () => {
-    // Initialize standard UI and auth listener FIRST
     initializeAuthListener();
     initThemeToggle();
     initMobileMenu();
-    initFilterPills(); // Set up filter buttons
-    initVoteButtons(); // Attach vote listeners to the grid (event delegation)
+    initFilterPills();
+    initVoteButtons();
 
-    // Attempt to get user location, then fetch and render issues
     try {
-        await getUserLocation(); // Wait for location attempt
+        await getUserLocation();
     } catch (locationError) {
-        // If location fails, userLocation remains null, proceed without it
         console.warn("Proceeding without location data.");
     } finally {
-        // Fetch and render issues regardless of location success/failure
         await fetchAndRenderIssues();
     }
 });
+

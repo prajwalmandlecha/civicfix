@@ -44,8 +44,8 @@ function renderLeaderboardList(leaderboard, containerId) {
     const badges = Array.isArray(leader.badges) ? leader.badges : []; // Badges are empty for now
 
     item.innerHTML = `
-      <div class="rank-number">#${leader.rank}</div>
-      <div class="leader-avatar">👤</div>
+      <div class="rank-number">#${leader.rank+3}</div>
+      <div class="leader-avatar"></div>
       <div class="leader-info">
         <div class="leader-name">${leader.name || 'Anonymous'}</div>
         <div class="leader-co2">${score.toLocaleString()} Karma</div>

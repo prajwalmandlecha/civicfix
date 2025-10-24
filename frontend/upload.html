@@ -14,7 +14,7 @@
     <nav class="navbar">
       <div class="container">
         <a href="/" class="nav-logo">
-          <span class="logo-icon">🏙️</span>
+          <span class="logo-icon"></span>
           <span class="logo-text">CivicFix</span>
         </a>
         <button class="mobile-menu-toggle" id="mobile-menu-toggle">
@@ -23,11 +23,11 @@
           <span></span>
         </button>
         <ul class="nav-menu" id="nav-menu">
-          <li><a href="/feed.html" class="nav-link">📰 StreetFeed</a></li>
-          <li><a href="/map.html" class="nav-link">🗺️ StreetHeat</a></li>
-          <li><a href="/upload.html" class="nav-link active">📸 Upload</a></li>
-          <li><a href="/leaderboard.html" class="nav-link">🏆 Leaderboard</a></li>
-          <li><a href="/profile.html" class="nav-link">👤 Profile</a></li>
+          <li><a href="/feed.html" class="nav-link"> StreetFeed</a></li>
+          <li><a href="/map.html" class="nav-link"> StreetHeat</a></li>
+          <li><a href="/upload.html" class="nav-link active"> Upload</a></li>
+          <li><a href="/leaderboard.html" class="nav-link"> Leaderboard</a></li>
+          <li><a href="/profile.html" class="nav-link"> Profile</a></li>
         </ul>
         <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
           <span class="theme-icon">☀️</span>
@@ -38,14 +38,14 @@
     <!-- Upload Section -->
     <section class="page-content street-snap">
       <div class="container">
-        <h1 class="page-title">📸 Report an Issue</h1>
+        <h1 class="page-title"> Report an Issue</h1>
         <p class="page-subtitle">Help improve your neighborhood by reporting issues</p>
 
         <div class="upload-card">
           <div class="upload-area" id="upload-area">
-            <input type="file" id="file-input" accept="image/*" hidden>
+            <input type="file" id="file-input" accept="image/*" hidden multiple>
             <div class="upload-placeholder">
-              <div class="upload-icon">📤</div>
+              <div class="upload-icon"></div>
               <p class="upload-text">Drag & drop photo</p>
               <p class="upload-subtext">or click to browse</p>
               <p class="upload-hint" style="font-size: 0.8em; color: var(--grey-text); margin-top: 10px;">
@@ -57,7 +57,7 @@
 
           <div class="upload-controls">
             <div class="form-group">
-              <label class="form-label">📝 Description</label>
+              <label class="form-label"> Description</label>
               <textarea
                 id="description-input"
                 class="form-textarea"
@@ -67,7 +67,7 @@
             </div>
 
             <div class="form-group">
-              <label class="form-label">📍 Location</label>
+              <label class="form-label"> Location</label>
               <input
                 type="text"
                 id="location-input"
@@ -77,14 +77,14 @@
             </div>
 
             <!-- <button class="voice-btn" id="voice-btn">
-              🎤 Record Voice Note
+               Record Voice Note
             </button> -->
 
             <div class="anonymous-toggle">
               <label>
                 <input type="checkbox" id="anonymous-toggle">
                 <span class="toggle-slider"></span>
-                <span class="toggle-label">🎭 Anonymous (skip karma)</span>
+                <span class="toggle-label"> Anonymous (skip karma)</span>
               </label>
             </div>
 

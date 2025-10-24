@@ -19,6 +19,7 @@ from fastapi import (
 )  # Added Depends
 from fastapi.middleware.cors import CORSMiddleware
 
+
 # --- ADDED firestore and auth_errors ---
 from firebase_admin import (
     auth,
@@ -31,7 +32,7 @@ from dotenv import load_dotenv
 from google.cloud import storage
 from pydantic import BaseModel, Field, ConfigDict
 from typing import List, Dict, Any, Optional
-
+from google.cloud.firestore_v1.base_query import FieldFilter
 from google.cloud.firestore_v1.transforms import Increment
 from elasticsearch import AsyncElasticsearch, NotFoundError, RequestError
 from geopy.geocoders import Nominatim
@@ -54,27 +55,33 @@ db = None
 try:
     import os
     import firebase_admin
-    
+
     # Check if Firebase is already initialized
     try:
         default_app = firebase_admin.get_app()
         logger.info("✓ Firebase app already initialized, reusing existing instance")
     except ValueError:
         # Firebase not initialized yet, initialize it
-        service_account_path = os.path.join(os.path.dirname(__file__), "serviceAccountKey.json")
-        logger.info(f"Attempting to load Firebase credentials from: {service_account_path}")
-        
+        service_account_path = os.path.join(
+            os.path.dirname(__file__), "serviceAccountKey.json"
+        )
+        logger.info(
+            f"Attempting to load Firebase credentials from: {service_account_path}"
+        )
+
         if not os.path.exists(service_account_path):
-            raise FileNotFoundError(f"serviceAccountKey.json not found at {service_account_path}")
-        
+            raise FileNotFoundError(
+                f"serviceAccountKey.json not found at {service_account_path}"
+            )
+
         cred = credentials.Certificate(service_account_path)
         default_app = initialize_app(cred)
         logger.info("✓ Firebase Admin initialized successfully")
-    
+
     # Initialize Firestore DB client (synchronous)
     db = firestore.client()
     logger.info("✓ Firestore client initialized successfully")
-    
+
 except Exception as fb_err:
     logger.error(f"✗ Failed to initialize Firebase Admin: {fb_err}", exc_info=True)
     default_app = None
@@ -199,7 +206,9 @@ async def verify_firebase_token_middleware(request: Request, call_next):
         response = await call_next(request)
         return response
     if not default_app or not db:
-        logger.error(f"Firebase not initialized. Path: {request.url.path}, default_app: {default_app is not None}, db: {db is not None}")
+        logger.error(
+            f"Firebase not initialized. Path: {request.url.path}, default_app: {default_app is not None}, db: {db is not None}"
+        )
         raise HTTPException(503, "Auth service unavailable - Firebase not initialized")
     auth_header = request.headers.get("Authorization")
     logger.debug(f"Authorization header received: {auth_header}")
@@ -274,32 +283,57 @@ except Exception as gcs_err:
 geolocator = Nominatim(user_agent="civicfix_backend_app_v6")
 
 
-def geocode_location(address: str, attempts=3) -> Optional[Dict[str, Any]]:
-    # ... (This is your existing, working code) ...
-    logger.info(f"Attempting to geocode address: '{address}'")
-    if not address:
+def geocode_location(location_text: str) -> Optional[Dict]:
+    """
+    Attempts to geocode an address string with fallbacks if the initial attempt fails.
+    Returns: Dict with 'latitude', 'longitude', 'address', and 'timestamp' or None.
+    """
+    if not location_text:
         return None
-    for attempt in range(attempts):
+
+    # 1. First attempt: Use the full address
+    try_addresses = [location_text]
+
+    # 2. Second attempt: Remove any possible postal code (last segment if it's numeric)
+    parts = location_text.split(",")
+    if parts and parts[-1].strip().isdigit():
+        simplified_addr = ",".join(parts[:-1]).strip()
+        if simplified_addr:
+            try_addresses.append(simplified_addr)
+
+    # 3. Third attempt: Use the last two known parts (often city/state or major locality)
+    if len(parts) >= 2:
+        last_two_parts = ",".join([parts[-2].strip(), parts[-1].strip()])
+        if last_two_parts not in try_addresses and last_two_parts != location_text:
+            try_addresses.append(last_two_parts)
+
+    # Use a set to maintain order but prevent duplicates
+    unique_attempts = list(dict.fromkeys(try_addresses))
+
+    for attempt_addr in unique_attempts:
+        logger.info(f"Attempting to geocode address: '{attempt_addr}'")
         try:
-            location = geolocator.geocode(address, timeout=10)
-            if location:
-                logger.info(f"Geocode OK: ({location.latitude}, {location.longitude})")
+            # Assuming 'geolocator' is a global or imported object from geopy.geocoders
+            geo_result = geolocator.geocode(attempt_addr, exactly_one=True, timeout=5)
+
+            if geo_result:
+                # Log success and return data
+                logger.info(
+                    f"Geocode OK for '{attempt_addr}': ({geo_result.latitude}, {geo_result.longitude})"
+                )
                 return {
-                    "latitude": location.latitude,
-                    "longitude": location.longitude,
+                    "latitude": geo_result.latitude,
+                    "longitude": geo_result.longitude,
+                    "address": geo_result.address,
                     "timestamp": datetime.utcnow().isoformat() + "Z",
                 }
             else:
-                logger.warning(
-                    f"Geocode attempt {attempt+1}: Addr '{address}' not found."
-                )
-                return None
-        except (GeocoderTimedOut, GeocoderServiceError) as e:
-            logger.warning(f"Geocode attempt {attempt+1} fail: {e}")
+                logger.warning(f"Geocode attempt failed for: '{attempt_addr}'.")
+
         except Exception as e:
-            logger.exception(f"Geocode unexpected err attempt {attempt+1}")
-            return None
-    logger.error("Geocode fail after retries.")
+            logger.warning(f"Geocode service error for '{attempt_addr}': {e}")
+            continue
+
     return None
 
 
@@ -315,16 +349,16 @@ async def root():
     except Exception as e:
         logger.error(f"ES ping fail: {e}")
         raise HTTPException(503, "DB conn err")
-    
+
     # Check Firebase status
     firebase_status = "connected" if (default_app and db) else "disconnected"
-    
+
     return {
         "message": "CivicFix API Gateway - Running",
         "db_status": "connected",
         "firebase_status": firebase_status,
         "firebase_app": default_app is not None,
-        "firestore_client": db is not None
+        "firestore_client": db is not None,
     }
 
 
@@ -609,7 +643,6 @@ async def get_issues(
                 issue_data["distance_km"] = hit["sort"][0]
             issues.append(issue_data)
 
-
         total_hits = response["hits"]["total"]["value"]
 
         logger.info(
@@ -642,7 +675,7 @@ async def get_issues_with_user_status(
     """
     Get issues near a location with user's upvote and report status included.
     This combines the functionality of /issues/ and /batch-upvote-status endpoints.
-    
+
     Args:
         latitude: Location latitude
         longitude: Location longitude
@@ -650,7 +683,7 @@ async def get_issues_with_user_status(
         limit: Maximum number of results (default 10)
         skip: Number of results to skip for pagination (default 0)
         days_back: Only include issues from last N days (default 30)
-    
+
     Returns:
         Issues with embedded user status (hasUpvoted, hasReported) for each issue
     """
@@ -660,7 +693,9 @@ async def get_issues_with_user_status(
         raise HTTPException(503, "Firestore unavailable")
 
     user_uid = user.get("uid")
-    logger.info(f"User {user_uid} fetching issues with status near ({latitude}, {longitude})")
+    logger.info(
+        f"User {user_uid} fetching issues with status near ({latitude}, {longitude})"
+    )
 
     try:
         # 1. Fetch issues from Elasticsearch (same as /issues/ endpoint)
@@ -714,7 +749,7 @@ async def get_issues_with_user_status(
         response = await es_client.search(
             index="issues", body=query, request_timeout=45
         )
-        
+
         issues = []
         issue_ids = []
 
@@ -730,29 +765,29 @@ async def get_issues_with_user_status(
         # 2. Batch fetch upvote and report status from Firestore
         upvote_status = {}
         report_status = {}
-        
+
         if issue_ids:
             try:
                 # Build document IDs for all issues
                 upvote_doc_ids = [f"{issue_id}__{user_uid}" for issue_id in issue_ids]
                 report_doc_ids = [f"{issue_id}__{user_uid}" for issue_id in issue_ids]
-                
+
                 # Batch fetch upvotes
                 upvote_refs = [
-                    db.collection("upvotes").document(doc_id) 
+                    db.collection("upvotes").document(doc_id)
                     for doc_id in upvote_doc_ids
                 ]
-                
+
                 # Batch fetch reports
                 report_refs = [
-                    db.collection("reports").document(doc_id) 
+                    db.collection("reports").document(doc_id)
                     for doc_id in report_doc_ids
                 ]
-                
+
                 # Get all documents in two batch operations
                 upvote_docs = db.get_all(upvote_refs)
                 report_docs = db.get_all(report_refs)
-                
+
                 # Build status maps
                 for i, doc in enumerate(upvote_docs):
                     issue_id = issue_ids[i]
@@ -761,7 +796,7 @@ async def get_issues_with_user_status(
                         upvote_status[issue_id] = upvote_data.get("isActive", False)
                     else:
                         upvote_status[issue_id] = False
-                
+
                 for i, doc in enumerate(report_docs):
                     issue_id = issue_ids[i]
                     if doc.exists:
@@ -769,10 +804,12 @@ async def get_issues_with_user_status(
                         report_status[issue_id] = report_data.get("isActive", False)
                     else:
                         report_status[issue_id] = False
-                
+
                 logger.info(f"Batch fetched status for {len(issue_ids)} issues")
             except Exception as firestore_err:
-                logger.error(f"Error fetching user status from Firestore: {firestore_err}")
+                logger.error(
+                    f"Error fetching user status from Firestore: {firestore_err}"
+                )
                 # Set all to False if there's an error
                 upvote_status = {issue_id: False for issue_id in issue_ids}
                 report_status = {issue_id: False for issue_id in issue_ids}
@@ -786,14 +823,14 @@ async def get_issues_with_user_status(
                 "userStatus": {
                     "hasUpvoted": upvote_status.get(issue_id, False),
                     "hasReported": report_status.get(issue_id, False),
-                }
+                },
             }
             issues_with_status.append(issue_with_status)
 
         logger.info(
             f"Returning {len(issues_with_status)} issues with user status for user {user_uid}"
         )
-        
+
         return {
             "location": {"latitude": latitude, "longitude": longitude},
             "radius_km": radius_km,
@@ -867,57 +904,234 @@ async def get_latest_issues(
         raise HTTPException(500, "Internal server error")
 
 
-@app.post("/submit-issue")
-async def submit_issue(
+# @app.post("/submit-issue")
+# async def submit_issue(
+#     user: dict = Depends(get_current_user),  # Requires auth
+#     file: UploadFile = File(...),
+#     locationstr: str = Form(
+#         ...
+#     ),  # Renamed from location_text in original /submit-issue
+#     description: str = Form(...),
+#     is_anonymous: bool = Form(False),  # Get anonymous flag
+# ):
+#     if not storage_client:
+#         raise HTTPException(503, "GCS unavailable")
+#     if not file:
+#         raise HTTPException(400, "No file")
+#     if not (file.content_type or "").startswith("image/"):
+#         raise HTTPException(
+#             400, "Only image files are supported for single upload"
+#         )  # Adjusted error message
+
+#     # --- 1. Geocode Location ---
+#     geocoded = geocode_location(locationstr)
+#     if not geocoded:
+#         raise HTTPException(400, f"Cannot find coords for: '{locationstr}'.")
+
+#     # --- 2. Upload single file to GCS ---
+#     public_url = ""  # Initialize variable
+#     try:
+#         file_uuid = uuid.uuid4()
+#         # Create a unique path for the single file
+#         blob_name = f"issues/{uuid.uuid4()}_{file.filename or file_uuid}"
+#         file.filename = blob_name  # Use blob_name for consistency if needed later
+
+#         data = await file.read()
+#         if not data:
+#             raise HTTPException(400, "Empty file")
+
+#         if not BUCKET_NAME:
+#             raise HTTPException(500, "GCS bucket not config")
+
+#         bucket = storage_client.bucket(BUCKET_NAME)
+#         blob = bucket.blob(blob_name)
+
+#         blob.upload_from_string(data, content_type=file.content_type)
+#         public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{blob_name}"
+#         logger.info(f"GCS OK: {public_url}")
+#     except Exception as gcs_err:
+#         logger.exception("GCS upload fail")
+#         raise HTTPException(500, f"GCS fail: {gcs_err}")
+
+#     # --- 3. Call Analyzer ---
+#     try:
+#         logger.info(f"Calling analyzer: {CLOUD_ANALYZER_URL}/analyze/")
+
+#         reporter_id = (
+#             "anonymous" if is_anonymous else user.get("uid", "anonymous_fallback")
+#         )
+#         source_type = "anonymous" if is_anonymous else "citizen"
+
+#         # --- Fetch user display name for the analyzer ---
+#         user_display_name = "Anonymous"
+#         if not is_anonymous and reporter_id != "anonymous_fallback" and db:
+#             try:
+#                 user_doc_ref = db.collection("users").document(reporter_id)
+#                 user_doc = user_doc_ref.get()  # Synchronous call
+#                 if user_doc.exists:
+#                     user_display_name = user_doc.to_dict().get("name", "Citizen")
+#                 else:
+#                     logger.warning(
+#                         f"User document {reporter_id} not found, using default name."
+#                     )
+#                     user_display_name = "Citizen"  # Fallback
+#             except Exception as e:
+#                 logger.warning(f"Could not fetch display name for {reporter_id}: {e}")
+#                 user_display_name = "Citizen"  # Fallback
+#         # --- End display name fetch ---
+
+#         analyzer_payload = {
+#             "image_url": public_url,  # Single URL
+#             "description": description,
+#             "location": {
+#                 "latitude": geocoded["latitude"],
+#                 "longitude": geocoded["longitude"],
+#             },
+#             "timestamp": geocoded["timestamp"],
+#             "user_selected_labels": [],
+#             "reported_by": reporter_id,
+#             "source": source_type,
+#             "uploader_display_name": user_display_name,  # Pass display name
+#         }
+#         logger.debug(f"Analyzer payload: {analyzer_payload}")
+
+#         analyzer_response = requests.post(
+#             f"{CLOUD_ANALYZER_URL}/analyze/", json=analyzer_payload, timeout=60
+#         )
+#         logger.debug(
+#             f"Analyzer response: {analyzer_response.text}"
+#         )  # Log raw response for debugging
+#         analyzer_response.raise_for_status()  # Check for HTTP errors
+#         analysis_result = analyzer_response.json()  # Parse JSON
+
+#         logger.info(f"Analyzer OK for {reporter_id}. Response: {analysis_result}")
+
+#         # --- NEW: Award +10 Karma for First Post (Copied from multi-upload) ---
+#         if not is_anonymous and reporter_id != "anonymous_fallback" and db:
+#             try:
+#                 user_doc_ref = db.collection("users").document(reporter_id)
+#                 user_doc = user_doc_ref.get()  # Synchronous call
+
+#                 if user_doc.exists:
+#                     user_data = user_doc.to_dict()  # Use .to_dict() here
+#                     has_posted = user_data.get("has_posted_before", False)
+
+#                     if not has_posted:
+#                         # Award +10 karma and set flag
+#                         user_doc_ref.update(
+#                             {"karma": Increment(10), "has_posted_before": True}
+#                         )
+#                         logger.info(
+#                             f"Awarded +10 first post karma to user {reporter_id}."
+#                         )
+#                     else:
+#                         logger.info(
+#                             f"User {reporter_id} has posted before. No first post karma awarded."
+#                         )
+#                 else:
+#                     # Handle missing user doc (optional: create it)
+#                     logger.warning(
+#                         f"User document not found for {reporter_id} when checking first post karma. Creating doc and awarding karma."
+#                     )
+#                     user_doc_ref.set(
+#                         {
+#                             "name": user_display_name,
+#                             "email": user.get("email"),
+#                             "userType": "citizen",
+#                             "karma": 10,
+#                             "has_posted_before": True,
+#                             "createdAt": firestore.SERVER_TIMESTAMP,
+#                         },
+#                         merge=True,
+#                     )
+#                     logger.info(
+#                         f"Created user doc and awarded +10 first post karma to user {reporter_id}."
+#                     )
+
+#             except Exception as firestore_err:
+#                 logger.error(
+#                     f"Failed to check/award first post karma for {reporter_id}: {firestore_err}"
+#                 )
+#         # --- END NEW KARMA LOGIC ---
+
+#         # Return results
+#         return {
+#             "image_url": public_url,
+#             "analysis": analysis_result,
+#             "location_text": locationstr,  # Use the correct input variable name
+#             "location_coords": {
+#                 "latitude": geocoded["latitude"],
+#                 "longitude": geocoded["longitude"],
+#             },
+#         }
+
+#     # --- Keep existing error handling ---
+#     except requests.exceptions.HTTPError as http_err:
+#         error_detail = (
+#             f"Analysis error: {http_err.response.status_code}. {http_err.response.text}"
+#         )
+#         logger.error(error_detail)
+#         # Try to extract detail if JSON error response from analyzer
+#         try:
+#             err_json = http_err.response.json()
+#             error_detail = err_json.get("detail", error_detail)
+#         except json.JSONDecodeError:
+#             pass  # Keep original text
+#         raise HTTPException(502, f"Error from analysis service: {error_detail}")
+#     except requests.exceptions.RequestException as e:
+#         logger.exception("Analyzer conn fail")
+#         raise HTTPException(502, f"Analysis conn err: {e}")
+#     except Exception as e:
+#         logger.exception("Unexpected err in /submit-issue")
+#         raise HTTPException(500, f"Internal server err: {e}")
+
+
+@app.post("/submit-issue-multi")
+async def submit_issue_multi(
     user: dict = Depends(get_current_user),  # Requires auth
-    file: UploadFile = File(...),
-    locationstr: str = Form(
-        ...
-    ),  # Renamed from location_text in original /submit-issue
-    description: str = Form(...),
+    files: List[UploadFile] = File(...),  # Accepts multiple files
+    location_text: str = Form(...),
+    description: str = Form(""),  # Optional description
     is_anonymous: bool = Form(False),  # Get anonymous flag
 ):
     if not storage_client:
         raise HTTPException(503, "GCS unavailable")
-    if not file:
-        raise HTTPException(400, "No file")
-    if not (file.content_type or "").startswith("image/"):
-        raise HTTPException(
-            400, "Only image files are supported for single upload"
-        )  # Adjusted error message
+    if not files or len(files) == 0:
+        raise HTTPException(400, "No files provided")
 
     # --- 1. Geocode Location ---
-    geocoded = geocode_location(locationstr)
+    geocoded = geocode_location(location_text)
     if not geocoded:
-        raise HTTPException(400, f"Cannot find coords for: '{locationstr}'.")
+        raise HTTPException(400, f"Could not find coordinates for: '{location_text}'.")
 
-    # --- 2. Upload single file to GCS ---
-    public_url = ""  # Initialize variable
+    # --- 2. Upload all files to GCS ---
+
+    public_urls = []
+    issue_folder = f"issues/{uuid.uuid4()}"  # One folder for all issue images
+    bucket = storage_client.bucket(BUCKET_NAME)
+
+    for file in files:
+        if not (file.content_type or "").startswith("image/"):
+            logger.warning(f"Skipping non-image file: {file.filename}")
+            continue
+
+        try:
+            data = await file.read()  # Read file bytes
+            blob = bucket.blob(f"{issue_folder}/{file.filename}")  # Create blob
+            blob.upload_from_string(data, content_type=file.content_type)
+
+            public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{issue_folder}/{file.filename}"
+            public_urls.append(public_url)
+            logger.info(f"Uploaded {file.filename} to GCS: {public_url}")
+        except Exception as gcs_err:
+            logger.exception(f"GCS upload failed for {file.filename}: {gcs_err}")
+
+    if not public_urls:
+        raise HTTPException(400, "No valid image files were uploaded.")
+
+    # --- 3. Call Analyzer (using only the *first* image) ---
     try:
-        file_uuid = uuid.uuid4()
-        # Create a unique path for the single file
-        blob_name = f"issues/{uuid.uuid4()}_{file.filename or file_uuid}"
-        file.filename = blob_name  # Use blob_name for consistency if needed later
-
-        data = await file.read()
-        if not data:
-            raise HTTPException(400, "Empty file")
-
-        if not BUCKET_NAME:
-            raise HTTPException(500, "GCS bucket not config")
-
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(blob_name)
-
-        blob.upload_from_string(data, content_type=file.content_type)
-        public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{blob_name}"
-        logger.info(f"GCS OK: {public_url}")
-    except Exception as gcs_err:
-        logger.exception("GCS upload fail")
-        raise HTTPException(500, f"GCS fail: {gcs_err}")
-
-    # --- 3. Call Analyzer ---
-    try:
+        first_image_url = public_urls[0]
         logger.info(f"Calling analyzer: {CLOUD_ANALYZER_URL}/analyze/")
 
         reporter_id = (
@@ -932,19 +1146,20 @@ async def submit_issue(
                 user_doc_ref = db.collection("users").document(reporter_id)
                 user_doc = user_doc_ref.get()  # Synchronous call
                 if user_doc.exists:
+                    # Use to_dict() method for DocumentSnapshot
                     user_display_name = user_doc.to_dict().get("name", "Citizen")
                 else:
                     logger.warning(
                         f"User document {reporter_id} not found, using default name."
                     )
-                    user_display_name = "Citizen"  # Fallback
+                    user_display_name = "Citizen"  # Fallback if doc doesn't exist
             except Exception as e:
                 logger.warning(f"Could not fetch display name for {reporter_id}: {e}")
-                user_display_name = "Citizen"  # Fallback
+                user_display_name = "Citizen"  # Fallback on error
         # --- End display name fetch ---
 
         analyzer_payload = {
-            "image_url": public_url,  # Single URL
+            "image_url": first_image_url,
             "description": description,
             "location": {
                 "latitude": geocoded["latitude"],
@@ -954,22 +1169,19 @@ async def submit_issue(
             "user_selected_labels": [],
             "reported_by": reporter_id,
             "source": source_type,
-            "uploader_display_name": user_display_name,  # Pass display name
+            # --- ADDED: Pass uploader display name ---
+            "uploader_display_name": user_display_name,
         }
-        logger.debug(f"Analyzer payload: {analyzer_payload}")
 
         analyzer_response = requests.post(
             f"{CLOUD_ANALYZER_URL}/analyze/", json=analyzer_payload, timeout=60
         )
-        logger.debug(
-            f"Analyzer response: {analyzer_response.text}"
-        )  # Log raw response for debugging
-        analyzer_response.raise_for_status()  # Check for HTTP errors
-        analysis_result = analyzer_response.json()  # Parse JSON
+        analyzer_response.raise_for_status()  # Raises HTTPError for bad responses (4xx or 5xx)
+        analysis_result = analyzer_response.json()
 
         logger.info(f"Analyzer OK for {reporter_id}. Response: {analysis_result}")
 
-        # --- NEW: Award +10 Karma for First Post (Copied from multi-upload) ---
+        # --- NEW: Award +10 Karma for First Post ---
         if not is_anonymous and reporter_id != "anonymous_fallback" and db:
             try:
                 user_doc_ref = db.collection("users").document(reporter_id)
@@ -992,241 +1204,185 @@ async def submit_issue(
                             f"User {reporter_id} has posted before. No first post karma awarded."
                         )
                 else:
-                    # Handle missing user doc (optional: create it)
+                    # This case might happen if signup creates auth user but Firestore doc fails
                     logger.warning(
-                        f"User document not found for {reporter_id} when checking first post karma. Creating doc and awarding karma."
+                        f"User document not found for {reporter_id} when checking for first post karma. Creating doc and awarding karma."
                     )
+                    # Optionally create the doc here if desired, or just log
                     user_doc_ref.set(
                         {
-                            "name": user_display_name,
-                            "email": user.get("email"),
-                            "userType": "citizen",
-                            "karma": 10,
+                            "name": user_display_name,  # Try to use fetched name
+                            "email": user.get("email"),  # Get email from token
+                            "userType": "citizen",  # Assume citizen if doc missing
+                            "karma": 10,  # Start with 10
                             "has_posted_before": True,
-                            "createdAt": firestore.SERVER_TIMESTAMP,
+                            "createdAt": firestore.SERVER_TIMESTAMP,  # Use server timestamp
                         },
                         merge=True,
-                    )
+                    )  # Use merge=True to avoid overwriting if created concurrently
                     logger.info(
                         f"Created user doc and awarded +10 first post karma to user {reporter_id}."
                     )
 
             except Exception as firestore_err:
+                # Log error but don't fail the request
                 logger.error(
                     f"Failed to check/award first post karma for {reporter_id}: {firestore_err}"
                 )
         # --- END NEW KARMA LOGIC ---
 
-        # Return results
+        # --- 4. (Optional) Update ES doc with all image URLs if analyzer didn't ---
+        # ... (Keep this commented out for now) ...
+
         return {
-            "image_url": public_url,
+            "message": f"{len(public_urls)} images uploaded.",
+            "image_urls": public_urls,
             "analysis": analysis_result,
-            "location_text": locationstr,  # Use the correct input variable name
+            "location_text": location_text,
             "location_coords": {
                 "latitude": geocoded["latitude"],
                 "longitude": geocoded["longitude"],
             },
         }
-
-    # --- Keep existing error handling ---
+    # --- Keep existing error handling blocks ---
     except requests.exceptions.HTTPError as http_err:
         error_detail = (
             f"Analysis error: {http_err.response.status_code}. {http_err.response.text}"
         )
         logger.error(error_detail)
-        # Try to extract detail if JSON error response from analyzer
-        try:
-            err_json = http_err.response.json()
-            error_detail = err_json.get("detail", error_detail)
-        except json.JSONDecodeError:
-            pass  # Keep original text
-        raise HTTPException(502, f"Error from analysis service: {error_detail}")
+        raise HTTPException(502, "Error from analysis service.")
     except requests.exceptions.RequestException as e:
         logger.exception("Analyzer conn fail")
         raise HTTPException(502, f"Analysis conn err: {e}")
     except Exception as e:
-        logger.exception("Unexpected err in /submit-issue")
+        logger.exception("Unexpected err in /submit-issue-multi")
         raise HTTPException(500, f"Internal server err: {e}")
 
 
-
-@app.post("/api/issues/{issue_id}/upvote")
-async def upvote_issue(issue_id: str, user: dict = Depends(get_current_user)):
+@app.get("/api/users/{user_id}/stats")
+async def get_user_stats(user_id: str, user: dict = Depends(get_current_user)):
     """
-    Toggle upvote for an issue. 
-    - Creates upvote with isActive=True if it doesn't exist
-    - Toggles isActive between True/False if it exists
-    - Updates Elasticsearch upvote count accordingly
-    - Returns current toggle state
+    Fetches detailed user statistics for the profile page.
+    Requires authentication (user can only fetch their own stats).
     """
-    logger.info(f"User {user.get('uid')} toggling upvote for {issue_id}")
-    if not es_client or not db:
-        raise HTTPException(503, "DB unavailable")
+    if not db or not es_client:
+        raise HTTPException(503, "Database clients not available")
 
-    user_uid = user.get("uid")
-    upvote_doc_id = f"{issue_id}__{user_uid}"
-    # try:
-    #     # Single update operation with script that handles different statuses
-    #     script = {
-    #         "source": """
-    #             if (!ctx._source.containsKey('upvotes')) {
-    #                 ctx._source.upvotes = ['open': 0, 'closed': 0];
-    #             }
-    #             if (ctx._source.status == 'closed') {
-    #                 ctx._source.upvotes.closed += 1;
-    #             } else {
-    #                 ctx._source.upvotes.open += 1;
-    #             }
-    #         """,
-    #         "lang": "painless",
-    #     }
-    # except NotFoundError:
-    #     logger.warning(f"Upvote failed: Issue {issue_id} not found.")
-    #     raise HTTPException(status_code=404, detail=f"Issue {issue_id} not found")
+    # --- Security Check: User can only fetch their own stats ---
+    if user.get("uid") != user_id:
+        logger.warning(
+            f"Auth mismatch: User {user.get('uid')} tried to fetch stats for {user_id}"
+        )
+        raise HTTPException(403, "You can only view your own statistics.")
+
+    logger.info(f"Fetching stats for user: {user_id}")
 
     try:
-        # --- Get current issue details FIRST (for status and reporter) ---
-        get_resp = await es_client.get(index="issues", id=issue_id)
-        source_doc = get_resp["_source"]
-        current_status = source_doc.get("status", "open")
-        reporter_uid = source_doc.get("reported_by")  # Get reporter ID for potential karma
+        # --- 1. Get User Data & Karma from Firestore ---
+        user_doc_ref = db.collection("users").document(user_id)
+        user_doc = user_doc_ref.get()  # Synchronous call
 
-        # --- Check if upvote document exists in Firestore ---
-        upvote_ref = db.collection("upvotes").document(upvote_doc_id)
-        upvote_doc = upvote_ref.get()
+        if not user_doc.exists:
+            raise HTTPException(404, f"User {user_id} not found")
 
-        now = datetime.utcnow().isoformat() + "Z"
-        new_active_state = True  # Default for new upvotes
-        is_first_upvote = False  # Track if this is the first time upvoting (for karma)
+        user_data = user_doc.to_dict()
+        karma = user_data.get("karma", 0)
+        user_type = user_data.get("userType", "citizen")
 
-        if upvote_doc.exists:
-            # Toggle existing upvote
-            upvote_data = upvote_doc.to_dict()
-            is_active = upvote_data.get("isActive", False)
-            new_active_state = not is_active
+        # --- 2. Calculate Rank (Simple version) ---
+        # This query can be slow/expensive on large datasets.
+        # For production, this should be a scheduled Cloud Function.
+        current_rank = 0  # Default rank
+        try:
+            users_ref = db.collection("users")
+            # Query for users of the same type with higher karma
+            rank_query = users_ref.where(
+                filter=FieldFilter("userType", "==", user_type)
+            ).where(filter=FieldFilter("karma", ">", karma))
+            # .stream() is slow as it iterates. .count() is better but still a query.
+            # Let's use a simple count. This might require an index.
+            # A more efficient way is to just fetch the IDs
+            higher_karma_docs_stream = rank_query.select(
+                []
+            ).stream()  # Select no fields, just get count
+            higher_karma_count = len(list(higher_karma_docs_stream))
+            current_rank = higher_karma_count + 1
+            logger.info(f"Calculated rank for {user_id}: {current_rank}")
+        except Exception as rank_err:
+            logger.error(f"Failed to calculate rank for {user_id}: {rank_err}")
+            current_rank = 0  # Fallback to 0 or N/A on error
 
-            # Update Firestore with new state
-            upvote_ref.update({
-                "isActive": new_active_state,
-                "lastUpdated": now
-            })
+        # --- 3. Fetch Stats from Elasticsearch ---
+        issues_reported = 0
+        issues_resolved = 0  # Citizen stat: issues they reported that are now closed
+        issues_fixed = 0  # NGO stat: issues they fixed
+        co2_saved = 0  # Sum of co2_kg_saved from issues fixed by user
 
-            logger.info(f"Toggling upvote from {is_active} to {new_active_state}")
-        else:
-            # Create new upvote document with isActive=True
-            upvote_ref.set({
-                "issueId": issue_id,
-                "userId": user_uid,
-                "isActive": True,
-                "upvotedAt": now,
-                "lastUpdated": now
-            })
-            new_active_state = True
-            is_first_upvote = True  # Mark as first upvote for karma award
-            logger.info(f"Creating new upvote for user {user_uid}")
-
-        # --- Update Elasticsearch count based on new state ---
-        if new_active_state:
-            # Activating upvote - increment count
-            script = {
-                "source": """
-                    if (!ctx._source.containsKey('upvotes')) {
-                        ctx._source.upvotes = ['open': 0, 'closed': 0];
+        if user_type == "citizen":
+            # Count issues reported by this user
+            reported_query = {"query": {"term": {"reported_by.keyword": user_id}}}
+            # Count issues reported by this user that are ALSO closed/verified
+            resolved_query = {
+                "query": {
+                    "bool": {
+                        "must": [
+                            {"term": {"reported_by.keyword": user_id}},
+                            {"terms": {"status.keyword": ["closed", "verified"]}},
+                        ]
                     }
-                    if (ctx._source.status == 'closed') {
-                        ctx._source.upvotes.closed += 1;
-                    } else {
-                        ctx._source.upvotes.open += 1;
-                    }
-                """,
-                "lang": "painless"
-            }
-        else:
-            # Deactivating upvote - decrement count (but not below 0)
-            script = {
-                "source": """
-                    if (!ctx._source.containsKey('upvotes')) {
-                        ctx._source.upvotes = ['open': 0, 'closed': 0];
-                    }
-                    if (ctx._source.status == 'closed') {
-                        if (ctx._source.upvotes.closed > 0) {
-                            ctx._source.upvotes.closed -= 1;
-                        }
-                    } else {
-                        if (ctx._source.upvotes.open > 0) {
-                            ctx._source.upvotes.open -= 1;
-                        }
-                    }
-                """,
-                "lang": "painless"
+                }
             }
 
-        # Perform update operation in Elasticsearch
-        await es_client.update(
-            index="issues",
-            id=issue_id,
-            script=script,
-            refresh="wait_for",  # Use wait_for for consistency before awarding karma
-            retry_on_conflict=3,
-        )
+            # Run ES count queries in parallel
+            count_reported_resp, count_resolved_resp = await asyncio.gather(
+                es_client.count(index="issues", body=reported_query, ignore=[404]),
+                es_client.count(index="issues", body=resolved_query, ignore=[404]),
+            )
 
-        # Retrieve updated document from Elasticsearch
-        get_response = await es_client.get(index="issues", id=issue_id)
-        updated_source = get_response['_source']
-        
-        logger.info(
-            f"Upvote toggled for {issue_id}. isActive: {new_active_state}, New counts: {updated_source.get('upvotes')}"
-        )
+            issues_reported = count_reported_resp.body.get("count", 0)
+            issues_resolved = count_resolved_resp.body.get("count", 0)
 
-        # --- AWARD KARMA LOGIC (only on first upvote activation for open issues) ---
-        if is_first_upvote and new_active_state and current_status == "open":
-            if reporter_uid and reporter_uid != "anonymous":
-                current_voter_uid = user.get("uid")
-                # --- Prevent self-vote karma ---
-                if reporter_uid == current_voter_uid:
-                    logger.info(
-                        f"User {current_voter_uid} upvoted their own issue {issue_id}. No karma awarded."
-                    )
-                else:
-                    try:
-                        user_doc_ref = db.collection("users").document(reporter_uid)
-                        # Check if user exists before trying to update
-                        reporter_doc = user_doc_ref.get()  # Synchronous call
-                        if reporter_doc.exists:
-                            user_doc_ref.update({"karma": Increment(5)})
-                            logger.info(
-                                f"Awarded +5 karma to reporter {reporter_uid} for upvote on {issue_id}."
-                            )
-                        else:
-                            logger.warning(
-                                f"Reporter user {reporter_uid} not found in Firestore. Cannot award karma."
-                            )
-                    except Exception as firestore_err:
-                        # Log error but don't fail the whole request
-                        logger.error(
-                            f"Failed to award karma to {reporter_uid} for upvote on {issue_id}: {firestore_err}"
-                        )
-            else:
-                logger.info(
-                    f"Issue {issue_id} reported anonymously or reporter ID missing. No karma awarded."
-                )
-        # --- END AWARD KARMA LOGIC ---
+        elif user_type in ["ngo", "volunteer"]:
+            # Count issues fixed by this user (check 'closed_by' field)
+            fixed_query = {"query": {"term": {"closed_by.keyword": user_id}}}
+            # Calculate total CO2 saved from those fixed issues
+            co2_agg_query = {
+                "query": {"term": {"closed_by.keyword": user_id}},
+                "aggs": {"total_co2_saved": {"sum": {"field": "co2_kg_saved"}}},
+                "size": 0,
+            }
 
-        return {
-            "success": True,
-            "message": "Upvoted" if new_active_state else "Upvote removed",
-            "isActive": new_active_state,
-            "hasUpvoted": new_active_state,  # For frontend compatibility
-            "updated_issue": updated_source,
-            "upvotes": updated_source.get('upvotes', {})
+            count_fixed_resp, agg_co2_resp = await asyncio.gather(
+                es_client.count(index="issues", body=fixed_query, ignore=[404]),
+                es_client.search(index="issues", body=co2_agg_query, ignore=[404]),
+            )
+
+            issues_fixed = count_fixed_resp.body.get("count", 0)
+            co2_saved = (
+                agg_co2_resp.body.get("aggregations", {})
+                .get("total_co2_saved", {})
+                .get("value", 0)
+            )
+
+        # --- 4. Build Response ---
+        response_stats = {
+            "karma": karma,
+            "currentRank": current_rank,
+            "issuesReported": issues_reported,
+            "issuesResolved": issues_resolved,
+            "issuesFixed": issues_fixed,
+            "co2Saved": round(co2_saved, 2),
+            "badges": [],  # Placeholder - badge logic can be complex
         }
-        
-    except NotFoundError:
-        logger.warning(f"Upvote fail: Issue {issue_id} not found in Elasticsearch.")
-        raise HTTPException(404, f"Issue {issue_id} not found")
+
+        logger.info(f"Returning stats for user {user_id}: {response_stats}")
+        return {"stats": response_stats}
+
+    except HTTPException:
+        raise  # Re-raise 404 or 403
     except Exception as e:
-        logger.exception(f"Unexpected error while toggling upvote for {issue_id}")
-        raise HTTPException(500, f"Server error: {e}")
+        logger.exception(f"Error fetching user stats for {user_id}: {e}")
+        raise HTTPException(500, f"Failed to fetch user stats: {str(e)}")
 
 
 # --- Unlike Endpoint (Deprecated - use /upvote to toggle) ---
@@ -1297,15 +1453,15 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
     logger.info(f"User {user.get('uid')} reporting {issue_id}")
     if not es_client or not db:
         raise HTTPException(503, "DB unavailable")
-    
+
     user_uid = user.get("uid")
     report_doc_id = f"{issue_id}__{user_uid}"
-    
+
     try:
         # Check if user already reported this issue
         report_ref = db.collection("reports").document(report_doc_id)
         report_doc = report_ref.get()
-        
+
         if report_doc.exists:
             report_data = report_doc.to_dict()
             if report_data.get("isActive", False):
@@ -1314,22 +1470,24 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
                     "success": True,
                     "message": "Already reported",
                     "hasReported": True,
-                    "isActive": True
+                    "isActive": True,
                 }
-        
+
         now = datetime.utcnow().isoformat() + "Z"
-        
+
         # Create permanent report document in Firestore (NOT toggleable)
-        report_ref.set({
-            "issueId": issue_id,
-            "userId": user_uid,
-            "isActive": True,  # Always true, reports are permanent
-            "reportedAt": now,
-            "lastUpdated": now
-        })
-        
+        report_ref.set(
+            {
+                "issueId": issue_id,
+                "userId": user_uid,
+                "isActive": True,  # Always true, reports are permanent
+                "reportedAt": now,
+                "lastUpdated": now,
+            }
+        )
+
         logger.info(f"Created permanent report for user {user_uid}")
-        
+
         # Get current issue status and reports from Elasticsearch
         get_resp = await es_client.get(index="issues", id=issue_id)
         source = get_resp["_source"]
@@ -1338,7 +1496,7 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
         params = {"now": now}
         script = None
         script_defined = False
-        
+
         # Update Elasticsearch based on current status
         if status == "open":
             count = reports.get("open", 0)
@@ -1346,7 +1504,9 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
                 # Threshold reached - mark as spam/closed
                 script = "ctx._source.reports.open = 0; ctx._source.upvotes.open = 0; ctx._source.status = 'closed'; ctx._source.updated_at = params.now; ctx._source.closed_at = params.now; ctx._source.closed_by = 'community_report';"
                 script_defined = True
-                logger.info(f"Issue {issue_id} closed due to {count + 1} reports (threshold: {SPAM_REPORT_THRESHOLD})")
+                logger.info(
+                    f"Issue {issue_id} closed due to {count + 1} reports (threshold: {SPAM_REPORT_THRESHOLD})"
+                )
             else:
                 # Increment report count
                 script = "ctx._source.reports.open += 1"
@@ -1357,7 +1517,9 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
                 # Threshold reached - reopen issue
                 script = "ctx._source.reports.closed = 0; ctx._source.upvotes.closed = 0; ctx._source.status = 'open'; ctx._source.updated_at = params.now; ctx._source.closed_at = null; ctx._source.closed_by = null;"
                 script_defined = True
-                logger.info(f"Issue {issue_id} reopened due to {count + 1} reports (threshold: {REOPEN_REPORT_THRESHOLD})")
+                logger.info(
+                    f"Issue {issue_id} reopened due to {count + 1} reports (threshold: {REOPEN_REPORT_THRESHOLD})"
+                )
             else:
                 # Increment report count
                 script = "ctx._source.reports.closed += 1"
@@ -1372,7 +1534,7 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
                 "message": "Issue already marked as spam",
                 "updated_issue": source,
                 "hasReported": True,
-                "isActive": True
+                "isActive": True,
             }
         else:
             logger.error(f"Cannot report {issue_id}, unknown status: {status}.")
@@ -1381,9 +1543,9 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
                 "message": f"Unknown status {status}",
                 "updated_issue": source,
                 "hasReported": True,
-                "isActive": True
+                "isActive": True,
             }
-        
+
         # Execute update script in Elasticsearch
         if script_defined:
             await es_client.update(
@@ -1395,25 +1557,25 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
             )
         else:
             logger.info("No update script needed.")
-        
+
         # Get updated document
         updated = await es_client.get(index="issues", id=issue_id)
         new_status = updated["_source"].get("status")
         new_reports = updated["_source"].get("reports")
-        
+
         logger.info(
             f"Report OK for {issue_id}. New counts: {new_reports}, New Status: {new_status}"
         )
-        
+
         return {
             "success": True,
             "message": "Reported successfully",
             "hasReported": True,
             "isActive": True,  # Reports are always active (not toggleable)
             "updated_issue": updated["_source"],
-            "reports": new_reports
+            "reports": new_reports,
         }
-        
+
     except NotFoundError:
         logger.warning(f"Report fail: Issue {issue_id} not found in Elasticsearch.")
         raise HTTPException(404, f"Issue {issue_id} not found")
@@ -1422,19 +1584,18 @@ async def report_issue(issue_id: str, user: dict = Depends(get_current_user)):
         raise HTTPException(500, f"Server error: {e}")
 
 
-# main.py
-
-
 @app.post("/api/issues/{issue_id}/submit-fix")
 async def submit_fix(
     issue_id: str,
     user: dict = Depends(get_current_user),  # Requires auth
-    file: UploadFile = File(...),
+    # --- UPDATED: Accept multiple files ---
+    files: List[UploadFile] = File(...),  # Changed 'file' to 'files' and added List[]
+    # --- END UPDATE ---
     description: str = Form(""),  # Optional description from NGO
 ):
     """
-    Endpoint for NGOs to submit proof of a fix (photo).
-    This claims the issue, uploads proof, and calls the verifier.
+    Endpoint for NGOs/Volunteers to submit proof of a fix (multiple photos).
+    Uploads proofs and calls the verifier.
     """
     if not es_client:
         raise HTTPException(503, "DB unavailable")
@@ -1444,9 +1605,12 @@ async def submit_fix(
         raise HTTPException(503, "Firestore client not available")
 
     user_uid = user.get("uid")
-    logger.info(f"User {user_uid} attempting to submit fix for issue {issue_id}")
+    logger.info(
+        f"User {user_uid} attempting to submit fix for issue {issue_id} with {len(files)} file(s)."
+    )
 
-    # --- 1. Verify user is an NGO ---
+    # --- 1. Verify user is an NGO/Volunteer ---
+    user_doc = None  # Define user_doc here to use later in karma block
     try:
         user_doc_ref = db.collection("users").document(user_uid)
         user_doc = user_doc_ref.get()  # Synchronous call
@@ -1461,9 +1625,7 @@ async def submit_fix(
             logger.warning(
                 f"User {user_uid} is not an NGO (userType: {user_type}). Cannot submit fix."
             )
-            raise HTTPException(
-                status_code=403, detail="Only NGOs can submit fixes."
-            )
+            raise HTTPException(status_code=403, detail="Only NGOs can submit fixes.")
 
         logger.info(f"User {user_uid} verified as {user_type}.")
     except Exception as e:
@@ -1489,48 +1651,76 @@ async def submit_fix(
         logger.exception(f"Error checking issue status: {e}")
         raise HTTPException(status_code=500, detail="Error fetching issue details.")
 
-    # --- 3. Upload fix file to GCS ---
-    fix_public_url = ""  # Initialize variable
-    try:
-        file_uuid = uuid.uuid4()
-        blob_name = f"fix-proof/{issue_id}/{file_uuid}_{file.filename or 'fix'}"
-        data = await file.read()
-        if not data:
-            raise HTTPException(400, "Empty proof file")
+    # --- 3. Upload MULTIPLE fix files to GCS ---
+    fix_public_urls = []  # List to store URLs
+    if not files:
+        raise HTTPException(400, "No proof files provided.")
 
-        bucket = storage_client.bucket(BUCKET_NAME)
-        blob = bucket.blob(blob_name)
-        blob.upload_from_string(data, content_type=file.content_type)
-        fix_public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{blob_name}"
-        logger.info(f"Fix proof uploaded to GCS: {fix_public_url}")
-    except Exception as gcs_error:
-        logger.exception("GCS upload fail for fix proof")
-        raise HTTPException(500, f"GCS fail: {gcs_error}")
+    for file in files:
+        if not (file.content_type and file.content_type.startswith("image/")):
+            logger.warning(f"Skipping non-image file: {file.filename}")
+            continue  # Skip non-image files
+
+        try:
+            file_uuid = uuid.uuid4()
+            # Still use issue_id in path for organization
+            blob_name = (
+                f"fix-proof/{issue_id}/{file_uuid}_{file.filename or 'fix_image'}"
+            )
+            data = await file.read()
+            if not data:
+                logger.warning(f"Skipping empty file: {file.filename}")
+                continue  # Skip empty files
+
+            if not BUCKET_NAME:
+                raise HTTPException(500, "GCS bucket not configured")
+
+            bucket = storage_client.bucket(BUCKET_NAME)
+            blob = bucket.blob(blob_name)
+
+            blob.upload_from_string(data, content_type=file.content_type)
+            public_url = f"https://storage.googleapis.com/{BUCKET_NAME}/{blob_name}"
+            fix_public_urls.append(public_url)
+            logger.info(f"Uploaded fix proof image to GCS: {public_url}")
+
+        except Exception as gcs_error:
+            logger.exception(f"GCS upload failed for file {file.filename}")
+            # Decide if one failure should stop the whole process or just skip the file
+            # For now, we continue and report success if at least one uploads
+            # raise HTTPException(500, f"GCS upload failed for {file.filename}: {gcs_error}")
+
+    if not fix_public_urls:
+        raise HTTPException(400, "No valid proof image files were uploaded.")
+    # --- END MULTIPLE UPLOAD ---
 
     # --- 4. Call Issue_Verifier Service ---
     try:
-        logger.info(f"Calling verifier service: {VERIFIER_URL}")
+        logger.info(
+            f"Calling verifier service: {VERIFIER_URL}/verify_fix/"
+        )  # VERIFIER_URL should include /verify_fix/
         verifier_payload = {
             "issue_id": issue_id,
-            "ngo_id": user_uid,  # Pass the UID of the user submitting the fix
-            "image_urls": [fix_public_url],
+            "ngo_id": user_uid,
+            # --- UPDATED: Send list of URLs ---
+            "image_urls": fix_public_urls,
+            # --- END UPDATE ---
             "fix_description": description,
             "timestamp": datetime.utcnow().isoformat() + "Z",
         }
 
         verifier_response = requests.post(
-            f"{VERIFIER_URL}/verify_fix/",
+            f"{VERIFIER_URL}/verify_fix/",  # Should end with /verify_fix/
             json=verifier_payload,
-            timeout=60,  # Increased timeout just in case
+            timeout=90,  # Slightly increased timeout for potentially more images
         )
-        verifier_response.raise_for_status()  # Raises HTTPError for 4xx/5xx responses
+        verifier_response.raise_for_status()
         verification_result = verifier_response.json()
 
         logger.info(
             f"Fix submission processed by Verifier for issue {issue_id}. Result: {verification_result}"
         )
 
-        # --- NEW: Award Karma and Update Stats based on Verifier's response ---
+        # --- Award Karma (FIXED) ---
         overall_outcome = verification_result.get("overall_outcome")
         karma_points = 0
         if overall_outcome == "closed":
@@ -1540,7 +1730,7 @@ async def submit_fix(
         # Get CO2 saved from the original issue
         co2_saved = original_issue_doc.get("fate_risk_co2", 0.0)
 
-        if karma_points > 0:  # Check if karma should be awarded
+        if karma_points > 0 and db:
             try:
                 ngo_doc_ref = db.collection("users").document(
                     user_uid
@@ -1559,34 +1749,85 @@ async def submit_fix(
                         f"Awarded +{karma_points} karma, +{co2_saved} CO2, and updated stats for NGO {user_uid} for fix outcome '{overall_outcome}' on {issue_id}."
                     )
                 else:
-                    # This case should ideally not happen due to check in step 1, but log just in case
-                    logger.warning(
-                        f"User {user_uid} doc was unexpectedly missing. Cannot award karma."
-                    )
+                    logger.warning(f"User {user_uid} doc missing. Cannot award karma.")
             except Exception as firestore_err:
-                # Log error but don't fail the request
                 logger.error(
-                    f"Failed to update stats for user {user_uid}: {firestore_err}"
+                    f"Failed to award karma/stats to user {user_uid}: {firestore_err}"
                 )
-        # --- END NEW KARMA AND STATS LOGIC ---
+        # --- END KARMA LOGIC ---
+        overall_outcome = verification_result.get("overall_outcome")
+        new_status = None
+
+        if overall_outcome == "closed":
+            new_status = "closed"
+        elif (
+            overall_outcome == "partially_closed"
+        ):  # Or 'verified' depending on your Verifier's output
+            new_status = "verified"
+            # Decide if you want to store fix photos for partially_closed/verified issues too
+            # If not, you might move the ES update inside the "if new_status == 'closed':" block below
+
+        # Only update ES if the status actually changed based on Verifier outcome
+        if new_status and es_client:
+            try:
+                update_body = {
+                    "doc": {
+                        "status": new_status,
+                        "fix_photo_urls": fix_public_urls,  # The list of URLs from GCS upload
+                        "fix_description": description,  # The description submitted with the form
+                        "closed_at": datetime.utcnow(),  # Record when it was closed/verified
+                        "closed_by": user_uid,  # Record who fixed it
+                        # You might add other fields returned by the verifier here if needed
+                    }
+                }
+
+                logger.info(
+                    f"Updating ES document {issue_id} with status '{new_status}' and fix details."
+                )
+
+                await es_client.update(
+                    index="issues",
+                    id=issue_id,
+                    body=update_body,
+                    # Add refresh='wait_for' if you need the change to be immediately searchable,
+                    # but it impacts performance slightly. Usually not needed for this.
+                    # refresh='wait_for'
+                )
+                logger.info(f"Successfully updated ES document {issue_id}.")
+
+            except NotFoundError:
+                logger.error(
+                    f"Issue {issue_id} not found in Elasticsearch during update attempt."
+                )
+                # Don't fail the whole request, but log it
+            except Exception as es_update_err:
+                logger.error(
+                    f"Failed to update Elasticsearch document {issue_id}: {es_update_err}"
+                )
+                # Decide if this should raise an HTTPException or just be logged
+                # raise HTTPException(500, f"Failed to update issue status in database: {es_update_err}")
+
+        # --- *** END NEW ES UPDATE BLOCK *** ---
 
         return {
-            "message": "Fix submitted successfully!",
+            "message": f"Fix submitted successfully with {len(fix_public_urls)} images!",
             "issue_id": issue_id,
-            "verification_result": verification_result,  # Pass Verifier result back to frontend
+            "verification_result": verification_result,
         }
 
+    # --- Error Handling (No major changes needed) ---
     except requests.exceptions.HTTPError as http_err:
+        # ... (keep existing HTTPError handling) ...
         error_detail = f"Verifier service error: {http_err.response.status_code}. {http_err.response.text}"
         logger.error(error_detail)
-        # Try to parse JSON detail from the verifier's error response
         try:
             err_json = http_err.response.json()
             error_detail = err_json.get("detail", error_detail)
         except json.JSONDecodeError:
-            pass  # Keep original text if JSON parsing fails
+            pass
         raise HTTPException(502, f"Error from verifier service: {error_detail}")
     except requests.exceptions.RequestException as e:
+        # ... (keep existing RequestException handling) ...
         logger.exception(
             f"Failed to connect to Issue Verifier service at {VERIFIER_URL}"
         )
@@ -1594,6 +1835,7 @@ async def submit_fix(
             status_code=502, detail=f"Issue Verifier service connection error: {e}"
         )
     except Exception as e:
+        # ... (keep existing general Exception handling) ...
         logger.exception(f"Unexpected error during fix submission for {issue_id}")
         raise HTTPException(status_code=500, detail=f"Internal server error: {e}")
 
@@ -1610,41 +1852,43 @@ async def get_issue_fix_details(issue_id: str):
         raise HTTPException(503, "Elasticsearch unavailable")
     if not db:
         raise HTTPException(503, "Firestore client not available")
-    
+
     try:
         # 1. Fetch the issue from Elasticsearch
         issue_query = {"query": {"term": {"issue_id": {"value": issue_id}}}}
-        issue_response = await es_client.search(index="issues", body=issue_query, size=1)
+        issue_response = await es_client.search(
+            index="issues", body=issue_query, size=1
+        )
         issue_hits = issue_response.get("hits", {}).get("hits", [])
-        
+
         if not issue_hits:
             raise HTTPException(404, f"Issue {issue_id} not found")
-        
+
         issue_data = issue_hits[0]["_source"]
-        
+
         # 2. Check if issue is closed
         if issue_data.get("status") != "closed":
             return {"has_fix": False, "message": "Issue is not closed yet"}
-        
+
         # 3. Get closed_by user ID
         closed_by_uid = issue_data.get("closed_by")
         if not closed_by_uid:
             return {"has_fix": False, "message": "No fix information available"}
-        
+
         # 4. Fetch fix details from fixes index
         fix_query = {"query": {"term": {"issue_id": {"value": issue_id}}}}
         fix_response = await es_client.search(index="fixes", body=fix_query, size=1)
         fix_hits = fix_response.get("hits", {}).get("hits", [])
-        
+
         if not fix_hits:
             return {"has_fix": False, "message": "Fix details not found"}
-        
+
         fix_data = fix_hits[0]["_source"]
-        
+
         # 5. Fetch user information from Firestore
         user_doc = db.collection("users").document(closed_by_uid).get()
         user_info = {}
-        
+
         if user_doc.exists:
             user_data = user_doc.to_dict()
             user_info = {
@@ -1658,7 +1902,7 @@ async def get_issue_fix_details(issue_id: str):
                 "organization": None,
                 "userType": "ngo",
             }
-        
+
         # 6. Return fix details
         return {
             "has_fix": True,
@@ -1670,10 +1914,12 @@ async def get_issue_fix_details(issue_id: str):
             "fixed_by": user_info,
             "co2_saved": fix_data.get("co2_saved", 0),
             "success_rate": fix_data.get("success_rate", 0),
-            "overall_outcome": issue_data.get("overall_outcome", "closed"),  # Get from issue data
+            "overall_outcome": issue_data.get(
+                "overall_outcome", "closed"
+            ),  # Get from issue data
             "fix_outcomes": fix_data.get("fix_outcomes", []),  # Per-issue results
         }
-        
+
     except HTTPException:
         raise
     except Exception as e:
@@ -1728,9 +1974,7 @@ async def get_ngo_leaderboard():
         users_ref = db.collection("users")
         # Query for userType == "ngo", order by karma descending, limit to 10
         query = (
-            users_ref.where(
-                field_path="userType", op_string="==", value="ngo"
-            )
+            users_ref.where(field_path="userType", op_string="==", value="ngo")
             .order_by("karma", direction="DESCENDING")
             .limit(10)
         )
@@ -1758,14 +2002,16 @@ async def get_ngo_leaderboard():
 
 
 @app.get("/api/users/{user_id}/stats")
-async def get_user_stats(user_id: str):
-    """Fetches user statistics from Firestore."""
+def get_user_stats(
+    user_id: str,
+):  # <-- Changed to synchronous 'def' to prevent timeouts
+    """Fetches user statistics and rank from Firestore."""
     if not db:
         raise HTTPException(503, "Firestore client not available")
     try:
         logger.info(f"Fetching stats for user: {user_id}")
 
-        # Get user document from Firestore
+        # Get user document from Firestore (this is a sync call)
         user_ref = db.collection("users").document(user_id)
         user_doc = user_ref.get()
 
@@ -1779,26 +2025,44 @@ async def get_user_stats(user_id: str):
         karma = user_data.get("karma", 0)
         user_type = user_data.get("userType", "citizen")
 
-        # Calculate rank by counting users with higher karma
-        users_ref = db.collection("users")
-        higher_karma_query = users_ref.where(
-            field_path="karma", op_string=">", value=karma
-        )
-        higher_karma_docs = list(higher_karma_query.stream())
-        current_rank = len(higher_karma_docs) + 1
+        # --- RANKING CALCULATION ---
+        # This query WILL FAIL until you create the index in Firebase.
+        # Click the link in your server's error log to create it.
+        #
+        current_rank = 0  # Default to 0 if calculation fails
+        try:
+            users_ref = db.collection("users")
+            # This is the query that requires the composite index
+            higher_karma_query = users_ref.where(
+                field_path="karma", op_string=">", value=karma
+            )
+            # .stream() is a generator, len() will iterate over it
+            higher_karma_docs = list(higher_karma_query.stream())
+            current_rank = len(higher_karma_docs) + 1
+
+        except Exception as e:
+            # This will catch the "400 The query requires an index" error
+            logger.error(f"Failed to calculate rank for {user_id}: {e}")
+            logger.error(
+                "THIS IS EXPECTED if you have not created the Firestore index."
+            )
+            # We don't fail the request, just return rank 0
+            current_rank = 0
+
+        # --- END OF RANKING CALCULATION ---
 
         # Build response based on user type
         response_stats = {
             "karma": karma,
-            "currentRank": current_rank,
+            "currentRank": current_rank,  # <-- Using the calculated rank
             "issuesReported": stats.get("issues_reported", 0),
             "issuesResolved": stats.get("issues_resolved", 0),
             "co2Saved": stats.get("co2_saved", 0),  # Get from Firestore stats
             "badges": [],  # Placeholder for future implementation
         }
 
-        # Add NGO-specific stats
-        if user_type == "ngo":
+        # Add volunteer-specific stats
+        if user_type == "volunteer" or user_type == "ngo":
             response_stats["issuesFixed"] = stats.get("issues_fixed", 0)
 
         logger.info(f"Returning stats for user {user_id}: {response_stats}")
@@ -1844,8 +2108,7 @@ class BatchUpvoteRequest(BaseModel):
 
 @app.post("/api/issues/batch-upvote-status")
 async def get_batch_upvote_status(
-    request: BatchUpvoteRequest,
-    user: dict = Depends(get_current_user)
+    request: BatchUpvoteRequest, user: dict = Depends(get_current_user)
 ):
     """
     Check upvote and report status for multiple issues in one call.
@@ -1853,35 +2116,33 @@ async def get_batch_upvote_status(
     """
     if not db:
         raise HTTPException(503, "Firestore unavailable")
-    
+
     user_uid = user.get("uid")
     issue_ids = request.issue_ids
-    
+
     try:
         # Build document IDs for all issues (both upvotes and reports)
         upvote_doc_ids = [f"{issue_id}__{user_uid}" for issue_id in issue_ids]
         report_doc_ids = [f"{issue_id}__{user_uid}" for issue_id in issue_ids]
-        
+
         # Batch fetch upvotes from Firestore
         upvote_refs = [
-            db.collection("upvotes").document(doc_id) 
-            for doc_id in upvote_doc_ids
+            db.collection("upvotes").document(doc_id) for doc_id in upvote_doc_ids
         ]
-        
+
         # Batch fetch reports from Firestore
         report_refs = [
-            db.collection("reports").document(doc_id) 
-            for doc_id in report_doc_ids
+            db.collection("reports").document(doc_id) for doc_id in report_doc_ids
         ]
-        
+
         # Get all documents in two batch operations (efficient!)
         upvote_docs = db.get_all(upvote_refs)
         report_docs = db.get_all(report_refs)
-        
+
         # Build response maps
         upvote_status = {}
         report_status = {}
-        
+
         for i, doc in enumerate(upvote_docs):
             issue_id = issue_ids[i]
             if doc.exists:
@@ -1889,7 +2150,7 @@ async def get_batch_upvote_status(
                 upvote_status[issue_id] = upvote_data.get("isActive", False)
             else:
                 upvote_status[issue_id] = False
-        
+
         for i, doc in enumerate(report_docs):
             issue_id = issue_ids[i]
             if doc.exists:
@@ -1897,15 +2158,145 @@ async def get_batch_upvote_status(
                 report_status[issue_id] = report_data.get("isActive", False)
             else:
                 report_status[issue_id] = False
-        
-        logger.info(f"Batch checked {len(issue_ids)} issues (upvotes + reports) for user {user_uid}")
-        return {
-            "upvoteStatus": upvote_status,
-            "reportStatus": report_status
-        }
-        
+
+        logger.info(
+            f"Batch checked {len(issue_ids)} issues (upvotes + reports) for user {user_uid}"
+        )
+        return {"upvoteStatus": upvote_status, "reportStatus": report_status}
+
     except Exception as e:
         logger.exception(f"Error checking batch upvote/report status")
         raise HTTPException(500, f"Server error: {e}")
 
 
+# --- *** UPDATED MAP ROUTE WITH CLUSTERING *** ---
+def get_geohash_precision(zoom: float) -> int:
+    """Determine geohash precision based on map zoom level."""
+    if zoom < 3:
+        return 1
+    elif zoom < 5:
+        return 2
+    elif zoom < 7:
+        return 3
+    elif zoom < 10:
+        return 4
+    elif zoom < 12:
+        return 5  # Switch to points at zoom 12+
+    else:
+        return 6  # Higher precision for filtering if needed, though points are shown
+
+
+# --- *** SIMPLIFIED MAP ROUTE (Always returns points) *** ---
+@app.get("/api/map-data")
+async def get_map_data(
+    zoom: float = Query(...),
+    bounds: str = Query(...),
+    filters: str = Query(...),
+    user: dict = Depends(get_current_user),
+):
+    """
+    Fetches issues for map view based on geographic bounds and filters.
+    ALWAYS returns individual points. The frontend decides how to display them.
+    """
+    if not es_client:
+        raise HTTPException(503, "Database unavailable")
+
+    try:
+        bounds_obj = json.loads(bounds)
+        filters_obj = json.loads(filters)
+        logger.info(
+            f"Fetching map points - Zoom: {zoom:.2f}, Bounds: {bounds_obj}, Filters: {filters_obj}"
+        )
+    except json.JSONDecodeError:
+        raise HTTPException(400, "Invalid bounds or filters JSON")
+
+    # --- Build Base Query Filters ---
+    geo_filter = {
+        "geo_bounding_box": {
+            "location": {  # Assumes your geo field is named 'location'
+                "top_left": {"lat": bounds_obj["north"], "lon": bounds_obj["west"]},
+                "bottom_right": {"lat": bounds_obj["south"], "lon": bounds_obj["east"]},
+            }
+        }
+    }
+
+    active_filters = [geo_filter]  # Start with geo filter
+
+    # --- Apply Optional Filters ---
+    # !! IMPORTANT: Assumes 'status', 'issue_types', 'source' are mapped as 'keyword' in ES !!
+    if filters_obj.get("status"):
+        active_filters.append({"terms": {"status.keyword": filters_obj["status"]}})
+    if filters_obj.get("issue_type"):
+        # Assuming 'issue_types' is an array of keywords or single keyword
+        active_filters.append(
+            {"terms": {"issue_types.keyword": filters_obj["issue_type"]}}
+        )
+    if filters_obj.get("source"):
+        active_filters.append({"terms": {"source.keyword": filters_obj["source"]}})
+
+    # Example Date Filter
+    date_filter = {}
+    if filters_obj.get("date_from"):
+        date_filter["gte"] = filters_obj["date_from"]
+    if filters_obj.get("date_to"):
+        date_filter["lte"] = filters_obj["date_to"]
+    if date_filter:
+        # Assumes 'reported_at' is your date field, mapped correctly in ES
+        active_filters.append({"range": {"reported_at": date_filter}})
+
+    # --- Combine filters ---
+    base_query = {"bool": {"filter": active_filters}}
+
+    try:
+        # --- Always Fetch Points ---
+        points_query = {
+            "query": base_query,  # Apply filters
+            "size": 1000,  # Limit number of points returned for performance
+            # Increase if needed, but consider impact
+            "_source": True,  # Fetch all fields needed for popup/heatmap weight
+        }
+
+        logger.debug(f"Executing ES Points query: {json.dumps(points_query, indent=2)}")
+        search_resp = await es_client.search(index="issues", body=points_query)
+
+        hits = search_resp["hits"]["hits"]
+        points = []
+        for hit in hits:
+            source = hit.get("_source", {})
+            location = source.get("location")
+            # Basic check for valid location data
+            if location and "lon" in location and "lat" in location:
+                points.append(
+                    {
+                        "type": "Feature",
+                        "geometry": {
+                            "type": "Point",
+                            "coordinates": [
+                                location["lon"],
+                                location["lat"],
+                            ],  # Lon, Lat standard for GeoJSON
+                        },
+                        "properties": {
+                            **source,
+                            "id": hit["_id"],
+                        },  # Include document ID
+                    }
+                )
+            else:
+                logger.warning(
+                    f"Skipping hit {hit.get('_id', 'N/A')} due to missing/invalid location."
+                )
+
+        logger.info(f"Returning {len(points)} points for map.")
+        # ALWAYS return type "points". JS will handle rendering.
+        return {"type": "points", "features": points}
+
+    except NotFoundError:
+        logger.warning("Issues index not found in Elasticsearch.")
+        raise HTTPException(404, "Issues index not found")
+    except Exception as e:
+        logger.exception(f"Error querying ES for map data: {e}")
+        raise HTTPException(500, "Failed to fetch map data")
+
+
+# --- *** END OF SIMPLIFIED MAP ROUTE *** ---
