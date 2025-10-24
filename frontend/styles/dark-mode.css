@@ -1,0 +1,975 @@
+/* ===== DARK MODE CSS - UNIVERSAL FOR ALL PAGES ===== */
+
+/* Dark Mode Variables */
+body.dark-mode {
+  /* Background Gradients */
+  --primary-gradient: linear-gradient(135deg, #4c51bf 0%, #553c9a 100%);
+  --mint-gradient: linear-gradient(135deg, #34d399 0%, #059669 100%);
+  --hero-gradient: linear-gradient(135deg, #1e293b 0%, #0f172a 100%);
+  
+  /* Backgrounds */
+  --body-bg: #0f172a;
+  --card-bg: rgba(30, 41, 59, 0.95);
+  --card-border: rgba(148, 163, 184, 0.1);
+  --nav-bg: rgba(15, 23, 42, 0.95);
+  
+  /* Text Colors */
+  --text-primary: #f1f5f9;
+  --text-secondary: #cbd5e1;
+  --text-muted: #94a3b8;
+  
+  /* Neutral Colors */
+  --neutral-50: #0f172a;
+  --neutral-100: #1e293b;
+  --neutral-200: #334155;
+  --neutral-300: #475569;
+  --neutral-400: #64748b;
+  --neutral-500: #94a3b8;
+  --neutral-600: #cbd5e1;
+  --neutral-700: #e2e8f0;
+  --neutral-800: #f1f5f9;
+  --neutral-900: #f8fafc;
+  
+  /* Shadows */
+  --shadow-light: 0 4px 6px -1px rgba(0, 0, 0, 0.3);
+  --shadow-medium: 0 10px 15px -3px rgba(0, 0, 0, 0.4);
+  --shadow-large: 0 25px 50px -12px rgba(0, 0, 0, 0.6);
+  
+  /* Status Colors */
+  --success-green: #10b981;
+  --warning-orange: #f59e0b;
+  --error-red: #ef4444;
+  
+  /* Special Elements */
+  --white: #1e293b;
+  --shadow: rgba(0, 0, 0, 0.4);
+}
+
+/* ===== BODY & MAIN ELEMENTS ===== */
+body.dark-mode {
+  background: var(--body-bg);
+  color: var(--text-primary);
+}
+
+body.dark-mode.landing-page {
+  background: var(--hero-gradient);
+}
+
+/* ===== NAVIGATION ===== */
+body.dark-mode .navbar {
+  background: var(--nav-bg);
+  backdrop-filter: blur(20px);
+  border-bottom: 1px solid var(--card-border);
+}
+
+body.dark-mode .nav-logo {
+  color: var(--text-primary);
+}
+
+body.dark-mode .nav-link {
+  color: var(--text-muted);
+}
+
+body.dark-mode .nav-link:hover {
+  color: var(--text-primary);
+  background: var(--neutral-200);
+}
+
+body.dark-mode .nav-link.active {
+  background: var(--mint-gradient);
+  color: white;
+}
+
+body.dark-mode .mobile-menu-toggle span {
+  background: var(--text-primary);
+}
+
+body.dark-mode .theme-toggle {
+  background: var(--neutral-200);
+}
+
+body.dark-mode .theme-toggle:hover {
+  background: var(--neutral-300);
+}
+
+body.dark-mode .theme-icon::before {
+  content: '☀️';
+}
+
+/* ===== LANDING PAGE ===== */
+body.dark-mode .hero {
+  background: var(--hero-gradient);
+}
+
+body.dark-mode .hero-title {
+  background: linear-gradient(135deg, #f1f5f9 0%, rgba(241, 245, 249, 0.8) 100%);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+body.dark-mode .hero-tagline {
+  color: rgba(241, 245, 249, 0.95);
+}
+
+body.dark-mode .hero-subtitle {
+  color: rgba(241, 245, 249, 0.7);
+}
+
+body.dark-mode .stat-card {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+body.dark-mode .stat-card:hover {
+  background: rgba(30, 41, 59, 0.8);
+}
+
+body.dark-mode .stat-number {
+  color: var(--text-primary);
+}
+
+body.dark-mode .stat-label {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .cta-button.primary {
+  background: rgba(30, 41, 59, 0.6);
+  border: 2px solid rgba(148, 163, 184, 0.3);
+}
+
+body.dark-mode .cta-button.secondary {
+  background: var(--mint-gradient);
+  color: white;
+}
+
+/* ===== FEATURES SECTION ===== */
+body.dark-mode .features-section {
+  background: var(--neutral-100);
+}
+
+body.dark-mode .section-title {
+  background: var(--mint-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+body.dark-mode .section-subtitle {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .feature-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .feature-card:hover {
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.5);
+}
+
+body.dark-mode .feature-title {
+  color: var(--text-primary);
+}
+
+body.dark-mode .feature-description {
+  color: var(--text-secondary);
+}
+
+/* ===== IMPACT SECTION ===== */
+body.dark-mode .impact-section {
+  background: var(--primary-gradient);
+}
+
+body.dark-mode .impact-stat {
+  background: rgba(30, 41, 59, 0.6);
+  border: 1px solid rgba(148, 163, 184, 0.2);
+}
+
+body.dark-mode .impact-stat:hover {
+  background: rgba(30, 41, 59, 0.8);
+}
+
+/* ===== FEED PAGE ===== */
+body.dark-mode .page-header {
+  background: var(--hero-gradient);
+}
+
+body.dark-mode .page-title {
+  background: var(--mint-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+body.dark-mode .page-subtitle {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .filter-tabs {
+  background: var(--neutral-200);
+}
+
+body.dark-mode .filter-tab {
+  color: var(--text-muted);
+}
+
+body.dark-mode .filter-tab:hover {
+  background: var(--neutral-300);
+  color: var(--text-primary);
+}
+
+body.dark-mode .filter-tab.active {
+  background: var(--mint-gradient);
+  color: white;
+}
+
+body.dark-mode .issue-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .issue-card:hover {
+  box-shadow: var(--shadow-large);
+  border-color: rgba(52, 211, 153, 0.3);
+}
+
+body.dark-mode .issue-title {
+  color: var(--text-primary);
+}
+
+body.dark-mode .issue-description {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .issue-location {
+  color: var(--text-muted);
+}
+
+body.dark-mode .issue-meta {
+  color: var(--text-muted);
+}
+
+body.dark-mode .severity-badge.low {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+body.dark-mode .severity-badge.medium {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+body.dark-mode .severity-badge.high {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+body.dark-mode .action-buttons button {
+  background: var(--neutral-200);
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .action-buttons button:hover {
+  background: var(--neutral-300);
+}
+
+body.dark-mode .user-badge {
+  background: var(--neutral-200);
+  color: var(--text-primary);
+}
+
+/* ===== LEADERBOARD PAGE ===== */
+body.dark-mode .leaderboard-header {
+  background: var(--hero-gradient);
+}
+
+body.dark-mode .podium-container {
+  background: var(--neutral-100);
+}
+
+body.dark-mode .podium-user {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .podium-user:hover {
+  transform: translateY(-5px);
+}
+
+body.dark-mode .podium-avatar {
+  border: 3px solid var(--card-border);
+}
+
+body.dark-mode .podium-name {
+  color: var(--text-primary);
+}
+
+body.dark-mode .podium-karma {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .leaderboard-list {
+  background: var(--neutral-100);
+}
+
+body.dark-mode .leaderboard-item {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .leaderboard-item:hover {
+  background: var(--neutral-200);
+}
+
+body.dark-mode .leaderboard-rank {
+  background: var(--mint-gradient);
+}
+
+body.dark-mode .leaderboard-name {
+  color: var(--text-primary);
+}
+
+body.dark-mode .leaderboard-karma {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .download-banner {
+  background: var(--primary-gradient);
+}
+
+/* ===== PROFILE PAGE ===== */
+body.dark-mode .profile-page {
+  background: var(--neutral-100);
+}
+
+body.dark-mode .profile-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .profile-avatar {
+  background: var(--mint-gradient);
+  border: 4px solid var(--card-border);
+}
+
+body.dark-mode .profile-name {
+  color: var(--text-primary);
+}
+
+body.dark-mode .profile-email {
+  color: var(--text-muted);
+}
+
+body.dark-mode .profile-role {
+  background: rgba(52, 211, 153, 0.2);
+  color: #34d399;
+}
+
+body.dark-mode .stat-value {
+  background: var(--primary-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+body.dark-mode .stat-label-profile {
+  color: var(--text-muted);
+}
+
+body.dark-mode .badge-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .badge-item {
+  background: var(--neutral-200);
+}
+
+body.dark-mode .badge-item:hover {
+  background: var(--neutral-300);
+}
+
+body.dark-mode .badge-locked {
+  opacity: 0.3;
+  filter: grayscale(100%);
+}
+
+body.dark-mode .chart-container {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .activity-feed {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .activity-item {
+  border-bottom: 1px solid var(--card-border);
+}
+
+body.dark-mode .activity-title {
+  color: var(--text-primary);
+}
+
+body.dark-mode .activity-time {
+  color: var(--text-muted);
+}
+
+body.dark-mode .activity-karma {
+  color: var(--success-green);
+}
+
+body.dark-mode .anonymous-toggle {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .toggle-switch {
+  background: var(--neutral-300);
+}
+
+body.dark-mode .toggle-switch input:checked + .toggle-slider {
+  background: var(--mint-gradient);
+}
+
+body.dark-mode .logout-button {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+body.dark-mode .logout-button:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+/* ===== UPLOAD PAGE ===== */
+body.dark-mode .upload-container {
+  background: var(--card-bg);
+  border: 2px dashed var(--card-border);
+}
+
+body.dark-mode .upload-container:hover {
+  border-color: rgba(52, 211, 153, 0.5);
+  background: var(--neutral-200);
+}
+
+body.dark-mode .upload-icon {
+  color: var(--text-muted);
+}
+
+body.dark-mode .upload-text {
+  color: var(--text-primary);
+}
+
+body.dark-mode .upload-hint {
+  color: var(--text-muted);
+}
+
+body.dark-mode .form-group label {
+  color: var(--text-primary);
+}
+
+body.dark-mode .form-input,
+body.dark-mode .form-textarea,
+body.dark-mode .form-select {
+  background: var(--neutral-200);
+  border: 1px solid var(--card-border);
+  color: var(--text-primary);
+}
+
+body.dark-mode .form-input:focus,
+body.dark-mode .form-textarea:focus,
+body.dark-mode .form-select:focus {
+  background: var(--card-bg);
+  border-color: #34d399;
+}
+
+body.dark-mode .form-input::placeholder,
+body.dark-mode .form-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+/* ===== MAP PAGE (continued) ===== */
+body.dark-mode .map-container {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .map-controls {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .map-button {
+  background: var(--neutral-200);
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .map-button:hover {
+  background: var(--neutral-300);
+}
+
+body.dark-mode .map-button.active {
+  background: var(--mint-gradient);
+  color: white;
+}
+
+body.dark-mode .marker-popup {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-primary);
+}
+
+body.dark-mode .marker-popup h3 {
+  color: var(--text-primary);
+}
+
+body.dark-mode .marker-popup p {
+  color: var(--text-secondary);
+}
+
+/* ===== LOGIN/SIGNUP PAGES ===== */
+body.dark-mode .auth-page {
+  background: var(--hero-gradient);
+}
+
+body.dark-mode .auth-card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+}
+
+body.dark-mode .auth-card h1 {
+  background: var(--mint-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+body.dark-mode .form-label {
+  color: var(--text-primary);
+}
+
+body.dark-mode .form-input {
+  background: var(--neutral-200);
+  border: 2px solid var(--card-border);
+  color: var(--text-primary);
+}
+
+body.dark-mode .form-input:hover {
+  border-color: var(--neutral-400);
+  background: var(--neutral-300);
+}
+
+body.dark-mode .form-input:focus {
+  background: var(--card-bg);
+  border-color: #34d399;
+  box-shadow: 0 0 0 4px rgba(52, 211, 153, 0.1);
+}
+
+body.dark-mode .auth-card p {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .auth-card a {
+  color: #34d399;
+}
+
+body.dark-mode .auth-card a:hover {
+  color: #10b981;
+}
+
+/* ===== FOOTER ===== */
+body.dark-mode .footer {
+  background: linear-gradient(180deg, #0f172a 0%, #020617 100%);
+  border-top: 1px solid var(--card-border);
+}
+
+body.dark-mode .footer h3 {
+  color: var(--text-primary);
+}
+
+body.dark-mode .footer-text {
+  color: var(--text-muted);
+}
+
+body.dark-mode .footer-link {
+  background: var(--mint-gradient);
+  -webkit-background-clip: text;
+  -webkit-text-fill-color: transparent;
+  background-clip: text;
+}
+
+body.dark-mode .footer-bottom {
+  color: var(--text-muted);
+  border-top: 1px solid var(--card-border);
+}
+
+body.dark-mode .app-badge {
+  background: var(--neutral-200);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .app-badge:hover {
+  background: var(--neutral-300);
+}
+
+body.dark-mode .badge-small {
+  color: var(--text-muted);
+}
+
+body.dark-mode .badge-large {
+  color: var(--text-primary);
+}
+
+/* ===== TOAST NOTIFICATIONS ===== */
+body.dark-mode .toast {
+  background: var(--card-bg);
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .toast.success {
+  background: linear-gradient(135deg, #059669 0%, #047857 100%);
+  color: white;
+  border: none;
+}
+
+body.dark-mode .toast.error {
+  background: linear-gradient(135deg, #dc2626 0%, #b91c1c 100%);
+  color: white;
+  border: none;
+}
+
+/* ===== BUTTONS ===== */
+body.dark-mode .btn-primary {
+  background: var(--mint-gradient);
+  color: white;
+}
+
+body.dark-mode .btn-primary:hover {
+  box-shadow: 0 8px 30px rgba(52, 211, 153, 0.4);
+}
+
+body.dark-mode .btn-secondary {
+  background: var(--neutral-200);
+  color: var(--text-primary);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .btn-secondary:hover {
+  background: var(--neutral-300);
+}
+
+body.dark-mode .btn-danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+  border: 1px solid rgba(239, 68, 68, 0.3);
+}
+
+body.dark-mode .btn-danger:hover {
+  background: rgba(239, 68, 68, 0.3);
+}
+
+/* ===== MODALS ===== */
+body.dark-mode .modal {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: 0 25px 80px rgba(0, 0, 0, 0.6);
+}
+
+body.dark-mode .modal-header {
+  border-bottom: 1px solid var(--card-border);
+  color: var(--text-primary);
+}
+
+body.dark-mode .modal-body {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .modal-footer {
+  border-top: 1px solid var(--card-border);
+}
+
+body.dark-mode .modal-backdrop {
+  background: rgba(0, 0, 0, 0.8);
+}
+
+/* ===== DROPDOWNS ===== */
+body.dark-mode .dropdown {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  box-shadow: var(--shadow-large);
+}
+
+body.dark-mode .dropdown-item {
+  color: var(--text-primary);
+}
+
+body.dark-mode .dropdown-item:hover {
+  background: var(--neutral-200);
+}
+
+body.dark-mode .dropdown-divider {
+  border-color: var(--card-border);
+}
+
+/* ===== TABS ===== */
+body.dark-mode .tab-list {
+  background: var(--neutral-200);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .tab-button {
+  color: var(--text-muted);
+}
+
+body.dark-mode .tab-button:hover {
+  color: var(--text-primary);
+  background: var(--neutral-300);
+}
+
+body.dark-mode .tab-button.active {
+  background: var(--mint-gradient);
+  color: white;
+}
+
+body.dark-mode .tab-content {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+/* ===== BADGES ===== */
+body.dark-mode .badge {
+  background: var(--neutral-200);
+  color: var(--text-primary);
+}
+
+body.dark-mode .badge.badge-success {
+  background: rgba(16, 185, 129, 0.2);
+  color: #34d399;
+}
+
+body.dark-mode .badge.badge-warning {
+  background: rgba(245, 158, 11, 0.2);
+  color: #fbbf24;
+}
+
+body.dark-mode .badge.badge-danger {
+  background: rgba(239, 68, 68, 0.2);
+  color: #f87171;
+}
+
+body.dark-mode .badge.badge-info {
+  background: rgba(59, 130, 246, 0.2);
+  color: #60a5fa;
+}
+
+/* ===== CARDS ===== */
+body.dark-mode .card {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode .card-header {
+  border-bottom: 1px solid var(--card-border);
+  color: var(--text-primary);
+}
+
+body.dark-mode .card-body {
+  color: var(--text-secondary);
+}
+
+body.dark-mode .card-footer {
+  border-top: 1px solid var(--card-border);
+}
+
+/* ===== ALERTS ===== */
+body.dark-mode .alert {
+  background: var(--card-bg);
+  border: 1px solid var(--card-border);
+  color: var(--text-primary);
+}
+
+body.dark-mode .alert-success {
+  background: rgba(16, 185, 129, 0.2);
+  border-color: rgba(16, 185, 129, 0.3);
+  color: #34d399;
+}
+
+body.dark-mode .alert-warning {
+  background: rgba(245, 158, 11, 0.2);
+  border-color: rgba(245, 158, 11, 0.3);
+  color: #fbbf24;
+}
+
+body.dark-mode .alert-error {
+  background: rgba(239, 68, 68, 0.2);
+  border-color: rgba(239, 68, 68, 0.3);
+  color: #f87171;
+}
+
+body.dark-mode .alert-info {
+  background: rgba(59, 130, 246, 0.2);
+  border-color: rgba(59, 130, 246, 0.3);
+  color: #60a5fa;
+}
+
+/* ===== LOADING STATES ===== */
+body.dark-mode .skeleton {
+  background: linear-gradient(
+    90deg,
+    var(--neutral-200) 25%,
+    var(--neutral-300) 50%,
+    var(--neutral-200) 75%
+  );
+}
+
+body.dark-mode .spinner {
+  border-color: var(--neutral-300);
+  border-top-color: #34d399;
+}
+
+/* ===== SCROLLBAR ===== */
+body.dark-mode::-webkit-scrollbar {
+  width: 12px;
+  background: var(--neutral-100);
+}
+
+body.dark-mode::-webkit-scrollbar-thumb {
+  background: var(--neutral-300);
+  border-radius: 6px;
+}
+
+body.dark-mode::-webkit-scrollbar-thumb:hover {
+  background: var(--neutral-400);
+}
+
+body.dark-mode::-webkit-scrollbar-track {
+  background: var(--neutral-100);
+}
+
+/* ===== SELECTION ===== */
+body.dark-mode ::selection {
+  background: rgba(52, 211, 153, 0.3);
+  color: var(--text-primary);
+}
+
+body.dark-mode ::-moz-selection {
+  background: rgba(52, 211, 153, 0.3);
+  color: var(--text-primary);
+}
+
+/* ===== CHARTS & SVG ===== */
+body.dark-mode svg text {
+  fill: var(--text-secondary);
+}
+
+body.dark-mode svg line,
+body.dark-mode svg path.grid-line {
+  stroke: var(--card-border);
+}
+
+body.dark-mode .chart-line {
+  stroke: #34d399;
+}
+
+body.dark-mode .chart-area {
+  fill: rgba(52, 211, 153, 0.1);
+}
+
+/* ===== IMAGES ===== */
+body.dark-mode img {
+  opacity: 0.9;
+}
+
+body.dark-mode img:hover {
+  opacity: 1;
+}
+
+/* ===== HR DIVIDER ===== */
+body.dark-mode hr {
+  border-color: var(--card-border);
+  opacity: 1;
+}
+
+/* ===== CODE BLOCKS ===== */
+body.dark-mode code {
+  background: var(--neutral-200);
+  color: #34d399;
+  border: 1px solid var(--card-border);
+}
+
+body.dark-mode pre {
+  background: var(--neutral-200);
+  border: 1px solid var(--card-border);
+  color: var(--text-primary);
+}
+
+/* ===== LINKS ===== */
+body.dark-mode a:not(.nav-link):not(.cta-button):not(.app-badge) {
+  color: #34d399;
+}
+
+body.dark-mode a:not(.nav-link):not(.cta-button):not(.app-badge):hover {
+  color: #10b981;
+}
+
+/* ===== SMOOTH TRANSITIONS ===== */
+body.dark-mode * {
+  transition: background-color 0.3s ease, border-color 0.3s ease, color 0.3s ease;
+}
+
+/* ===== ACCESSIBILITY - HIGH CONTRAST ===== */
+@media (prefers-contrast: high) {
+  body.dark-mode {
+    --card-border: rgba(148, 163, 184, 0.3);
+  }
+  
+  body.dark-mode .card,
+  body.dark-mode .issue-card,
+  body.dark-mode .feature-card {
+    border: 2px solid var(--card-border);
+  }
+}
+
+/* ===== PRINT MODE ===== */
+@media print {
+  body.dark-mode {
+    background: white;
+    color: black;
+  }
+  
+  body.dark-mode .navbar,
+  body.dark-mode .theme-toggle,
+  body.dark-mode .mobile-menu-toggle {
+    display: none;
+  }
+}
+
+/* ===== RESPONSIVE DARK MODE ADJUSTMENTS ===== */
+@media (max-width: 768px) {
+  body.dark-mode .card,
+  body.dark-mode .issue-card,
+  body.dark-mode .feature-card {
+    box-shadow: var(--shadow-medium);
+  }
+}
+
+/* ===== DARK MODE TOGGLE ANIMATION ===== */
+@keyframes darkModeToggle {
+  0% {
+    opacity: 0;
+  }
+  100% {
+    opacity: 1;
+  }
+}
+
+body.dark-mode {
+  animation: darkModeToggle 0.3s ease;
+}

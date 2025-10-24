@@ -1,5 +1,6 @@
 import './style.css'
 
+// ===== COUNTER ANIMATION =====
 function animateCounter(element, target) {
   const duration = 2000;
   const startTime = Date.now();
@@ -26,24 +27,59 @@ function initHeroCounters() {
   });
 }
 
+// ===== THEME TOGGLE =====
 function initThemeToggle() {
-  const toggle = document.getElementById('theme-toggle');
-  const themeIcon = toggle.querySelector('.theme-icon');
+  const themeToggle = document.getElementById('theme-toggle');
+  const body = document.body;
 
-  const savedTheme = localStorage.getItem('theme');
-  if (savedTheme === 'dark') {
-    document.body.classList.add('dark-mode');
-    themeIcon.textContent = '🌙';
+  if (!themeToggle) return;
+
+  const themeIcon = themeToggle.querySelector('.theme-icon');
+
+  // Check for saved theme preference or default to light mode
+  const currentTheme = localStorage.getItem('theme') || 'light';
+  if (currentTheme === 'dark') {
+    body.classList.add('dark-mode');
+    if (themeIcon) themeIcon.textContent = '☀️';
+  } else {
+    if (themeIcon) themeIcon.textContent = '🌙';
   }
 
-  toggle.addEventListener('click', () => {
-    document.body.classList.toggle('dark-mode');
-    const isDark = document.body.classList.contains('dark-mode');
-    themeIcon.textContent = isDark ? '🌙' : '☀️';
+  // Toggle dark mode on click
+  themeToggle.addEventListener('click', () => {
+    body.classList.toggle('dark-mode');
+    
+    const isDark = body.classList.contains('dark-mode');
+    if (themeIcon) {
+      themeIcon.textContent = isDark ? '☀️' : '🌙';
+    }
+    
+    // Save preference
     localStorage.setItem('theme', isDark ? 'dark' : 'light');
+  });
+
+  // Auto-detect system preference (only if no saved preference)
+  if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches && !localStorage.getItem('theme')) {
+    body.classList.add('dark-mode');
+    if (themeIcon) themeIcon.textContent = '☀️';
+    localStorage.setItem('theme', 'dark');
+  }
+
+  // Listen for system theme changes
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', e => {
+    if (!localStorage.getItem('theme')) {
+      if (e.matches) {
+        body.classList.add('dark-mode');
+        if (themeIcon) themeIcon.textContent = '☀️';
+      } else {
+        body.classList.remove('dark-mode');
+        if (themeIcon) themeIcon.textContent = '🌙';
+      }
+    }
   });
 }
 
+// ===== MOBILE MENU =====
 function initMobileMenu() {
   const menuToggle = document.getElementById('mobile-menu-toggle');
   const navMenu = document.getElementById('nav-menu');
@@ -53,11 +89,49 @@ function initMobileMenu() {
       navMenu.classList.toggle('active');
       menuToggle.classList.toggle('active');
     });
+
+    // Close menu when clicking outside
+    document.addEventListener('click', (e) => {
+      if (!menuToggle.contains(e.target) && !navMenu.contains(e.target)) {
+        navMenu.classList.remove('active');
+        menuToggle.classList.remove('active');
+      }
+    });
+
+    // Close menu when clicking a link
+    navMenu.querySelectorAll('.nav-link').forEach(link => {
+      link.addEventListener('click', () => {
+        navMenu.classList.remove('active');
+        menuToggle.classList.remove('active');
+      });
+    });
   }
 }
 
+// ===== SCROLL ANIMATIONS =====
+function initScrollAnimations() {
+  const observerOptions = {
+    threshold: 0.1,
+    rootMargin: '0px 0px -50px 0px'
+  };
+
+  const observer = new IntersectionObserver((entries) => {
+    entries.forEach(entry => {
+      if (entry.isIntersecting) {
+        entry.target.classList.add('visible');
+      }
+    });
+  }, observerOptions);
+
+  document.querySelectorAll('.fade-in').forEach(el => {
+    observer.observe(el);
+  });
+}
+
+// ===== INITIALIZE EVERYTHING =====
 document.addEventListener('DOMContentLoaded', () => {
   initHeroCounters();
   initThemeToggle();
   initMobileMenu();
+  initScrollAnimations();
 });

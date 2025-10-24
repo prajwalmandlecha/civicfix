@@ -360,7 +360,7 @@ function openIssueModal(issue) {
         : '';
     // --- End ---
 
-    const reportedDate = issue.reported_at ? new Date(issue.reported_at).toLocaleDateString() : 'Unknown Date';
+    const reportedDate = issue.created_at ? new Date(issue.created_at).toLocaleDateString() : 'Unknown Date';
     const descriptionText = issue.description || issue.auto_caption || 'No description available';
     const photoUrl = issue.photo_url || 'placeholder.png';
     const issueIdShort = issue.issue_id ? issue.issue_id.substring(0, 8) : 'N/A';
