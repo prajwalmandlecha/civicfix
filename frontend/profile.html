@@ -1,143 +1,145 @@
 <!doctype html>
 <html lang="en">
-  <head>
-    <meta charset="UTF-8" />
-    <link rel="icon" type="image/svg+xml" href="/vite.svg" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>Profile - CivicFix</title>
-    <link rel="preconnect" href="https://fonts.googleapis.com">
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-  </head>
-  <body>
-    <!-- Navigation -->
-    <nav class="navbar">
-      <div class="container">
-        <a href="/" class="nav-logo">
-          <span class="logo-icon">🏙️</span>
-          <span class="logo-text">CivicFix</span>
-        </a>
-        <button class="mobile-menu-toggle" id="mobile-menu-toggle">
-          <span></span>
-          <span></span>
-          <span></span>
-        </button>
-        <ul class="nav-menu" id="nav-menu">
-          <li><a href="/feed.html" class="nav-link">📰 StreetFeed</a></li>
-          <li><a href="/map.html" class="nav-link">🗺️ StreetHeat</a></li>
-          <li><a href="/upload.html" class="nav-link">📸 Upload</a></li>
-          <li><a href="/leaderboard.html" class="nav-link">🏆 Leaderboard</a></li>
-          <li><a href="/profile.html" class="nav-link active">👤 Profile</a></li>
-        </ul>
-        <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
-          <span class="theme-icon">☀️</span>
-        </button>
+
+<head>
+  <meta charset="UTF-8" />
+  <link rel="icon" type="image/svg+xml" href="/vite.svg" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Profile - CivicFix</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <!-- Note: You will need to link your main CSS file here -->
+  <link rel="stylesheet" href="/style.css">
+  
+</head>
+
+<body>
+  <!-- Navigation -->
+  <nav class="navbar">
+    <div class="container">
+      <a href="/" class="nav-logo">
+        <img src="/assets/civicfix_logo.png" alt="CivicFix Logo" style="height: 70px; margin-right: 8px;">
+        <span class="logo-text">CivicFix</span>
+      </a>
+      <button class="mobile-menu-toggle" id="mobile-menu-toggle">
+        <span></span>
+        <span></span>
+        <span></span>
+      </button>
+      <ul class="nav-menu" id="nav-menu">
+        <li><a href="/feed.html" class="nav-link"> StreetFeed</a></li>
+        <li><a href="/map.html" class="nav-link"> StreetHeat</a></li>
+        <li><a href="/upload.html" class="nav-link"> Upload</a></li>
+        <li><a href="/leaderboard.html" class="nav-link"> Leaderboard</a></li>
+        <li><a href="/profile.html" class="nav-link active"> Profile</a></li>
+      </ul>
+      <button id="theme-toggle" class="theme-toggle" aria-label="Toggle theme">
+        <span class="theme-icon">☀️</span>
+      </button>
+    </div>
+  </nav>
+
+  <section class="page-content street-you">
+    <div class="container">
+      <h1 class="page-title">Your Profile</h1>
+      <p class="page-subtitle">Your Impact Dashboard</p>
+
+      <div id="loading-indicator" style="text-align: center; padding: 40px;">
+        <div class="loading-spinner"></div>
+        <p style="margin-top: 10px; color: var(--grey-text);">Loading profile...</p>
       </div>
-    </nav>
 
-    <!-- Profile Section -->
-    <section class="page-content street-you">
-      <div class="container">
-        <h1 class="page-title">👤 Your Profile</h1>
-        <p class="page-subtitle">Your Impact Dashboard</p>
+      <div id="profile-content" style="display: none;">
 
-        <div class="profile-layout">
-          <div class="profile-card">
-            <div class="profile-avatar">
-              <div class="avatar-hash">Loading...</div>
-            </div>
-            <div class="profile-stats">
-              <div class="profile-stat">
-                <span class="stat-value">...</span>
-                <span class="stat-name">Karma (CO₂)</span>
-              </div>
-              <div class="profile-stat">
-                <span class="stat-value">#?</span>
-                <span class="stat-name">Current Rank</span>
-              </div>
-            </div>
+        <div class="profile-header-card">
+          <div class="profile-avatar-large">
+            <span id="avatar-initial">?</span>
           </div>
-          
-          <div class="profile-chart">
-            <h3>Your Activity</h3>
-            <div class="chart-container">
-              <svg viewBox="0 0 400 200" class="activity-chart">
-                <text x="10" y="20" class="chart-label">Issues Uploaded</text>
-                <rect x="50" y="50" width="100" height="80" fill="#6FCF97" rx="4" />
-                <text x="100" y="150" class="chart-value">24</text>
-                <text x="210" y="20" class="chart-label">Issues Resolved</text>
-                <rect x="250" y="80" width="100" height="50" fill="#FFD93D" rx="4" />
-                <text x="300" y="150" class="chart-value">15</text>
-              </svg>
-            </div>
-            <div class="recent-activity">
-              <h3>Recent Activity</h3>
-              <div class="activity-list">
-                <div class="activity-item"> ... </div>
-                <div class="activity-item"> ... </div>
-                <div class="activity-item"> ... </div>
-              </div>
-            </div>
+          <h2 id="profile-username" class="profile-username">Loading...</h2>
+          <p id="profile-email" class="profile-email">Loading...</p>
+          <div class="profile-type-badge">
+            <span id="profile-user-type">User</span>
           </div>
-          </div>
-
-          <!-- <div class="profile-chart">
-            <h3>Your Activity</h3>
-            <div class="chart-container">
-              <svg viewBox="0 0 400 200" class="activity-chart">
-                <text x="10" y="20" class="chart-label">Issues Uploaded</text>
-                <rect x="50" y="50" width="100" height="80" fill="#6FCF97" rx="4"/>
-                <text x="100" y="150" class="chart-value">24</text>
-
-                <text x="210" y="20" class="chart-label">Issues Resolved</text>
-                <rect x="250" y="80" width="100" height="50" fill="#FFD93D" rx="4"/>
-                <text x="300" y="150" class="chart-value">15</text>
-              </svg>
+          <div class="profile-header-stats">
+            <div class="profile-header-stat">
+              <span id="profile-karma-value" class="stat-value">0</span>
+              <span class="stat-name">Total Karma</span>
             </div>
-
-            <div class="recent-activity">
-              <h3>Recent Activity</h3>
-              <div class="activity-list">
-                <div class="activity-item">
-                  <span class="activity-icon">📸</span>
-                  <div class="activity-info">
-                    <div class="activity-title">Reported pothole on Main St</div>
-                    <div class="activity-date">2 days ago</div>
-                  </div>
-                  <span class="activity-karma">+10</span>
-                </div>
-                <div class="activity-item">
-                  <span class="activity-icon">✅</span>
-                  <div class="activity-info">
-                    <div class="activity-title">Issue marked as resolved</div>
-                    <div class="activity-date">3 days ago</div>
-                  </div>
-                  <span class="activity-karma">+15</span>
-                </div>
-                <div class="activity-item">
-                  <span class="activity-icon">❤️</span>
-                  <div class="activity-info">
-                    <div class="activity-title">Upvoted streetlight issue</div>
-                    <div class="activity-date">5 days ago</div>
-                  </div>
-                  <span class="activity-karma">+2</span>
-                </div>
-              </div>
-            </div> -->
+            <div class="profile-header-divider"></div>
+            <div class="profile-header-stat">
+              <span id="profile-rank-value" class="stat-value">...</span>
+              <!-- ***CHANGE***: Updated the label from "Rank" to "Total Users" -->
+              <span class="stat-name">Rank</span>
+            </div>
           </div>
         </div>
-      </div>
-    </section>
 
-    <!-- Footer -->
-    <footer class="footer">
-      <div class="container">
-        <div class="footer-bottom">
-          <p>&copy; 2025 CivicFix. Built with ❤️ for better cities.</p>
+        <div class="profile-card-section">
+          <h3 class="section-heading">Location</h3>
+          <div class="profile-data-card">
+            <p id="profile-location-address" class="card-text">Loading location...</p>
+            <button id="update-location-btn" class="card-button primary">Update Location</button>
+            <span id="location-loading" style="margin-left: 10px; display: none;">Updating...</span>
+          </div>
         </div>
-      </div>
-    </footer>
 
-    <script type="module" src="/pages/profile.js"></script>
-  </body>
+        <div id="organization-section" class="profile-card-section" style="display: none;">
+          <h3 class="section-heading">Organization</h3>
+          <div class="profile-data-card">
+            <p id="organization-text" class="card-text">Loading...</p>
+            <div id="organization-edit-view" style="display: none;">
+              <input type="text" id="organization-input" class="form-input" placeholder="Organization Name">
+              <div class="button-row">
+                <button id="cancel-org-btn" class="card-button secondary">Cancel</button>
+                <button id="save-org-btn" class="card-button primary">Save</button>
+              </div>
+            </div>
+            <button id="edit-org-btn" class="card-button secondary">Update Organization</button>
+          </div>
+        </div>
+
+        <div class="profile-card-section">
+          <h3 class="section-heading">Your Impact</h3>
+          <div class="stats-grid">
+            <div id="stat-issues-reported" class="stat-item" style="display: none;">
+              <span class="stat-value">0</span><span class="stat-name">Issues Reported</span>
+            </div>
+            <div id="stat-issues-resolved" class="stat-item" style="display: none;">
+              <span class="stat-value">0</span><span class="stat-name">Reported Issues Resolved</span>
+            </div>
+            <div id="stat-issues-fixed" class="stat-item" style="display: none;">
+              <span class="stat-value">0</span><span class="stat-name">Issues Fixed</span>
+            </div>
+            <div id="stat-co2-saved" class="stat-item">
+              <span class="stat-value">0 kg</span><span class="stat-name">CO₂ Saved</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="profile-card-section">
+          <h3 class="section-heading">Badges & Achievements</h3>
+          <div class="profile-data-card">
+            <div id="badge-grid" class="badge-grid">
+              <p style="color: var(--grey-text);">No badges earned yet.</p>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </section>
+
+  <!-- Footer -->
+  <footer class="footer">
+    <div class="container">
+      <div class="footer-bottom">
+        <p>&copy; 2025 CivicFix. Built with ❤️ for better cities.</p>
+      </div>
+    </div>
+  </footer>
+
+  <script type="module" src="/pages/profile.js"></script>
+</body>
+
 </html>

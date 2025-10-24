@@ -71,7 +71,7 @@ function renderIssueCard(issue) {
         <div class="issue-description" style="font-size: 0.875rem; color: var(--grey-text); margin: 8px 0; max-height: 4.5em; overflow: hidden;">${descriptionText}</div>
         <div class="issue-stats" style="display: flex; gap: 12px; margin: 8px 0; font-size: 0.8rem;">
           <span>⚠️ ${fateRisk.toFixed(1)} kg CO₂ risk</span>
-          <span class="report-count">📊 ${displayReports} reports</span>
+          <span class="report-count"> ${displayReports} reports</span>
           <span class="status-badge">${statusText}</span>
         </div>
         <div class="issue-footer">
@@ -87,7 +87,7 @@ function renderIssueCard(issue) {
                <div style="font-size: 0.7rem; color: var(--grey-text); margin-top: 2px;">${statusClass === 'closed' ? 'Not Fixed?' : 'Not an Issue?'}</div>
             </div>
           </div>
-          <span class="source-badge" style="font-size: 0.75rem; color: var(--grey-text);">👤 ${issue.source || 'citizen'}</span>
+          <span class="source-badge" style="font-size: 0.75rem; color: var(--grey-text);"> ${issue.source || 'citizen'}</span>
         </div>
       </div>
     `;
@@ -207,7 +207,7 @@ function initVoteButtons() {
             currentUpvoteCount = parseInt(upvoteCountSpan.textContent) || 0;
         }
         if (reportCountSpan) {
-             const match = reportCountSpan.textContent.match(/(\d+)/); // Extract number from "📊 X reports"
+             const match = reportCountSpan.textContent.match(/(\d+)/); // Extract number from " X reports"
              currentReportCount = match ? parseInt(match[1]) : 0;
         }
 
@@ -215,7 +215,7 @@ function initVoteButtons() {
         if (action === 'upvote' && upvoteCountSpan) {
             upvoteCountSpan.textContent = currentUpvoteCount + 1;
         } else if (action === 'report' && reportCountSpan) {
-            reportCountSpan.textContent = `📊 ${currentReportCount + 1} reports`;
+            reportCountSpan.textContent = ` ${currentReportCount + 1} reports`;
         }
         // --- End Optimistic UI ---
 
@@ -287,7 +287,7 @@ function initVoteButtons() {
                  upvoteCountSpan.textContent = currentUpvoteCount;
             }
             if (action === 'report' && reportCountSpan) {
-                 reportCountSpan.textContent = `📊 ${currentReportCount} reports`;
+                 reportCountSpan.textContent = ` ${currentReportCount} reports`;
             }
             // Re-enable button ONLY if we didn't redirect due to auth error
              if (!error.message.includes("Authentication failed")) {
@@ -348,7 +348,7 @@ function openIssueModal(issue) {
 
     const co2Saved = typeof issue.co2_kg_saved === 'number' ? issue.co2_kg_saved : 0;
     const fateRisk = typeof issue.fate_risk_co2 === 'number' ? issue.fate_risk_co2 : 0;
-    const co2Text = co2Saved > 0 ? `🌱 ${co2Saved.toFixed(1)} kg CO₂ saved` : `⚠️ ${fateRisk.toFixed(1)} kg CO₂ risk`;
+    const co2Text = co2Saved > 0 ? ` ${co2Saved.toFixed(1)} kg CO₂ saved` : `⚠️ ${fateRisk.toFixed(1)} kg CO₂ risk`;
 
     const issueTypes = Array.isArray(issue.issue_types) ? issue.issue_types : (issue.issue_types ? [issue.issue_types] : ['unknown']);
     const severityScore = typeof issue.severity_score === 'number' ? issue.severity_score : 5.0;
@@ -402,15 +402,15 @@ function openIssueModal(issue) {
         <h3 class="modal-title">${issueTypes.join(' + ').replace(/_/g, ' ')} Issue</h3>
         <div class="modal-meta">
           <span>${locationText}${distanceText}</span>
-          <span>👤 ${sourceText}</span>
-          <span>📅 ${reportedDate}</span>
+          <span> ${sourceText}</span>
+          <span> ${reportedDate}</span>
           <span class="status-badge">${statusText}</span>
         </div>
       </div>
       <div class="issue-details">
         <p class="modal-description">${descriptionText}</p>
         <div style="background: var(--grey-surface); padding: 16px; border-radius: 12px; margin-top: 16px;">
-          <h4 style="margin-bottom: 8px;">📊 AI Detected Issues</h4>
+          <h4 style="margin-bottom: 8px;"> AI Detected Issues</h4>
           ${detectedIssuesHtml}
         </div>
         <div class="issue-stats-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0;">
@@ -433,7 +433,7 @@ function openIssueModal(issue) {
         </div>
         ${predictedFixText !== 'No fix prediction available' ? `
         <div style="background: var(--grey-surface); padding: 16px; border-radius: 12px; margin-top: 16px;">
-            <h4 style="margin-bottom: 8px;">🔧 Predicted Fix (Confidence: ${(fixConfidence * 100).toFixed(0)}%)</h4>
+            <h4 style="margin-bottom: 8px;"> Predicted Fix (Confidence: ${(fixConfidence * 100).toFixed(0)}%)</h4>
             <p style="font-size: 0.875rem; margin: 4px 0;">${predictedFixText}</p>
         </div>` : ''}
       </div>
