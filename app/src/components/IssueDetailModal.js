@@ -9,6 +9,7 @@ import {
   Image,
   Dimensions,
   ActivityIndicator,
+  Alert,
 } from "react-native";
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
@@ -27,6 +28,13 @@ const IssueDetailModal = ({
   const [fixDetails, setFixDetails] = useState(null);
   const [loadingFix, setLoadingFix] = useState(false);
   const [currentFixImageIndex, setCurrentFixImageIndex] = useState(0);
+
+  // State for upvote/report actions
+  const [isUpvoted, setIsUpvoted] = useState(false);
+  const [isReported, setIsReported] = useState(false);
+  const [isUpvoting, setIsUpvoting] = useState(false);
+  const [isReporting, setIsReporting] = useState(false);
+  const [upvoteCount, setUpvoteCount] = useState(0);
 
   // Fetch fix details when modal opens for closed issues
   useEffect(() => {
@@ -62,6 +70,120 @@ const IssueDetailModal = ({
       setCurrentFixImageIndex(0);
     }
   }, [visible]);
+
+  // Initialize upvote/report state from issueData
+  useEffect(() => {
+    if (visible && issueData) {
+      const isClosed = issueData.status?.toLowerCase() === "closed";
+      const count = isClosed
+        ? issueData.detailedData?.upvotes?.closed || 0
+        : issueData.detailedData?.upvotes?.open || 0;
+
+      setUpvoteCount(count);
+      setIsUpvoted(issueData.userStatus?.hasUpvoted || false);
+      setIsReported(issueData.userStatus?.hasReported || false);
+    }
+  }, [visible, issueData]);
+
+  // Upvote handler
+  const handleUpvote = async () => {
+    if (isUpvoting || !issueData?.id) return;
+
+    setIsUpvoting(true);
+    const previousUpvoted = isUpvoted;
+    const previousCount = upvoteCount;
+
+    // Optimistic update
+    const newUpvotedState = !isUpvoted;
+    setIsUpvoted(newUpvotedState);
+    setUpvoteCount(newUpvotedState ? upvoteCount + 1 : upvoteCount - 1);
+
+    try {
+      const response = await api.post(`/api/issues/${issueData.id}/upvote`);
+
+      if (response.data) {
+        const backendIsActive =
+          response.data.isActive || response.data.hasUpvoted || false;
+        setIsUpvoted(backendIsActive);
+
+        if (response.data.upvotes) {
+          const isClosed = issueData.status?.toLowerCase() === "closed";
+          const newCount = isClosed
+            ? response.data.upvotes.closed || 0
+            : response.data.upvotes.open || 0;
+          setUpvoteCount(newCount);
+        }
+      }
+    } catch (error) {
+      console.error("Error upvoting issue:", error);
+      // Revert on error
+      setIsUpvoted(previousUpvoted);
+      setUpvoteCount(previousCount);
+    } finally {
+      setTimeout(() => {
+        setIsUpvoting(false);
+      }, 300);
+    }
+  };
+
+  // Report handler
+  const handleReport = async () => {
+    if (isReporting || isReported || !issueData?.id) return;
+
+    const isClosed = issueData.status?.toLowerCase() === "closed";
+    const title = isClosed ? "Report as Not Fixed" : "Report as Spam";
+    const message = isClosed
+      ? "Do you want to report this issue as not fixed? If enough citizens report this, the issue will be reopened for further action."
+      : "Do you want to report this issue as spam? This action is permanent and helps maintain community quality.";
+    const buttonText = isClosed ? "Not Fixed" : "Report";
+
+    Alert.alert(title, message, [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: buttonText,
+        style: "destructive",
+        onPress: async () => {
+          setIsReporting(true);
+          try {
+            const response = await api.post(
+              `/api/issues/${issueData.id}/report`
+            );
+
+            if (response.data) {
+              const hasReported =
+                response.data.hasReported || response.data.isActive || true;
+              setIsReported(hasReported);
+            } else {
+              setIsReported(true);
+            }
+
+            const successMessage = isClosed
+              ? "Thank you for your feedback! Your report has been recorded."
+              : "Issue reported successfully. Thank you for helping maintain quality!";
+
+            Alert.alert("Success", successMessage);
+          } catch (error) {
+            console.error("Error reporting issue:", error);
+
+            if (error.response?.data?.message === "Already reported") {
+              setIsReported(true);
+              Alert.alert(
+                "Already Reported",
+                "You have already reported this issue."
+              );
+            } else {
+              Alert.alert("Error", "Failed to report issue. Please try again.");
+            }
+          } finally {
+            setIsReporting(false);
+          }
+        },
+      },
+    ]);
+  };
 
   if (!issueData) return null;
 
@@ -528,9 +650,72 @@ const IssueDetailModal = ({
 
           {/* Action Buttons Footer */}
           <View style={styles.actionFooter}>
-            {/* Upload Fix Button - ONLY for NGOs on OPEN issues */}
-            {userType === "ngo" &&
-            issueData.status?.toLowerCase() === "open" ? (
+            {/* For CLOSED issues - show Fixed/Not Fixed buttons (citizens only) */}
+            {issueData.status?.toLowerCase() === "closed" &&
+            userType === "citizen" ? (
+              <>
+                {/* Fixed Button (maps to closed upvote) */}
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    styles.fixedButton,
+                    isUpvoted && styles.fixedButtonActive,
+                  ]}
+                  onPress={handleUpvote}
+                  disabled={isUpvoting}
+                >
+                  <Ionicons
+                    name={
+                      isUpvoted
+                        ? "checkmark-circle"
+                        : "checkmark-circle-outline"
+                    }
+                    size={20}
+                    color={isUpvoted ? "#fff" : "#4CAF79"}
+                  />
+                  <Text
+                    style={[
+                      styles.actionButtonText,
+                      styles.fixedButtonText,
+                      isUpvoted && styles.actionButtonTextActive,
+                    ]}
+                  >
+                    Fixed {upvoteCount > 0 ? `(${upvoteCount})` : ""}
+                  </Text>
+                </TouchableOpacity>
+
+                {/* Not Fixed Button (maps to closed report) */}
+                <TouchableOpacity
+                  style={[
+                    styles.actionButton,
+                    styles.notFixedButton,
+                    isReported && styles.notFixedButtonActive,
+                  ]}
+                  onPress={handleReport}
+                  disabled={isReporting || isReported}
+                >
+                  <Ionicons
+                    name={isReported ? "close-circle" : "close-circle-outline"}
+                    size={20}
+                    color={isReported ? "#fff" : "#dc3545"}
+                  />
+                  <Text
+                    style={[
+                      styles.actionButtonText,
+                      styles.notFixedButtonText,
+                      isReported && styles.actionButtonTextActive,
+                    ]}
+                  >
+                    {isReporting
+                      ? "Submitting..."
+                      : isReported
+                      ? "Not Fixed"
+                      : "Not Fixed"}
+                  </Text>
+                </TouchableOpacity>
+              </>
+            ) : /* For OPEN issues - show Upload Fix button for NGOs */ userType ===
+                "ngo" && issueData.status?.toLowerCase() === "open" ? (
               <TouchableOpacity
                 style={[styles.actionButton, styles.uploadFixButton]}
                 onPress={() => {
@@ -550,9 +735,18 @@ const IssueDetailModal = ({
               </TouchableOpacity>
             ) : null}
 
-            {/* Close Button - For closed issues, just show a close button */}
+            {/* Close Button - Always show */}
             <TouchableOpacity
-              style={[styles.actionButton, styles.closeButton]}
+              style={[
+                styles.actionButton,
+                styles.closeButtonStyle,
+                // Make close button full width if it's the only button
+                (issueData.status?.toLowerCase() !== "closed" ||
+                  userType !== "citizen") &&
+                  (userType !== "ngo" ||
+                    issueData.status?.toLowerCase() !== "open") &&
+                  styles.closeButtonFullWidth,
+              ]}
               onPress={onClose}
             >
               <Ionicons name="close-circle" size={20} color="#666" />
@@ -807,6 +1001,39 @@ const styles = StyleSheet.create({
   },
   actionButtonTextActive: {
     color: "#fff",
+  },
+  // Fixed Button styles (for closed issues)
+  fixedButton: {
+    borderWidth: 2,
+    borderColor: "#4CAF79",
+    backgroundColor: "#fff",
+  },
+  fixedButtonActive: {
+    backgroundColor: "#4CAF79",
+    borderColor: "#45a06d",
+  },
+  fixedButtonText: {
+    color: "#4CAF79",
+  },
+  // Not Fixed Button styles (for closed issues)
+  notFixedButton: {
+    borderWidth: 2,
+    borderColor: "#dc3545",
+    backgroundColor: "#fff",
+  },
+  notFixedButtonActive: {
+    backgroundColor: "#dc3545",
+    borderColor: "#c82333",
+  },
+  notFixedButtonText: {
+    color: "#dc3545",
+  },
+  // Close button styles
+  closeButtonStyle: {
+    backgroundColor: "#f0f0f0",
+  },
+  closeButtonFullWidth: {
+    flex: 1,
   },
   fixStatusContainer: {
     backgroundColor: "rgba(255, 255, 255, 0.6)",

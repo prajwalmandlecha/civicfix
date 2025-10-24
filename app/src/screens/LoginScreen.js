@@ -15,14 +15,49 @@ const LoginScreen = ({ navigation }) => {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const getErrorMessage = (errorCode) => {
+    switch (errorCode) {
+      case "auth/invalid-email":
+        return "Please enter a valid email address.";
+      case "auth/user-disabled":
+        return "This account has been disabled.";
+      case "auth/user-not-found":
+        return "No account found with this email.";
+      case "auth/wrong-password":
+        return "Incorrect password. Please try again.";
+      case "auth/invalid-credential":
+        return "Invalid email or password. Please try again.";
+      case "auth/too-many-requests":
+        return "Too many failed attempts. Please try again later.";
+      case "auth/network-request-failed":
+        return "Network error. Please check your connection.";
+      default:
+        return "Login failed. Please try again.";
+    }
+  };
 
   const handleLogin = async () => {
+    // Clear previous error
+    setError("");
+
+    // Validate inputs
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter your password.");
+      return;
+    }
+
     setLoading(true);
     try {
       await signInWithEmailAndPassword(auth, email, password);
-      
     } catch (error) {
       console.error("Error signing in:", error);
+      setError(getErrorMessage(error.code));
     } finally {
       setLoading(false);
     }
@@ -49,6 +84,16 @@ const LoginScreen = ({ navigation }) => {
           </View>
           <View style={styles.formContainer}>
             <Card style={styles.formCard}>
+              {error ? (
+                <View style={styles.errorContainer}>
+                  <MaterialIcons
+                    name="error-outline"
+                    size={20}
+                    color="#DC2626"
+                  />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
               <View style={styles.formFields}>
                 <CustomTextInput
                   label="Email"
@@ -158,6 +203,21 @@ const styles = StyleSheet.create({
     color: "#4CAF79",
     fontSize: 14,
     fontWeight: "600",
+  },
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  errorText: {
+    flex: 1,
+    color: "#DC2626",
+    fontSize: 14,
+    fontWeight: "500",
   },
   signupPrompt: {
     flexDirection: "row",

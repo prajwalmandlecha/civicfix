@@ -143,68 +143,70 @@ const SocialPost = ({
   const handleReport = async () => {
     if (isReporting || isReported) return;
 
+    // Different messages based on issue status
+    const isClosed = status?.toLowerCase() === "closed";
+    const title = isClosed ? "Report as Not Fixed" : "Report as Spam";
+    const message = isClosed
+      ? "Do you want to report this issue as not fixed? If enough citizens report this, the issue will be reopened for further action."
+      : "Do you want to report this issue as spam? This action is permanent and helps maintain community quality.";
+    const buttonText = isClosed ? "Not Fixed" : "Report";
+
     // Show confirmation dialog
-    Alert.alert(
-      "Report as Spam",
-      "Do you want to report this issue as spam? This action is permanent and helps maintain community quality.",
-      [
-        {
-          text: "Cancel",
-          style: "cancel",
-        },
-        {
-          text: "Report",
-          style: "destructive",
-          onPress: async () => {
-            setIsReporting(true);
-            try {
-              // Backend creates permanent report (NOT toggleable)
-              const response = await api.post(`/api/issues/${postId}/report`);
+    Alert.alert(title, message, [
+      {
+        text: "Cancel",
+        style: "cancel",
+      },
+      {
+        text: buttonText,
+        style: "destructive",
+        onPress: async () => {
+          setIsReporting(true);
+          try {
+            // Backend creates permanent report (NOT toggleable)
+            const response = await api.post(`/api/issues/${postId}/report`);
 
-              // Sync with backend response
-              if (response.data) {
-                const hasReported =
-                  response.data.hasReported || response.data.isActive || true;
-                setIsReported(hasReported);
+            // Sync with backend response
+            if (response.data) {
+              const hasReported =
+                response.data.hasReported || response.data.isActive || true;
+              setIsReported(hasReported);
 
-                console.log(`Issue ${postId} reported successfully`);
-              } else {
-                // Fallback if no response data
-                setIsReported(true);
-              }
-
-              // Call parent callback if provided
-              if (onReport) {
-                onReport(postId, { ok: true, hasReported: true });
-              }
-
-              Alert.alert(
-                "Success",
-                "Issue reported successfully. Thank you for helping maintain quality!"
-              );
-            } catch (error) {
-              console.error("Error reporting issue:", error);
-
-              // Check if already reported
-              if (error.response?.data?.message === "Already reported") {
-                setIsReported(true);
-                Alert.alert(
-                  "Already Reported",
-                  "You have already reported this issue."
-                );
-              } else {
-                Alert.alert(
-                  "Error",
-                  "Failed to report issue. Please try again."
-                );
-              }
-            } finally {
-              setIsReporting(false);
+              console.log(`Issue ${postId} reported successfully`);
+            } else {
+              // Fallback if no response data
+              setIsReported(true);
             }
-          },
+
+            // Call parent callback if provided
+            if (onReport) {
+              onReport(postId, { ok: true, hasReported: true });
+            }
+
+            const successMessage = isClosed
+              ? "Thank you for your feedback! Your report has been recorded."
+              : "Issue reported successfully. Thank you for helping maintain quality!";
+
+            Alert.alert("Success", successMessage);
+          } catch (error) {
+            console.error("Error reporting issue:", error);
+
+            // Check if already reported
+            if (error.response?.data?.message === "Already reported") {
+              setIsReported(true);
+              Alert.alert(
+                "Already Reported",
+                "You have already reported this issue."
+              );
+            } else {
+              Alert.alert("Error", "Failed to report issue. Please try again.");
+            }
+          } finally {
+            setIsReporting(false);
+          }
         },
-      ]
-    );
+      },
+    ]);
   };
 
   return (
@@ -275,75 +277,141 @@ const SocialPost = ({
 
         {/* Actions Row */}
         <View style={styles.actionsRow}>
-          {/* Upvote Button - Always visible */}
-          <TouchableOpacity
-            style={[
-              styles.upvoteButton,
-              isUpvoted && styles.upvoteButtonActive,
-              isUpvoting && styles.upvoteButtonDisabled,
-            ]}
-            onPress={handleUpvote}
-            disabled={isUpvoting}
-          >
-            <Ionicons
-              name={isUpvoted ? "heart" : "heart-outline"}
-              size={16}
-              color={isUpvoted ? "#fff" : "#4CAF79"}
-              style={{ marginRight: 6 }}
-            />
-            <Text
-              style={[
-                styles.upvoteButtonText,
-                isUpvoted && styles.upvoteButtonTextActive,
-              ]}
-            >
-              {upvoteCount}
-            </Text>
-          </TouchableOpacity>
-
-          {userType === "ngo" && status?.toLowerCase() === "open" ? (
-            <TouchableOpacity
-              style={styles.uploadFixButton}
-              onPress={onUploadFix}
-            >
-              <Ionicons
-                name="construct"
-                size={16}
-                color="#fff"
-                style={{ marginRight: 6 }}
-              />
-              <Text style={styles.uploadFixButtonText}>Upload Fix</Text>
-            </TouchableOpacity>
-          ) : userType === "citizen" ? (
-            // Report Button - ONLY for citizens (all statuses)
-            <TouchableOpacity
-              style={[
-                styles.reportButton,
-                isReported && styles.reportButtonReported,
-                isReporting && styles.reportButtonDisabled,
-              ]}
-              onPress={handleReport}
-              disabled={isReporting || isReported}
-            >
-              <Ionicons
-                name={isReported ? "flag" : "flag-outline"}
-                size={16}
-                color={isReported ? "#fff" : "#dc3545"}
-                style={{ marginRight: 6 }}
-              />
-              <Text
+          {/* For CLOSED issues - show Fixed/Not Fixed buttons (citizens only) */}
+          {status?.toLowerCase() === "closed" && userType === "citizen" ? (
+            <>
+              {/* Fixed Button (maps to closed upvote) */}
+              <TouchableOpacity
                 style={[
-                  styles.reportButtonText,
-                  isReported && styles.reportButtonTextReported,
+                  styles.fixedButton,
+                  isUpvoted && styles.fixedButtonActive,
+                  isUpvoting && styles.fixedButtonDisabled,
                 ]}
+                onPress={handleUpvote}
+                disabled={isUpvoting}
               >
-                {isReporting
-                  ? "Reporting..."
-                  : isReported
-                  ? "Reported"
-                  : "Report"}
-              </Text>
-            </TouchableOpacity>
+                <Ionicons
+                  name={
+                    isUpvoted ? "checkmark-circle" : "checkmark-circle-outline"
+                  }
+                  size={16}
+                  color={isUpvoted ? "#fff" : "#4CAF79"}
+                  style={{ marginRight: 6 }}
+                />
+                <Text
+                  style={[
+                    styles.fixedButtonText,
+                    isUpvoted && styles.fixedButtonTextActive,
+                  ]}
+                >
+                  Fixed {upvoteCount > 0 ? `(${upvoteCount})` : ""}
+                </Text>
+              </TouchableOpacity>
+
+              {/* Not Fixed Button (maps to closed report) */}
+              <TouchableOpacity
+                style={[
+                  styles.notFixedButton,
+                  isReported && styles.notFixedButtonActive,
+                  isReporting && styles.notFixedButtonDisabled,
+                ]}
+                onPress={handleReport}
+                disabled={isReporting || isReported}
+              >
+                <Ionicons
+                  name={isReported ? "close-circle" : "close-circle-outline"}
+                  size={16}
+                  color={isReported ? "#fff" : "#dc3545"}
+                  style={{ marginRight: 6 }}
+                />
+                <Text
+                  style={[
+                    styles.notFixedButtonText,
+                    isReported && styles.notFixedButtonTextActive,
+                  ]}
+                >
+                  {isReporting
+                    ? "Submitting..."
+                    : isReported
+                    ? "Not Fixed"
+                    : "Not Fixed"}
+                </Text>
+              </TouchableOpacity>
+            </>
+          ) : status?.toLowerCase() === "open" ? (
+            /* For OPEN issues - show original upvote/report buttons */
+            <>
+              {/* Upvote Button - visible to all for open issues */}
+              <TouchableOpacity
+                style={[
+                  styles.upvoteButton,
+                  isUpvoted && styles.upvoteButtonActive,
+                  isUpvoting && styles.upvoteButtonDisabled,
+                ]}
+                onPress={handleUpvote}
+                disabled={isUpvoting}
+              >
+                <Ionicons
+                  name={isUpvoted ? "heart" : "heart-outline"}
+                  size={16}
+                  color={isUpvoted ? "#fff" : "#4CAF79"}
+                  style={{ marginRight: 6 }}
+                />
+                <Text
+                  style={[
+                    styles.upvoteButtonText,
+                    isUpvoted && styles.upvoteButtonTextActive,
+                  ]}
+                >
+                  {upvoteCount}
+                </Text>
+              </TouchableOpacity>
+
+              {userType === "ngo" ? (
+                <TouchableOpacity
+                  style={styles.uploadFixButton}
+                  onPress={onUploadFix}
+                >
+                  <Ionicons
+                    name="construct"
+                    size={16}
+                    color="#fff"
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text style={styles.uploadFixButtonText}>Upload Fix</Text>
+                </TouchableOpacity>
+              ) : userType === "citizen" ? (
+                // Report Button - ONLY for citizens on open issues
+                <TouchableOpacity
+                  style={[
+                    styles.reportButton,
+                    isReported && styles.reportButtonReported,
+                    isReporting && styles.reportButtonDisabled,
+                  ]}
+                  onPress={handleReport}
+                  disabled={isReporting || isReported}
+                >
+                  <Ionicons
+                    name={isReported ? "flag" : "flag-outline"}
+                    size={16}
+                    color={isReported ? "#fff" : "#dc3545"}
+                    style={{ marginRight: 6 }}
+                  />
+                  <Text
+                    style={[
+                      styles.reportButtonText,
+                      isReported && styles.reportButtonTextReported,
+                    ]}
+                  >
+                    {isReporting
+                      ? "Reporting..."
+                      : isReported
+                      ? "Reported"
+                      : "Report"}
+                  </Text>
+                </TouchableOpacity>
+              ) : null}
+            </>
           ) : null}
         </View>
       </View>
@@ -408,7 +476,7 @@ const styles = StyleSheet.create({
     position: "absolute",
     top: 15,
     left: 15,
-    right: 15,
+    right: 110, // Leave space for fixed overlay (was 15)
     flexDirection: "row",
     flexWrap: "wrap",
     zIndex: 1,
@@ -541,6 +609,62 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "#fff",
+  },
+  // Fixed Button (for closed issues - maps to closed upvote)
+  fixedButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#4CAF79",
+    backgroundColor: "#fff",
+    flex: 1,
+    justifyContent: "center",
+  },
+  fixedButtonActive: {
+    backgroundColor: "#4CAF79",
+    borderColor: "#45a06d",
+  },
+  fixedButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#4CAF79",
+  },
+  fixedButtonTextActive: {
+    color: "#fff",
+  },
+  fixedButtonDisabled: {
+    opacity: 0.6,
+  },
+  // Not Fixed Button (for closed issues - maps to closed report)
+  notFixedButton: {
+    flexDirection: "row",
+    alignItems: "center",
+    paddingHorizontal: 16,
+    paddingVertical: 10,
+    borderRadius: 20,
+    borderWidth: 1.5,
+    borderColor: "#dc3545",
+    backgroundColor: "#fff",
+    flex: 1,
+    justifyContent: "center",
+  },
+  notFixedButtonActive: {
+    backgroundColor: "#dc3545",
+    borderColor: "#c82333",
+  },
+  notFixedButtonText: {
+    fontSize: 13,
+    fontWeight: "600",
+    color: "#dc3545",
+  },
+  notFixedButtonTextActive: {
+    color: "#fff",
+  },
+  notFixedButtonDisabled: {
+    opacity: 0.6,
   },
 });
 

@@ -16,6 +16,7 @@ import { auth } from "../services/firebase";
 import api from "../services/api";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
 import { Ionicons } from "@expo/vector-icons";
+import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 
 const FixUploadScreen = ({ route, navigation }) => {
   const { issueId, issueData } = route.params || {};

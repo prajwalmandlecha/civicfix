@@ -980,16 +980,24 @@ async def submit_issue(
                     has_posted = user_data.get("has_posted_before", False)
 
                     if not has_posted:
-                        # Award +10 karma and set flag
+                        # Award +10 karma and set flag, increment issues_reported
                         user_doc_ref.update(
-                            {"karma": Increment(10), "has_posted_before": True}
+                            {
+                                "karma": Increment(10),
+                                "has_posted_before": True,
+                                "stats.issues_reported": Increment(1)
+                            }
                         )
                         logger.info(
-                            f"Awarded +10 first post karma to user {reporter_id}."
+                            f"Awarded +10 first post karma and incremented issues_reported for user {reporter_id}."
                         )
                     else:
+                        # For subsequent posts, still count the report
+                        user_doc_ref.update(
+                            {"stats.issues_reported": Increment(1)}
+                        )
                         logger.info(
-                            f"User {reporter_id} has posted before. No first post karma awarded."
+                            f"User {reporter_id} has posted before. No first post karma awarded. Incremented issues_reported."
                         )
                 else:
                     # Handle missing user doc (optional: create it)
@@ -1004,6 +1012,11 @@ async def submit_issue(
                             "karma": 10,
                             "has_posted_before": True,
                             "createdAt": firestore.SERVER_TIMESTAMP,
+                            "stats": {
+                                "issues_reported": 1,
+                                "issues_resolved": 0,
+                                "co2_saved": 0
+                            }
                         },
                         merge=True,
                     )
@@ -1568,6 +1581,34 @@ async def submit_fix(
                 logger.error(
                     f"Failed to update stats for user {user_uid}: {firestore_err}"
                 )
+            
+            # --- NEW: Increment reporter's issues_resolved stat ---
+            try:
+                reporter_uid = original_issue_doc.get("reported_by")
+                if reporter_uid and reporter_uid != "anonymous" and reporter_uid != "anonymous_fallback":
+                    reporter_doc_ref = db.collection("users").document(reporter_uid)
+                    reporter_doc = reporter_doc_ref.get()
+                    if reporter_doc.exists:
+                        reporter_doc_ref.update({
+                            "stats.issues_resolved": Increment(1)
+                        })
+                        logger.info(
+                            f"Incremented issues_resolved for reporter {reporter_uid} on issue {issue_id}."
+                        )
+                    else:
+                        logger.warning(
+                            f"Reporter {reporter_uid} not found in Firestore. Cannot increment issues_resolved."
+                        )
+                else:
+                    logger.info(
+                        f"Issue {issue_id} was reported anonymously. No reporter stats updated."
+                    )
+            except Exception as reporter_err:
+                # Log error but don't fail the request
+                logger.error(
+                    f"Failed to update reporter stats for issue {issue_id}: {reporter_err}"
+                )
+            # --- END NEW REPORTER STATS LOGIC ---
         # --- END NEW KARMA AND STATS LOGIC ---
 
         return {

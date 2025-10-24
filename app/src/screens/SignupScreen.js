@@ -26,6 +26,7 @@ const SignupScreen = ({ navigation }) => {
   const [password, setPassword] = useState("");
   const [userType, setUserType] = useState("");
   const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
 
   const openUserTypePicker = () => {
     Keyboard.dismiss();
@@ -40,11 +41,49 @@ const SignupScreen = ({ navigation }) => {
     );
   };
 
+  const getErrorMessage = (errorCode) => {
+    switch (errorCode) {
+      case "auth/email-already-in-use":
+        return "This email is already registered. Please sign in instead.";
+      case "auth/invalid-email":
+        return "Please enter a valid email address.";
+      case "auth/operation-not-allowed":
+        return "Email/password accounts are not enabled. Please contact support.";
+      case "auth/weak-password":
+        return "Password is too weak. Please use at least 6 characters.";
+      case "auth/network-request-failed":
+        return "Network error. Please check your connection.";
+      default:
+        return "Signup failed. Please try again.";
+    }
+  };
+
   const handleSignup = async () => {
-    if (!name || !email || !password || !userType) {
-      alert("Please fill in all fields.");
+    // Clear previous error
+    setError("");
+
+    // Validate inputs
+    if (!name.trim()) {
+      setError("Please enter your full name.");
       return;
     }
+    if (!email.trim()) {
+      setError("Please enter your email address.");
+      return;
+    }
+    if (!password) {
+      setError("Please enter a password.");
+      return;
+    }
+    if (password.length < 6) {
+      setError("Password must be at least 6 characters long.");
+      return;
+    }
+    if (!userType) {
+      setError("Please select whether you are a Citizen or NGO.");
+      return;
+    }
+
     setLoading(true);
     try {
       const cred = await createUserWithEmailAndPassword(auth, email, password);
@@ -59,6 +98,7 @@ const SignupScreen = ({ navigation }) => {
       });
     } catch (error) {
       console.error("Error signing up:", error);
+      setError(getErrorMessage(error.code));
     } finally {
       setLoading(false);
     }
@@ -86,6 +126,16 @@ const SignupScreen = ({ navigation }) => {
 
           <View style={styles.formContainer}>
             <Card style={styles.formCard}>
+              {error ? (
+                <View style={styles.errorContainer}>
+                  <MaterialIcons
+                    name="error-outline"
+                    size={20}
+                    color="#DC2626"
+                  />
+                  <Text style={styles.errorText}>{error}</Text>
+                </View>
+              ) : null}
               <View style={styles.formFields}>
                 <CustomTextInput
                   label="Full Name"
@@ -216,6 +266,21 @@ const styles = StyleSheet.create({
   },
   formFields: {
     marginBottom: 8,
+  },
+  errorContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: "#FEE2E2",
+    padding: 12,
+    borderRadius: 8,
+    marginBottom: 16,
+    gap: 8,
+  },
+  errorText: {
+    flex: 1,
+    color: "#DC2626",
+    fontSize: 14,
+    fontWeight: "500",
   },
   signupPrompt: {
     flexDirection: "row",

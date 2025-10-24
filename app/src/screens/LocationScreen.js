@@ -510,12 +510,20 @@ const MapScreen = ({ navigation }) => {
         {showHeatmap && heatmapPoints.length > 0 && (
           <Heatmap
             points={heatmapPoints}
-            radius={40}
-            opacity={0.7}
+            radius={50}
+            opacity={0.6}
+            maxIntensity={100}
+            gradientSmoothing={10}
             gradient={{
-              colors: ["#22C55E", "#F97316", "#EF4444", "#991B1B"],
-              startPoints: [0.0, 0.4, 0.8, 1.0],
-              colorMapSize: 256,
+              colors: [
+                "rgba(34, 197, 94, 0)",
+                "rgba(34, 197, 94, 0.7)",
+                "#F97316",
+                "#EF4444",
+                "#991B1B",
+              ],
+              startPoints: [0.0, 0.25, 0.5, 0.75, 1.0],
+              colorMapSize: 1024,
             }}
           />
         )}

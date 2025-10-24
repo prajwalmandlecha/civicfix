@@ -33,6 +33,8 @@ const IssueUploadScreen = ({ navigation }) => {
   const [issueTypes, setIssueTypes] = useState([]);
   const { showActionSheetWithOptions } = useActionSheet();
 
+  console.log("test", process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY);
+
   const issueTypesData = getIssueTypesWithNames();
   const dropdownData = Object.entries(issueTypesData).map(([key, value]) => ({
     label: value,
@@ -318,7 +320,7 @@ const IssueUploadScreen = ({ navigation }) => {
           </View>
 
           <GooglePlacesTextInput
-            apiKey=""
+            apiKey="AIzaSyCOIcuht3KsQIKVszM9xWNOKim65JopzOk"
             placeHolderText="Search for a location"
             value={address}
             fetchDetails={true}

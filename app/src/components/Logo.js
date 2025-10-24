@@ -5,7 +5,7 @@ const Logo = ({ light = false }) => {
   return (
     <View style={styles.container}>
       <Image
-        source={require("../../assets/icon.jpg")}
+        source={require("../../assets/logo.png")}
         style={styles.icon}
         resizeMode="contain"
       />
