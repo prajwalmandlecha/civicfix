@@ -68,15 +68,24 @@ function initMap() {
                     HEATMAP_ZOOM_THRESHOLD, 3 // Intensity 3 approaching point view
                 ],
                 // Color ramp: transparent -> blue -> yellow -> red
-                'heatmap-color': [
-                    'interpolate', ['linear'], ['heatmap-density'],
-                    0, 'rgba(33,102,172,0)',
-                    0.2, 'rgb(103,169,207)',
-                    0.4, 'rgb(209,229,240)',
-                    0.6, 'rgb(253,219,199)',
-                    0.8, 'rgb(239,138,98)',
-                    1, 'rgb(178,24,43)'
-                ],
+                // 'heatmap-color': [
+                //     'interpolate', ['linear'], ['heatmap-density'],
+                //     0, 'rgba(33,102,172,0)',
+                //     0.2, 'rgb(103,169,207)',
+                //     0.4, 'rgb(209,229,240)',
+                //     0.6, 'rgb(253,219,199)',
+                //     0.8, 'rgb(239,138,98)',
+                //     1, 'rgb(178,24,43)'
+                // ],
+                    'heatmap-color': [
+                      'interpolate', ['linear'], ['heatmap-density'],
+                      0, 'rgba(0,0,0,0)',       // Transparent (no density)
+                      0.1, 'rgb(0,255,0)',      // Green (low density)
+                      0.3, 'rgb(255,255,0)',    // Yellow (medium density)
+                      0.6, 'rgb(255,140,0)',    // Orange (higher density)
+                      1, 'rgb(255,0,0)'         // Red (highest density)
+                    ],
+
                 // Adjust radius based on zoom
                 'heatmap-radius': [
                     'interpolate', ['linear'], ['zoom'],
@@ -185,7 +194,7 @@ function initMap() {
               <div class="stat-item"><span class="stat-label">Severity:</span><span class="stat-value">${severityScore ? severityScore.toFixed(1) : 'N/A'}</span></div>
             </div>
             <div class="popup-meta">
-              <div>${props.reported_at ? new Date(props.reported_at).toLocaleDateString() : 'No Date'}</div>
+              <div>${props.created_at ? new Date(props.created_at).toLocaleDateString() : 'No Date'}</div>
               <div>${props.source || 'citizen'}</div>
             </div>
           </div>

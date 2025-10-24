@@ -7,6 +7,7 @@ import requests
 import os
 from datetime import datetime
 from fastapi import Query  # Add Query import
+from fastapi import APIRouter
 from fastapi import (
     FastAPI,
     File,
@@ -18,7 +19,8 @@ from fastapi import (
     Depends,
 )  # Added Depends
 from fastapi.middleware.cors import CORSMiddleware
-
+from fastapi.responses import JSONResponse
+import json
 
 # --- ADDED firestore and auth_errors ---
 from firebase_admin import (
@@ -38,6 +40,9 @@ from elasticsearch import AsyncElasticsearch, NotFoundError, RequestError
 from geopy.geocoders import Nominatim
 from geopy.exc import GeocoderTimedOut, GeocoderServiceError
 import asyncio
+
+BUCKET_NAME = "civicfix_issues_bucket/fix-proof"
+router = APIRouter()
 
 # --- ADD Global Cache ---
 geocode_cache: Dict[str, str] = {}
@@ -2225,14 +2230,12 @@ async def get_map_data(
     # --- Apply Optional Filters ---
     # !! IMPORTANT: Assumes 'status', 'issue_types', 'source' are mapped as 'keyword' in ES !!
     if filters_obj.get("status"):
-        active_filters.append({"terms": {"status.keyword": filters_obj["status"]}})
+        active_filters.append({"terms": {"status": filters_obj["status"]}})
     if filters_obj.get("issue_type"):
         # Assuming 'issue_types' is an array of keywords or single keyword
-        active_filters.append(
-            {"terms": {"issue_types.keyword": filters_obj["issue_type"]}}
-        )
+        active_filters.append({"terms": {"issue_types": filters_obj["issue_type"]}})
     if filters_obj.get("source"):
-        active_filters.append({"terms": {"source.keyword": filters_obj["source"]}})
+        active_filters.append({"terms": {"source": filters_obj["source"]}})
 
     # Example Date Filter
     date_filter = {}
@@ -2242,7 +2245,7 @@ async def get_map_data(
         date_filter["lte"] = filters_obj["date_to"]
     if date_filter:
         # Assumes 'reported_at' is your date field, mapped correctly in ES
-        active_filters.append({"range": {"reported_at": date_filter}})
+        active_filters.append({"range": {"created_at": date_filter}})
 
     # --- Combine filters ---
     base_query = {"bool": {"filter": active_filters}}
@@ -2300,3 +2303,21 @@ async def get_map_data(
 
 
 # --- *** END OF SIMPLIFIED MAP ROUTE *** ---
+@app.get("/api/fixes")
+async def get_fixes():
+    with open("simplified_civicfix_image_url.json", "r") as f:
+        data = json.load(f)
+    return JSONResponse(content=data)
+
+
+@router.get("/api/fix-photos/{issue_id}")
+async def get_fix_photos(issue_id: str):
+    base_url = (
+        f"https://storage.googleapis.com/civicfix_issues_bucket/fix-proof/{issue_id}/"
+    )
+    # dynamically list files if you can, otherwise fallback hardcoded
+    photos = [
+        f"{base_url}46352d67-a2f3-43ec-a6b6-67ca88b88866_265f7fa11b654c90948190f5ea7bb897.jpg",
+        f"{base_url}960aa2e2-bd5c-4598-b500-a1d5c66baff0_fresh-patch-large-hole-asphalt-600nw-2152820005.webp",
+    ]
+    return {"photo_urls": photos}  # <- JSON object
