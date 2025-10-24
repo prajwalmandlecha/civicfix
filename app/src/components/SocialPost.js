@@ -21,8 +21,6 @@ const SocialPost = ({
   co2Impact,
   likes,
   status,
-  onFixToggle,
-  onSameIssue,
   onPress,
   detailedData,
   description,
@@ -64,13 +62,24 @@ const SocialPost = ({
     if (likes !== undefined && likes !== null) {
       setUpvoteCount(likes);
     }
+  }, [likes]);
 
-    // Update status from userStatus prop (optional)
+  // Separate effect for userStatus to ensure it always updates
+  useEffect(() => {
     if (userStatus) {
-      setIsUpvoted(userStatus.hasUpvoted || false);
-      setIsReported(userStatus.hasReported || false);
+      const hasUpvoted = userStatus.hasUpvoted || false;
+      const hasReported = userStatus.hasReported || false;
+
+      console.log(`[SocialPost ${postId}] Updating status:`, {
+        hasUpvoted,
+        hasReported,
+        userStatus,
+      });
+
+      setIsUpvoted(hasUpvoted);
+      setIsReported(hasReported);
     }
-  }, [postId, likes, userStatus]);
+  }, [postId, userStatus?.hasUpvoted, userStatus?.hasReported]);
 
   const handleUpvote = async () => {
     // Prevent multiple simultaneous clicks
@@ -292,8 +301,7 @@ const SocialPost = ({
             </Text>
           </TouchableOpacity>
 
-          {(userType === "volunteer" || userType === "ngo") &&
-          status?.toLowerCase() === "open" ? (
+          {userType === "ngo" && status?.toLowerCase() === "open" ? (
             <TouchableOpacity
               style={styles.uploadFixButton}
               onPress={onUploadFix}
@@ -338,31 +346,6 @@ const SocialPost = ({
             </TouchableOpacity>
           ) : null}
         </View>
-
-        {/* Status Button */}
-        {/* <TouchableOpacity
-            style={[
-              styles.statusButton,
-              status === "resolved" && styles.statusButtonResolved,
-            ]}
-            onPress={onFixToggle}
-          >
-            <Text
-              style={[
-                styles.statusButtonText,
-                status === "resolved" && styles.statusButtonTextResolved,
-              ]}
-            >
-              {status === "resolved" ? "✓ Fixed" : "I fixed it"}
-            </Text>
-          </TouchableOpacity>
-        </View> */}
-
-        {/* Same Issue Link
-        <TouchableOpacity onPress={onSameIssue} style={styles.sameIssueButton}>
-          <Text style={styles.linkIcon}>🔗</Text>
-          <Text style={styles.sameIssueText}>Same issue elsewhere?</Text>
-        </TouchableOpacity> */}
       </View>
     </TouchableOpacity>
   );
@@ -558,20 +541,6 @@ const styles = StyleSheet.create({
     fontSize: 13,
     fontWeight: "600",
     color: "#fff",
-  },
-  sameIssueButton: {
-    flexDirection: "row",
-    alignItems: "center",
-    paddingVertical: 4,
-  },
-  linkIcon: {
-    fontSize: 14,
-    marginRight: 6,
-  },
-  sameIssueText: {
-    fontSize: 13,
-    color: "#17a2b8",
-    textDecorationLine: "underline",
   },
 });
 

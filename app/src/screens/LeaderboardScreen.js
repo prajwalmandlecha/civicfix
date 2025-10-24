@@ -25,7 +25,7 @@ const LeaderboardScreen = () => {
       setLoading(true);
       // Fetch appropriate leaderboard based on user type
       const endpoint =
-        userType === "volunteer" || userType === "ngo"
+        userType === "ngo"
           ? "/api/leaderboard/ngos"
           : "/api/leaderboard/citizens";
       const response = await api.get(endpoint);
@@ -33,23 +33,21 @@ const LeaderboardScreen = () => {
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
       // Set mock data for demonstration
-      setLeaderboardData(
-        generateMockData(userType === "volunteer" || userType === "ngo")
-      );
+      setLeaderboardData(generateMockData(userType === "ngo"));
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
   };
 
-  const generateMockData = (isVolunteer = false) => {
-    if (isVolunteer) {
+  const generateMockData = (isNGO = false) => {
+    if (isNGO) {
       return [
         { rank: 1, name: "Community Builders NGO", co2: 3200, badges: [] },
         { rank: 2, name: "Green Earth Foundation", co2: 2850, badges: [] },
         { rank: 3, name: "Urban Care Society", co2: 2400, badges: [] },
         { rank: 4, name: "Fix It Forward", co2: 2100, badges: [] },
-        { rank: 5, name: "City Volunteers", co2: 1900, badges: [] },
+        { rank: 5, name: "City NGO Network", co2: 1900, badges: [] },
         { rank: 6, name: "Road Warriors", co2: 1600, badges: [] },
         { rank: 7, name: "Clean Streets Initiative", co2: 1400, badges: [] },
         { rank: 8, name: "Civic Action Team", co2: 1200, badges: [] },
@@ -103,8 +101,8 @@ const LeaderboardScreen = () => {
       <View style={styles.header}>
         <Text style={styles.headerTitle}>Leaderboard</Text>
         <Text style={styles.headerSubtitle}>
-          {userType === "volunteer" || userType === "ngo"
-            ? "Top Volunteer Organizations"
+          {userType === "ngo"
+            ? "Top NGO Organizations"
             : "Top Community Contributors"}
         </Text>
       </View>

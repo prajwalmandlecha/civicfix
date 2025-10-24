@@ -23,25 +23,10 @@ import { useUserContext } from "../context/UserContext";
 import api from "../services/api";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
 
-// Custom Marker Component
-const CustomMarker = ({ severity }) => {
-  const color = getSeverityColor(severity || 5);
-  return (
-    <View style={styles.customMarker}>
-      <View style={[styles.markerInner, { backgroundColor: color }]}>
-        <Text style={styles.markerText}>{Math.round(severity || 5)}</Text>
-      </View>
-      <View style={[styles.markerArrow, { borderTopColor: color }]} />
-    </View>
-  );
-};
-
 const getSeverityColor = (severityScore) => {
-  if (severityScore >= 7) return "#991B1B"; // Dark red
-  if (severityScore >= 5) return "#EF4444"; // Red
-  if (severityScore >= 3) return "#F97316"; // Orange
-  if (severityScore >= 1) return "#EAB308"; // Yellow
-  return "#22C55E"; // Green
+  if (severityScore >= 8) return "#991B1B"; // Dark red - High (8-10)
+  if (severityScore >= 4) return "#F97316"; // Orange - Medium (4-7.9)
+  return "#22C55E"; // Green - Low (0-3.9)
 };
 
 const getStatusColor = (status) => {
@@ -55,6 +40,33 @@ const getStatusColor = (status) => {
   }
 };
 
+const getMarkerColor = (issue) => {
+  // For fixed (closed) issues, use the green color used throughout the app
+  if (issue.status?.toLowerCase() === "closed") {
+    return "#4CAF79"; // Green color used for fixed issues
+  }
+  // For open issues, color based on severity score
+  const severityScore = issue.severity_score || 5;
+  return getSeverityColor(severityScore);
+};
+
+// Custom Marker Component
+const CustomMarker = ({ issue }) => {
+  const color = getMarkerColor(issue);
+  const displayValue =
+    issue.status?.toLowerCase() === "closed"
+      ? "✓"
+      : Math.round(issue.severity_score || 5);
+  return (
+    <View style={styles.customMarker}>
+      <View style={[styles.markerInner, { backgroundColor: color }]}>
+        <Text style={styles.markerText}>{displayValue}</Text>
+      </View>
+      <View style={[styles.markerArrow, { borderTopColor: color }]} />
+    </View>
+  );
+};
+
 const MapScreen = ({ navigation }) => {
   const mapRef = useRef(null);
   const [issues, setIssues] = useState([]);
@@ -66,6 +78,8 @@ const MapScreen = ({ navigation }) => {
   const [currentZoom, setCurrentZoom] = useState(13);
   const [locationError, setLocationError] = useState(false);
   const [filtersVisible, setFiltersVisible] = useState(false);
+  const [fixDetails, setFixDetails] = useState(null);
+  const [loadingFix, setLoadingFix] = useState(false);
   const [filters, setFilters] = useState({
     status: "open", // all, open, closed (default to open)
     severity: "all", // all, high, medium, low
@@ -96,9 +110,9 @@ const MapScreen = ({ navigation }) => {
         const severity = issue.severity_score || 0;
         switch (filters.severity) {
           case "high":
-            return severity >= 7;
+            return severity >= 8;
           case "medium":
-            return severity >= 4 && severity < 7;
+            return severity >= 4 && severity < 8;
           case "low":
             return severity < 4;
           default:
@@ -286,12 +300,6 @@ const MapScreen = ({ navigation }) => {
     }, 1000);
   }, []);
 
-  const getMarkerColor = (issue) => {
-    // Color based on severity score
-    const severityScore = issue.severity_score || 5;
-    return getSeverityColor(severityScore);
-  };
-
   const getMarkerTitle = (issue) => {
     const issueTypes = issue.issue_types || issue.detected_issues || [];
     if (issueTypes.length > 0) {
@@ -319,8 +327,27 @@ const MapScreen = ({ navigation }) => {
     return `${status.toUpperCase()} | Upvotes: ${upvotes} | Severity: ${severity}`;
   };
 
-  const handleMarkerPress = (issue) => {
+  const handleMarkerPress = async (issue) => {
     setSelectedIssue(issue);
+
+    // Fetch fix details if issue is closed
+    if (issue.status?.toLowerCase() === "closed" && issue.issue_id) {
+      setLoadingFix(true);
+      try {
+        const response = await api.get(
+          `/api/issues/${issue.issue_id}/fix-details`
+        );
+        if (response.data.has_fix) {
+          setFixDetails(response.data);
+        }
+      } catch (error) {
+        console.error("Error fetching fix details:", error);
+      } finally {
+        setLoadingFix(false);
+      }
+    } else {
+      setFixDetails(null);
+    }
   };
 
   const handleUploadFix = (issue) => {
@@ -387,11 +414,6 @@ const MapScreen = ({ navigation }) => {
         weight: (issue.severity_score || 5) / 10, // Normalize weight 0-1
       }));
   }, [displayIssues]);
-
-  const getMarkerPinColor = (issue) => {
-    const severityScore = issue.severity_score || 5;
-    return getSeverityColor(severityScore);
-  };
 
   if (loading && issues.length === 0) {
     return (
@@ -491,8 +513,8 @@ const MapScreen = ({ navigation }) => {
             radius={40}
             opacity={0.7}
             gradient={{
-              colors: ["#22C55E", "#EAB308", "#F97316", "#EF4444", "#991B1B"],
-              startPoints: [0.1, 0.3, 0.5, 0.7, 0.9],
+              colors: ["#22C55E", "#F97316", "#EF4444", "#991B1B"],
+              startPoints: [0.0, 0.4, 0.8, 1.0],
               colorMapSize: 256,
             }}
           />
@@ -512,7 +534,7 @@ const MapScreen = ({ navigation }) => {
                   onPress={() => handleMarkerPress(issue)}
                   tracksViewChanges={false}
                 >
-                  <CustomMarker severity={issue.severity_score} />
+                  <CustomMarker issue={issue} />
                   <Callout tooltip>
                     <View style={styles.callout}>
                       <Text style={styles.calloutTitle}>
@@ -715,11 +737,40 @@ const MapScreen = ({ navigation }) => {
                 </Text>
               </View>
 
-              {/* Description */}
-              {selectedIssue.description && (
-                <Text style={styles.description}>
-                  {selectedIssue.description}
-                </Text>
+              {/* Description or Fix Title/Description */}
+              {selectedIssue.status?.toLowerCase() === "closed" &&
+              fixDetails ? (
+                <View style={styles.fixInfoContainer}>
+                  {fixDetails.title && (
+                    <View style={styles.fixTitleContainer}>
+                      <Ionicons
+                        name="checkmark-circle"
+                        size={20}
+                        color="#4CAF79"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={styles.fixTitle}>{fixDetails.title}</Text>
+                    </View>
+                  )}
+                  {fixDetails.description && (
+                    <View style={styles.fixDescriptionCard}>
+                      <Text style={styles.fixDescription}>
+                        {fixDetails.description}
+                      </Text>
+                    </View>
+                  )}
+                  {loadingFix && (
+                    <Text style={styles.loadingText}>
+                      Loading fix details...
+                    </Text>
+                  )}
+                </View>
+              ) : (
+                selectedIssue.description && (
+                  <Text style={styles.description}>
+                    {selectedIssue.description}
+                  </Text>
+                )
               )}
 
               {/* Stats Grid */}
@@ -739,15 +790,24 @@ const MapScreen = ({ navigation }) => {
                   </Text>
                 </View>
                 <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>CO₂ Saved</Text>
-                  <Text style={styles.statValue}>
-                    {selectedIssue.co2_kg_saved || 0} kg
+                  <Text style={styles.statLabel}>
+                    {selectedIssue.status?.toLowerCase() === "closed"
+                      ? "CO₂ Saved"
+                      : "CO₂ Risk"}
                   </Text>
-                </View>
-                <View style={styles.statItem}>
-                  <Text style={styles.statLabel}>Fate Risk</Text>
-                  <Text style={styles.statValue}>
-                    {selectedIssue.fate_risk_co2 || 0} kg
+                  <Text
+                    style={[
+                      styles.statValue,
+                      selectedIssue.status?.toLowerCase() === "closed" &&
+                        styles.co2SavedValue,
+                    ]}
+                  >
+                    {selectedIssue.status?.toLowerCase() === "closed"
+                      ? fixDetails?.co2_saved
+                        ? Math.round(fixDetails.co2_saved)
+                        : selectedIssue.co2_kg_saved || 0
+                      : selectedIssue.fate_risk_co2 || 0}{" "}
+                    kg
                   </Text>
                 </View>
               </View>
@@ -768,8 +828,8 @@ const MapScreen = ({ navigation }) => {
                 )}
               </View>
 
-              {/* Action Button for Volunteers/NGOs - ONLY on OPEN issues */}
-              {(userType === "volunteer" || userType === "ngo") &&
+              {/* Action Button for NGOs - ONLY on OPEN issues */}
+              {userType === "ngo" &&
                 selectedIssue.status?.toLowerCase() === "open" && (
                   <TouchableOpacity
                     style={styles.uploadFixButtonCard}
@@ -943,11 +1003,52 @@ const styles = StyleSheet.create({
     fontSize: 12,
     fontWeight: "bold",
   },
+  fixInfoContainer: {
+    marginBottom: 16,
+  },
+  fixTitleContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 12,
+    paddingBottom: 10,
+    borderBottomWidth: 2,
+    borderBottomColor: "#4CAF79",
+  },
+  fixTitle: {
+    fontSize: 17,
+    fontWeight: "700",
+    color: "#2C3E50",
+    flex: 1,
+    lineHeight: 24,
+  },
+  fixDescriptionCard: {
+    backgroundColor: "rgba(76, 175, 121, 0.08)",
+    borderLeftWidth: 3,
+    borderLeftColor: "#4CAF79",
+    borderRadius: 8,
+    padding: 12,
+    marginBottom: 12,
+  },
+  fixDescription: {
+    fontSize: 14,
+    color: "#2C3E50",
+    lineHeight: 22,
+    letterSpacing: 0.2,
+  },
   description: {
     fontSize: 14,
     color: "#666",
     marginBottom: 16,
     lineHeight: 20,
+  },
+  loadingText: {
+    fontSize: 13,
+    color: "#999",
+    fontStyle: "italic",
+    marginBottom: 12,
+  },
+  co2SavedValue: {
+    color: "#4CAF79",
   },
   statsGrid: {
     flexDirection: "row",

@@ -29,8 +29,6 @@ const ProfileScreen = () => {
   const [badges, setBadges] = useState([]);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [loadingStats, setLoadingStats] = useState(true);
-  const [organization, setOrganization] = useState("");
-  const [editingOrganization, setEditingOrganization] = useState(false);
 
   const { updateLastLocation, lastLocation, userType, profile } =
     useUserContext();
@@ -39,13 +37,12 @@ const ProfileScreen = () => {
     try {
       setLoadingStats(true);
 
-      // Fetch user data from Firestore (for basic info and organization)
+      // Fetch user data from Firestore (for basic info)
       const userDoc = await getDoc(
         doc(firestore, "users", auth.currentUser.uid)
       );
       const data = userDoc.data();
       setUserData(data);
-      setOrganization(data?.organization || "");
 
       // Fetch detailed stats from backend API
       const response = await api.get(
@@ -61,7 +58,7 @@ const ProfileScreen = () => {
           statsData.issuesReported || profile?.stats?.issues_reported || 0,
         issuesResolved:
           statsData.issuesResolved || profile?.stats?.issues_resolved || 0,
-        issuesFixed: statsData.issuesFixed || 0, // For volunteers
+        issuesFixed: statsData.issuesFixed || 0, // For NGOs
         co2Saved: statsData.co2Saved || 0,
         currentRank: statsData.currentRank || 0,
         totalKarma: statsData.karma || profile?.karma || 0,
@@ -98,25 +95,6 @@ const ProfileScreen = () => {
       );
     } finally {
       setLoadingStats(false);
-    }
-  };
-
-  const handleUpdateOrganization = async () => {
-    if (!organization.trim()) {
-      Alert.alert("Error", "Please enter an organization name.");
-      return;
-    }
-
-    try {
-      await updateDoc(doc(firestore, "users", auth.currentUser.uid), {
-        organization: organization.trim(),
-      });
-      Alert.alert("Success", "Organization updated successfully!");
-      setEditingOrganization(false);
-      await fetchUserData(); // Refresh user data
-    } catch (error) {
-      console.error("Error updating organization:", error);
-      Alert.alert("Error", "Failed to update organization. Please try again.");
     }
   };
 
@@ -184,21 +162,13 @@ const ProfileScreen = () => {
         <View style={styles.userTypeBadge}>
           <View style={styles.userTypeBadgeInner}>
             <Ionicons
-              name={
-                userData?.userType === "volunteer" ||
-                userData?.userType === "ngo"
-                  ? "construct"
-                  : "person"
-              }
+              name={userData?.userType === "ngo" ? "construct" : "person"}
               size={16}
               color="#4CAF79"
               style={{ marginRight: 6 }}
             />
             <Text style={styles.userTypeText}>
-              {userData?.userType === "volunteer" ||
-              userData?.userType === "ngo"
-                ? "Volunteer"
-                : "Citizen"}
+              {userData?.userType === "ngo" ? "NGO" : "Citizen"}
             </Text>
           </View>
         </View>
@@ -235,61 +205,11 @@ const ProfileScreen = () => {
         </View>
       </Card>
 
-      {/* Organization Section - Only for Volunteers/NGOs */}
-      {(userData?.userType === "volunteer" ||
-        userData?.userType === "ngo" ||
-        userType === "volunteer" ||
-        userType === "ngo") && (
+      {/* Organization Section - Display only for NGOs (no editing) */}
+      {userData?.userType === "ngo" && userData?.organization && (
         <Card style={styles.organizationCard}>
           <Text style={styles.organizationLabel}>Organization</Text>
-          {editingOrganization ? (
-            <>
-              <TextInput
-                style={styles.organizationInput}
-                placeholder="Enter your organization name"
-                value={organization}
-                onChangeText={setOrganization}
-                autoFocus
-              />
-              <View style={styles.organizationButtonRow}>
-                <View style={styles.organizationButtonWrapper}>
-                  <Text
-                    style={styles.organizationCancelButton}
-                    onPress={() => {
-                      setOrganization(userData?.organization || "");
-                      setEditingOrganization(false);
-                    }}
-                  >
-                    Cancel
-                  </Text>
-                </View>
-                <View style={styles.organizationButtonWrapper}>
-                  <Text
-                    style={styles.organizationSaveButton}
-                    onPress={handleUpdateOrganization}
-                  >
-                    Save
-                  </Text>
-                </View>
-              </View>
-            </>
-          ) : (
-            <>
-              <Text style={styles.organizationText}>
-                {userData?.organization || "Not set"}
-              </Text>
-              <View style={styles.organizationButtonWrapper}>
-                <View style={styles.organizationButton}>
-                  <Text
-                    style={styles.organizationButtonText}
-                    onPress={() => setEditingOrganization(true)}
-                  >
-                    Update Organization
-                  </Text>
-                </View>
-              </View>
-            </>
-          )}
+          <Text style={styles.organizationText}>{userData.organization}</Text>
         </Card>
       )}
 
@@ -300,8 +220,7 @@ const ProfileScreen = () => {
           <Text style={styles.sectionTitle}>Your Impact</Text>
         </View>
         <View style={styles.statsGrid}>
-          {userData?.userType === "volunteer" ||
-          userData?.userType === "ngo" ? (
+          {userData?.userType === "ngo" ? (
             <>
               <View style={styles.statCardWrapper}>
                 <StatCard
@@ -341,15 +260,6 @@ const ProfileScreen = () => {
             </>
           )}
         </View>
-        {/* CO2 Saved - Commented out for now */}
-        {/* <View style={styles.statsGridFull}>
-          <StatCard
-            emoji="🌍"
-            number={`${stats.co2Saved}kg`}
-            label="CO₂ Saved"
-            size="medium"
-          />
-        </View> */}
       </View>
 
       {/* Badges Section */}

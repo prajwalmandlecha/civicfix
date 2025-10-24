@@ -20,6 +20,7 @@ import GooglePlacesTextInput from "react-native-google-places-textinput";
 import "react-native-get-random-values";
 import { getIssueTypesWithNames } from "../utils/issueTypeMapping";
 import { Dropdown } from "react-native-element-dropdown";
+import Constants from "expo-constants";
 
 const IssueUploadScreen = ({ navigation }) => {
   const [image, setImage] = useState(null);
@@ -82,7 +83,7 @@ const IssueUploadScreen = ({ navigation }) => {
   const pickFromLibrary = async () => {
     try {
       let result = await ImagePicker.launchImageLibraryAsync({
-        mediaType: ImagePicker.MediaTypeOptions.Images,
+        mediaTypes: ["images"],
         allowsEditing: true,
         aspect: [4, 3],
         quality: 1,

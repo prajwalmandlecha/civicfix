@@ -61,11 +61,11 @@ const HomeScreen = ({ navigation }) => {
       filteredPosts = filteredPosts.filter((post) => {
         switch (filters.severity) {
           case "high":
-            return post.severityScore > 7;
+            return post.severityScore >= 8;
           case "medium":
-            return post.severityScore > 4 && post.severityScore <= 7;
+            return post.severityScore >= 4 && post.severityScore < 8;
           case "low":
-            return post.severityScore <= 4;
+            return post.severityScore < 4;
           default:
             return true;
         }
@@ -117,7 +117,8 @@ const HomeScreen = ({ navigation }) => {
     const nextPage = page + 1;
 
     try {
-      const response = await api.get("/issues/", {
+      // NEW: Use the combined endpoint that includes user status
+      const response = await api.get("/api/issues/with-user-status", {
         params: {
           latitude: lastLocation.coords.latitude,
           longitude: lastLocation.coords.longitude,
@@ -145,9 +146,9 @@ const HomeScreen = ({ navigation }) => {
                 uri: issue.photo_url,
               },
               impactLevel:
-                issue.severity_score > 7
+                issue.severity_score >= 8
                   ? "High"
-                  : issue.severity_score > 4
+                  : issue.severity_score >= 4
                   ? "Medium"
                   : "Low",
               co2Impact: issue.co2Impact,
@@ -158,6 +159,7 @@ const HomeScreen = ({ navigation }) => {
               severityScore: issue.severity_score,
               distanceKm: issue.distance_km,
               detailedData: issue,
+              // NEW: User status is already included in the response!
               userStatus: issue.userStatus || {
                 hasUpvoted: false,
                 hasReported: false,
@@ -167,7 +169,9 @@ const HomeScreen = ({ navigation }) => {
         );
 
         console.log(
-          `Loaded ${newIssues.length} new issues. Total in backend: ${
+          `Loaded ${
+            newIssues.length
+          } new issues with user status. Total in backend: ${
             response.data.total || "unknown"
           }, Current skip: ${response.data.skip || 0}`
         );
@@ -197,6 +201,9 @@ const HomeScreen = ({ navigation }) => {
             return [...prev, ...uniqueNewIssues];
           });
           setPage(nextPage);
+
+          // NO LONGER NEEDED: Batch fetch upvote/report status
+          // The status is already included in the response from /api/issues/with-user-status
         }
       } else {
         setHasMore(false);
@@ -207,8 +214,6 @@ const HomeScreen = ({ navigation }) => {
       setLoadingMore(false);
     }
   };
-
-  // Like functionality is now handled within SocialPost component
 
   const formatLocation = async (location) => {
     if (!location) return "Unknown location";
@@ -250,7 +255,8 @@ const HomeScreen = ({ navigation }) => {
       setPage(1);
       setHasMore(true);
 
-      const response = await api.get("/issues/", {
+      // NEW: Use the combined endpoint that includes user status
+      const response = await api.get("/api/issues/with-user-status", {
         params: {
           latitude: lastLocation.coords.latitude,
           longitude: lastLocation.coords.longitude,
@@ -281,9 +287,9 @@ const HomeScreen = ({ navigation }) => {
               uri: issue.photo_url,
             },
             impactLevel:
-              issue.severity_score > 7
+              issue.severity_score >= 8
                 ? "High"
-                : issue.severity_score > 4
+                : issue.severity_score >= 4
                 ? "Medium"
                 : "Low",
             co2Impact: issue.co2Impact,
@@ -294,6 +300,7 @@ const HomeScreen = ({ navigation }) => {
             severityScore: issue.severity_score,
             distanceKm: issue.distance_km,
             detailedData: issue,
+            // NEW: User status is already included in the response!
             userStatus: issue.userStatus || {
               hasUpvoted: false,
               hasReported: false,
@@ -304,8 +311,12 @@ const HomeScreen = ({ navigation }) => {
 
       issues.sort((a, b) => b.severityScore - a.severityScore);
 
-      console.log("Fetched Issues", issues);
+      console.log("Fetched Issues with user status:", issues);
+      console.log("First issue userStatus:", issues[0]?.userStatus);
       setPosts(issues);
+
+      // NO LONGER NEEDED: Batch fetch upvote/report status
+      // The status is already included in the response from /api/issues/with-user-status
 
       if (issues.length === 0) {
         console.log("No issues found for this location");
@@ -319,23 +330,6 @@ const HomeScreen = ({ navigation }) => {
       });
       setPosts([]);
     }
-  };
-
-  const handleFixToggle = (postId) => {
-    setPosts(
-      posts.map((post) =>
-        post.id === postId
-          ? {
-              ...post,
-              status: post.status === "resolved" ? "unresolved" : "resolved",
-            }
-          : post
-      )
-    );
-  };
-
-  const handleSameIssue = (postId) => {
-    console.log(`Same issue elsewhere for post ${postId}`);
   };
 
   const handlePostPress = (post) => {
@@ -472,8 +466,6 @@ const HomeScreen = ({ navigation }) => {
               detailedData={item.detailedData}
               userType={userType}
               userStatus={item.userStatus}
-              onFixToggle={() => handleFixToggle(item.id)}
-              onSameIssue={() => handleSameIssue(item.id)}
               onPress={() => handlePostPress(item)}
               onUploadFix={() => handleUploadFix(item)}
             />

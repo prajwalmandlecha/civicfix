@@ -112,7 +112,7 @@ const TabNav = () => {
           ),
         }}
       />
-      {/* Only show IssueUpload tab for citizens (NOT volunteers/NGOs) */}
+      {/* Only show IssueUpload tab for citizens (NOT NGOs) */}
       {userType === "citizen" && (
         <Tab.Screen
           name="IssueUpload"

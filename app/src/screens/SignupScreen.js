@@ -29,13 +29,13 @@ const SignupScreen = ({ navigation }) => {
 
   const openUserTypePicker = () => {
     Keyboard.dismiss();
-    const options = ["Citizen", "Volunteer", "Cancel"];
+    const options = ["Citizen", "NGO", "Cancel"];
     const cancelButtonIndex = 2;
     showActionSheetWithOptions(
       { options, cancelButtonIndex },
       (selectedIndex) => {
         if (selectedIndex === 0) setUserType("citizen");
-        if (selectedIndex === 1) setUserType("volunteer");
+        if (selectedIndex === 1) setUserType("ngo");
       }
     );
   };
@@ -131,8 +131,8 @@ const SignupScreen = ({ navigation }) => {
                     value={
                       userType === "citizen"
                         ? "Citizen"
-                        : userType === "volunteer"
-                        ? "Volunteer"
+                        : userType === "ngo"
+                        ? "NGO"
                         : userType
                     }
                     editable={false}
