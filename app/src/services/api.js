@@ -2,7 +2,7 @@ import axios from "axios";
 import { auth } from "./firebase";
 
 const api = axios.create({
-  baseURL: "http://10.237.235.8:8000",
+  baseURL: "https://civicfix-backend-809180458813.asia-south1.run.app",
 });
 
 api.interceptors.request.use(async (config) => {

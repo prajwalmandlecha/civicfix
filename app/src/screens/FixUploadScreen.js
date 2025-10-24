@@ -234,7 +234,12 @@ const FixUploadScreen = ({ route, navigation }) => {
   };
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <KeyboardAwareScrollView
+      style={styles.container}
+      bottomOffset={250}
+      showsVerticalScrollIndicator={false}
+      keyboardShouldPersistTaps="handled"
+    >
       {/* Issue Info */}
       {issueData && (
         <View style={styles.issueCard}>
@@ -343,7 +348,7 @@ const FixUploadScreen = ({ route, navigation }) => {
       </TouchableOpacity>
 
       <View style={styles.bottomPadding} />
-    </ScrollView>
+    </KeyboardAwareScrollView>
   );
 };
 

@@ -320,7 +320,7 @@ const IssueUploadScreen = ({ navigation }) => {
           </View>
 
           <GooglePlacesTextInput
-            apiKey="AIzaSyCOIcuht3KsQIKVszM9xWNOKim65JopzOk"
+            apiKey="AIzaSyArWfe-AqvplAJwvwmZC-QonAr4kmlTRjk"
             placeHolderText="Search for a location"
             value={address}
             fetchDetails={true}
