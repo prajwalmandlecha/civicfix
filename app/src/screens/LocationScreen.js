@@ -251,10 +251,7 @@ const MapScreen = ({ navigation }) => {
       }
     } catch (error) {
       console.error("Error fetching issues:", error);
-      Alert.alert(
-        "Error",
-        "Failed to load issues. Please check your connection and try again."
-      );
+      Alert.alert("Error", "Failed to load issues");
     } finally {
       setLoading(false);
     }

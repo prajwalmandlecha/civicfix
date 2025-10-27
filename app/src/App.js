@@ -23,11 +23,16 @@ import { useEffect } from "react";
 
 async function checkForUpdates() {
   try {
+    console.log("Checking for updates...");
     const update = await Updates.checkForUpdateAsync();
 
     if (update.isAvailable) {
+      console.log("Update available, fetching...");
       await Updates.fetchUpdateAsync();
+      console.log("Update fetched, reloading app...");
       await Updates.reloadAsync();
+    } else {
+      console.log("No updates available");
     }
   } catch (error) {
     console.log("Error checking for updates:", error);

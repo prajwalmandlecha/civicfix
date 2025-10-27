@@ -1,0 +1,48 @@
+{
+  "hosting": {
+    "public": "dist",
+    "ignore": ["firebase.json", "**/.*", "**/node_modules/**"],
+    "rewrites": [
+      {
+        "source": "/feed",
+        "destination": "/feed.html"
+      },
+      {
+        "source": "/map",
+        "destination": "/map.html"
+      },
+      {
+        "source": "/upload",
+        "destination": "/upload.html"
+      },
+      {
+        "source": "/leaderboard",
+        "destination": "/leaderboard.html"
+      },
+      {
+        "source": "/profile",
+        "destination": "/profile.html"
+      },
+      {
+        "source": "/login",
+        "destination": "/login.html"
+      },
+      {
+        "source": "/signup",
+        "destination": "/signup.html"
+      },
+      {
+        "source": "/ngo_login",
+        "destination": "/ngo_login.html"
+      },
+      {
+        "source": "/ngo_signup",
+        "destination": "/ngo_signup.html"
+      },
+      {
+        "source": "**",
+        "destination": "/index.html"
+      }
+    ]
+  }
+}
