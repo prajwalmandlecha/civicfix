@@ -21,4 +21,3 @@ export const getNgoLeaderboard = (limit = 10) => {
     params: { limit },
   });
 };
-

@@ -15,7 +15,7 @@ export const useImagePicker = () => {
   const pickFromCamera = async () => {
     try {
       const { status } = await ImagePicker.requestCameraPermissionsAsync();
-      
+
       if (status !== "granted") {
         Alert.alert(
           "Permission Required",
@@ -48,8 +48,9 @@ export const useImagePicker = () => {
    */
   const pickFromLibrary = async () => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
       if (status !== "granted") {
         Alert.alert(
           "Permission Required",
@@ -83,8 +84,9 @@ export const useImagePicker = () => {
    */
   const pickMultipleFromLibrary = async (maxImages = 5) => {
     try {
-      const { status } = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      
+      const { status } =
+        await ImagePicker.requestMediaLibraryPermissionsAsync();
+
       if (status !== "granted") {
         Alert.alert(
           "Permission Required",
@@ -104,7 +106,9 @@ export const useImagePicker = () => {
         const imageUris = result.assets.map((asset) => ({
           uri: asset.uri,
           type: "image/jpeg",
-          name: `image_${Date.now()}_${Math.random().toString(36).substring(7)}.jpg`,
+          name: `image_${Date.now()}_${Math.random()
+            .toString(36)
+            .substring(7)}.jpg`,
         }));
         return imageUris;
       }
@@ -132,4 +136,3 @@ export const useImagePicker = () => {
     resetImage,
   };
 };
-

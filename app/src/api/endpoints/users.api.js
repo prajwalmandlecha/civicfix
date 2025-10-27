@@ -17,4 +17,3 @@ export const getUserStats = (userId) => {
 export const getUserStatsFirebase = (userId) => {
   return api.get(`/api/users/${userId}/stats-firebase`);
 };
-

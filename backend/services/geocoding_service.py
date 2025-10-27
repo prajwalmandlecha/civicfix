@@ -36,11 +36,13 @@ def geocode_location(location_text: str) -> Optional[Dict]:
     geolocator = Nominatim(user_agent="civicfix_backend")
 
     try:
+        from datetime import datetime, timezone
         location = geolocator.geocode(location_text, timeout=10)
         if location:
             result = {
                 "latitude": location.latitude,
-                "longitude": location.longitude
+                "longitude": location.longitude,
+                "timestamp": datetime.now(timezone.utc).isoformat()
             }
             # Cache the result
             geocode_cache[location_text] = result

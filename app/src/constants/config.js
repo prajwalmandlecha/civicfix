@@ -42,4 +42,3 @@ export const COLORS = {
   DANGER: "#991B1B",
   GRAY: "#9CA3AF",
 };
-

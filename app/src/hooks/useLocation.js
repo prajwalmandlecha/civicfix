@@ -19,7 +19,8 @@ export const useLocation = () => {
       let { status } = await Location.getForegroundPermissionsAsync();
 
       if (status !== "granted") {
-        const { status: newStatus } = await Location.requestForegroundPermissionsAsync();
+        const { status: newStatus } =
+          await Location.requestForegroundPermissionsAsync();
         status = newStatus;
       }
 
@@ -101,12 +102,14 @@ export const useLocation = () => {
     } catch (error) {
       console.error("Error getting location:", error);
       setLoading(false);
-      
+
       let errorMessage = "Failed to get your location";
       if (error.message.includes("timed out")) {
-        errorMessage = "Location request timed out. Please check if location services are enabled.";
+        errorMessage =
+          "Location request timed out. Please check if location services are enabled.";
       } else if (error.message.includes("unavailable")) {
-        errorMessage = "Location services are unavailable. Please enable them in settings.";
+        errorMessage =
+          "Location services are unavailable. Please enable them in settings.";
       }
 
       Alert.alert("Location Error", errorMessage);
@@ -157,4 +160,3 @@ export const useLocation = () => {
     requestPermissions,
   };
 };
-

@@ -33,8 +33,8 @@ from core.database import (
 )
 from core.security import verify_firebase_token_middleware
 
-# Routers (to be created)
-# from routers import issues, fixes, users, leaderboard, map_routes
+# Routers
+from routers import issues, fixes
 
 logging.basicConfig(
     level=logging.INFO,
@@ -96,8 +96,8 @@ app.add_middleware(
 app.middleware("http")(verify_firebase_token_middleware)
 
 # Include routers
-# app.include_router(issues.router, prefix="/api", tags=["Issues"])
-# app.include_router(fixes.router, prefix="/api", tags=["Fixes"])
+app.include_router(issues.router, prefix="/api", tags=["Issues"])
+app.include_router(fixes.router, prefix="/api", tags=["Fixes"])
 # app.include_router(users.router, prefix="/api", tags=["Users"])
 # app.include_router(leaderboard.router, prefix="/api", tags=["Leaderboard"])
 # app.include_router(map_routes.router, prefix="/api", tags=["Map"])

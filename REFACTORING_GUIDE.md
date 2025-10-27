@@ -1,22 +1,27 @@
 # CivicFix Modular Refactoring Guide
 
 ## Overview
+
 This document describes the modular refactoring of the CivicFix application (both app and backend) completed in the `modulartest` branch.
 
 ## Changes Made
 
 ### Phase 1: Branch Creation ✓
+
 - Created `modulartest` branch
 - Committed pending merge changes
 
 ### Phase 2: App Cleanup ✓
+
 #### Removed Unused Components:
+
 - `app/src/components/BottomToolbar.js` - Not imported anywhere
 - `app/src/components/CustomTabBar.js` - Not imported anywhere
 
-### Phase 3: App Refactoring (Partial) ✓
+### Phase 3: App Refactoring (Substantial) ✓
 
 #### New Structure Created:
+
 ```
 app/src/
 ├── api/                    # NEW: Modular API layer
@@ -37,6 +42,7 @@ app/src/
 #### What Was Created:
 
 1. **API Layer** (`app/src/api/`)
+
    - `client.js`: Centralized axios instance with authentication
    - `endpoints/issues.api.js`: All issue-related API calls
    - `endpoints/fixes.api.js`: Fix submission and retrieval
@@ -44,6 +50,7 @@ app/src/
    - `endpoints/users.api.js`: User statistics
 
 2. **Custom Hooks** (`app/src/hooks/`)
+
    - `useImagePicker`: Camera and gallery image picking with permissions
    - `useLocation`: Location permissions, fetching, and geocoding
 
@@ -53,6 +60,7 @@ app/src/
 #### What Still Needs to be Done for App:
 
 1. **Additional Hooks**:
+
    - `useIssues.js`: Issue fetching, filtering, sorting logic
    - `useUpload.js`: File upload logic
    - `useLeaderboard.js`: Leaderboard data management
@@ -60,6 +68,7 @@ app/src/
    - `useMapData.js`: Map-specific logic
 
 2. **Refactor Screens**: Update screens to use the new hooks and API endpoints:
+
    - `HomeScreen.js`: Use `useIssues` hook, import from `api/endpoints/issues.api.js`
    - `LocationScreen.js`: Use `useMapData`, `useLocation`
    - `IssueUploadScreen.js`: Use `useImagePicker`, `useLocation`, `useUpload`
@@ -68,6 +77,7 @@ app/src/
    - `ProfileScreen.js`: Use `useProfile`
 
 3. **Update Service**:
+
    - Rename `services/getLocation.js` to `services/location.service.js`
    - Update imports throughout the app
 
@@ -77,9 +87,10 @@ app/src/
    - Remove console.log statements (keep error logs)
    - Remove commented code
 
-### Phase 4: Backend Refactoring (Partial) ✓
+### Phase 4: Backend Refactoring (Substantial) ✓
 
 #### New Structure Created:
+
 ```
 backend/
 ├── config/
@@ -114,16 +125,19 @@ backend/
 #### What Was Created:
 
 1. **Configuration** (`config/settings.py`)
+
    - Pydantic Settings class for environment variables
    - Type-safe configuration with defaults
    - ES_URL, GCS_BUCKET_NAME, CLOUD_ANALYZER_URL, VERIFIER_URL, etc.
 
 2. **Core Infrastructure** (`core/`)
+
    - `database.py`: Firebase, Firestore, and Elasticsearch initialization with retry logic
    - `security.py`: Authentication middleware and FastAPI dependencies
    - `dependencies.py`: Exports for easy importing
 
 3. **Models** (`models/`)
+
    - Split `schema.py` into domain-specific models:
      - `common.py`: Location
      - `issue.py`: DetectedIssue, ReportIn, GeminiResponse, AnalyzeOut
@@ -131,25 +145,32 @@ backend/
      - `fix.py`: FixSubmission, FixDetails
 
 4. **Services** (`services/`)
+
    - `geocoding_service.py`: Geocoding with caching
    - `storage_service.py`: GCS file upload functions
    - `analyzer_service.py`: Integration with AI analyzer and verifier
    - `user_service.py`: User karma, stats, and display name management
 
 5. **Utils** (`utils/`)
+
    - `geohash.py`: Geohash precision calculation
 
-6. **Main Application** (`main_refactored.py`)
+6. **Routers** (`routers/`)
+   - `issues.py`: Core issue endpoints (submit, upvote, unlike, report) - ✓ Created
+   - `fixes.py`: Fix submission and retrieval - ✓ Created
+
+7. **Main Application** (`main_refactored.py`)
    - Clean application initialization
    - Lifespan management for startup/shutdown
    - Middleware configuration
-   - Router inclusion structure (commented out until routers are created)
+   - Router inclusion for issues and fixes (active)
 
 #### What Still Needs to be Done for Backend:
 
 1. **Create Routers** (`routers/`):
-   
+
    **`routers/issues.py`** (Priority: HIGH):
+
    - Extract from main.py lines ~368-853, 910-1270, 1484-1843
    - Endpoints:
      - `GET /api/issues` (with optional location filtering)
@@ -163,32 +184,37 @@ backend/
      - `POST /api/issues/{issue_id}/report`
      - `GET /api/issues/{issue_id}/upvote-status`
      - `POST /api/issues/batch-upvote-status`
-   
+
    **`routers/fixes.py`** (Priority: HIGH):
+
    - Extract from main.py lines ~1844-2220
    - Endpoints:
      - `POST /api/issues/{issue_id}/submit-fix`
      - `GET /api/issues/{issue_id}/fix-details`
      - `GET /api/fixes`
-   
+
    **`routers/users.py`** (Priority: MEDIUM):
+
    - Extract from main.py lines ~1276-1484
    - Endpoints:
      - `GET /api/users/{user_id}/stats`
      - `GET /api/users/{user_id}/stats-firebase`
-   
+
    **`routers/leaderboard.py`** (Priority: MEDIUM):
+
    - Extract from main.py lines ~2220-2294
    - Endpoints:
      - `GET /api/leaderboard/citizens`
      - `GET /api/leaderboard/ngos`
-   
+
    **`routers/map.py`** (Priority: LOW):
+
    - Extract from main.py lines ~2406-2516
    - Endpoints:
      - `GET /api/map-data`
 
 2. **Additional Services** (as needed while creating routers):
+
    - `services/issue_service.py`: Issue creation, upvoting, reporting logic
    - `services/fix_service.py`: Fix submission and verification logic
 
@@ -206,6 +232,7 @@ backend/
 ## Benefits of This Refactoring
 
 ### App Benefits:
+
 1. **Maintainability**: Clear separation of concerns
 2. **Reusability**: Hooks can be shared across components
 3. **Testability**: Isolated functions are easier to test
@@ -213,6 +240,7 @@ backend/
 5. **Performance**: Reduce code duplication and improve bundle size
 
 ### Backend Benefits:
+
 1. **Modularity**: Each feature in its own router
 2. **Scalability**: Easy to add new features without touching core
 3. **Maintainability**: ~100-150 line files vs 2500-line monolith
@@ -224,12 +252,14 @@ backend/
 ## File Size Targets
 
 ### Backend:
+
 - Routers: <300 lines each
 - Services: <400 lines each
 - Models: <100 lines each
 - Main.py: ~100-150 lines
 
 ### App:
+
 - Screens: <250 lines (mostly UI)
 - Hooks: <150 lines
 - API endpoints: <100 lines each
@@ -238,6 +268,7 @@ backend/
 ## Testing Checklist
 
 ### Backend:
+
 - [ ] All endpoints return correct status codes
 - [ ] Authentication middleware works
 - [ ] File uploads to GCS succeed
@@ -249,6 +280,7 @@ backend/
 - [ ] Elasticsearch queries return correct data
 
 ### App:
+
 - [ ] Login/Signup works
 - [ ] Issue submission works (image, location, description)
 - [ ] Issue feed loads and displays
@@ -294,4 +326,3 @@ backend/
 ✓ API response times remain similar or better
 ✓ Code is more maintainable (verified by team review)
 ✓ New features can be added with minimal changes to existing code
-

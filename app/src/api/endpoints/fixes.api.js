@@ -31,4 +31,3 @@ export const getFixDetails = (issueId) => {
 export const getAllFixes = () => {
   return api.get("/api/fixes");
 };
-

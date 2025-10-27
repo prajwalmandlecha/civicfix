@@ -83,4 +83,3 @@ export const getUpvoteStatus = (issueId) => {
 export const getBatchUpvoteStatus = (issueIds) => {
   return api.post("/api/issues/batch-upvote-status", { issue_ids: issueIds });
 };
-
