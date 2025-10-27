@@ -9,31 +9,25 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import * as ImagePicker from "expo-image-picker";
 import { useActionSheet } from "@expo/react-native-action-sheet";
-import * as Location from "expo-location";
-import api from "../services/api";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
-import { auth } from "../services/firebase";
-import { getCurrentLocation } from "../services/getLocation";
 import GooglePlacesTextInput from "react-native-google-places-textinput";
-import "react-native-get-random-values";
-import { getIssueTypesWithNames } from "../utils/issueTypeMapping";
 import { Dropdown } from "react-native-element-dropdown";
-import Constants from "expo-constants";
+import { getIssueTypesWithNames } from "../utils/issueTypeMapping";
+import { useImagePicker } from "../hooks/useImagePicker";
+import { useLocation } from "../hooks/useLocation";
+import { useUpload } from "../hooks/useUpload";
 
 const IssueUploadScreen = ({ navigation }) => {
-  const [image, setImage] = useState(null);
   const [description, setDescription] = useState("");
-  const [location, setLocation] = useState(null);
-  const [address, setAddress] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(false);
-  const [loadingLocation, setLoadingLocation] = useState(false);
-  const [uploading, setUploading] = useState(false);
   const [issueTypes, setIssueTypes] = useState([]);
   const { showActionSheetWithOptions } = useActionSheet();
 
-  console.log("test", process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY);
+  // Use custom hooks
+  const { image, setImage, pickFromCamera, pickFromLibrary } = useImagePicker();
+  const { location, address, setLocation, setAddress, loading: loadingLocation, getCurrentLocation } = useLocation();
+  const { uploading, uploadIssue } = useUpload();
 
   const issueTypesData = getIssueTypesWithNames();
   const dropdownData = Object.entries(issueTypesData).map(([key, value]) => ({
@@ -41,150 +35,39 @@ const IssueUploadScreen = ({ navigation }) => {
     value: key,
   }));
 
-  const getLocation = async () => {
-    const result = await getCurrentLocation(setLoadingLocation);
-
-    if (!result) {
-      return;
-    }
-
-    const { addressParts, location, error } = result;
-
-    if (error) {
-      console.log("Location error:", error);
-      return;
-    }
-
-    if (location) {
-      setLocation(location);
-    }
-
-    if (addressParts) {
-      const addr = `${addressParts.street}, ${addressParts.city}, ${addressParts.region}, ${addressParts.country}`;
-      setAddress(addr);
-    }
-  };
-
-  const pickFromCamera = async () => {
-    try {
-      let result = await ImagePicker.launchCameraAsync({
-        mediaType: ImagePicker.MediaTypeOptions.Images,
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 1,
-      });
-
-      if (!result.canceled) {
-        setImage(result.assets[0].uri);
-      }
-    } catch (e) {
-      console.error("Camera error:", e);
-    }
-  };
-
-  const pickFromLibrary = async () => {
-    try {
-      let result = await ImagePicker.launchImageLibraryAsync({
-        mediaTypes: ["images"],
-        allowsEditing: true,
-        aspect: [4, 3],
-        quality: 1,
-      });
-
-      if (!result.canceled) {
-        setImage(result.assets[0].uri);
-      }
-    } catch (e) {
-      console.error("Library error:", e);
+  const handleGetLocation = async () => {
+    const result = await getCurrentLocation();
+    if (result) {
+      setLocation(result.location);
+      setAddress(result.address);
     }
   };
 
   const pickImage = async () => {
     const options = ["Take Photo", "Choose from Library", "Cancel"];
 
-    showActionSheetWithOptions(
-      {
-        options,
-      },
-      (selectedIndex) => {
-        switch (selectedIndex) {
-          case 0:
-            pickFromCamera();
-            break;
-          case 1:
-            pickFromLibrary();
-            break;
-          case 2:
-            break;
-          default:
-            break;
-        }
+    showActionSheetWithOptions({ options }, async (selectedIndex) => {
+      switch (selectedIndex) {
+        case 0:
+          await pickFromCamera();
+          break;
+        case 1:
+          await pickFromLibrary();
+          break;
       }
-    );
+    });
   };
 
   const handleSubmit = async () => {
-    if (!image) {
-      Alert.alert("Error", "Please select an image");
-      return;
-    }
-    if (!description.trim()) {
-      Alert.alert("Error", "Please provide a description");
-      return;
-    }
-    if (!address.trim()) {
-      Alert.alert("Error", "Please provide a location");
-      return;
-    }
+    const result = await uploadIssue({
+      image,
+      description,
+      address,
+      issueTypes,
+      isAnonymous,
+    });
 
-    try {
-      setUploading(true);
-
-      const formData = new FormData();
-
-      const ext = image.substring(image.lastIndexOf(".") + 1);
-      const type = `image/${ext}`;
-      console.log("Image :", image);
-      formData.append("file", {
-        uri: image,
-        name: image.substring(image.lastIndexOf("/") + 1),
-        type: type,
-      });
-      formData.append("locationstr", address);
-      formData.append("description", description);
-      if (issueTypes && issueTypes.length > 0) {
-        issueTypes.forEach((label) => {
-          formData.append("labels", label);
-        });
-      }
-      formData.append("is_anonymous", isAnonymous.toString());
-
-      // Get the auth token manually to ensure it's included
-      const user = auth.currentUser;
-      if (!user) {
-        Alert.alert("Error", "You must be logged in to submit an issue");
-        return;
-      }
-      const token = await user.getIdToken();
-      console.log("User authenticated:", user.uid);
-      console.log("Token obtained:", token ? "Yes" : "No");
-
-      const response = await api.post("/submit-issue", formData, {
-        headers: {
-          Authorization: `Bearer ${token}`,
-          "Content-Type": "multipart/form-data",
-        },
-        timeout: 60000,
-      });
-
-      console.log("Upload successful:", response.data);
-
-      // add to db
-
-      if (response.data.no_issues_found) {
-        Alert.alert("Notice", "No issues were detected in the uploaded image.");
-        return;
-      }
+    if (result.success && !result.noIssuesFound) {
       Alert.alert("Success", "Issue reported successfully!", [
         {
           text: "OK",
@@ -195,20 +78,10 @@ const IssueUploadScreen = ({ navigation }) => {
             setLocation(null);
             setIssueTypes([]);
             setIsAnonymous(false);
+            navigation.goBack();
           },
         },
       ]);
-
-      navigation.goBack();
-    } catch (error) {
-      console.error("Upload error:", error);
-      Alert.alert(
-        "Upload Failed",
-        error.response?.data?.detail ||
-          "Failed to upload issue. Please check your connection and ensure all fields are filled correctly."
-      );
-    } finally {
-      setUploading(false);
     }
   };
 
@@ -256,9 +129,7 @@ const IssueUploadScreen = ({ navigation }) => {
               }
             }}
             renderLeftIcon={() => null}
-            flatListProps={{
-              nestedScrollEnabled: true,
-            }}
+            flatListProps={{ nestedScrollEnabled: true }}
             containerStyle={styles.dropdownContainer}
           />
           {issueTypes.length > 0 && (
@@ -296,23 +167,17 @@ const IssueUploadScreen = ({ navigation }) => {
         </View>
 
         <View style={styles.inputGroup}>
-          <View
-            style={{
-              flexDirection: "row",
-              justifyContent: "space-between",
-              alignItems: "center",
-            }}
-          >
+          <View style={styles.locationHeader}>
             <Text style={styles.label}>Location</Text>
             <TouchableOpacity
-              onPress={getLocation}
+              onPress={handleGetLocation}
               disabled={loadingLocation}
-              style={{ flexDirection: "row", alignItems: "center" }}
+              style={styles.locationButton}
             >
               {loadingLocation ? (
                 <ActivityIndicator size="small" color="#4285f4" />
               ) : (
-                <Text style={{ color: "#4285f4", fontWeight: "600" }}>
+                <Text style={styles.locationButtonText}>
                   Use Current Location
                 </Text>
               )}
@@ -324,18 +189,10 @@ const IssueUploadScreen = ({ navigation }) => {
             placeHolderText="Search for a location"
             value={address}
             fetchDetails={true}
-            detailsFields={[
-              "formattedAddress",
-              "location",
-              "displayName",
-              "id",
-            ]}
+            detailsFields={["formattedAddress", "location", "displayName", "id"]}
             onPlaceSelect={(place) => {
-              console.log("Place selected:", place);
               if (place.details) {
-                const newAddress = place.details.formattedAddress;
-                console.log("Setting address:", newAddress);
-                setAddress(newAddress);
+                setAddress(place.details.formattedAddress);
                 setLocation({
                   coords: {
                     latitude: place.details.location.latitude,
@@ -346,9 +203,7 @@ const IssueUploadScreen = ({ navigation }) => {
             }}
             onTextChange={(text) => {
               setAddress(text);
-              if (!text) {
-                setLocation(null);
-              }
+              if (!text) setLocation(null);
             }}
             languageCode="en"
             debounceDelay={300}
@@ -384,11 +239,7 @@ const IssueUploadScreen = ({ navigation }) => {
         <TouchableOpacity
           style={[
             styles.submitButton,
-            image &&
-              description &&
-              address &&
-              !uploading &&
-              styles.submitButtonActive,
+            image && description && address && !uploading && styles.submitButtonActive,
           ]}
           onPress={handleSubmit}
           disabled={uploading || !image || !description || !address}
@@ -399,10 +250,7 @@ const IssueUploadScreen = ({ navigation }) => {
             <Text
               style={[
                 styles.submitButtonText,
-                image &&
-                  description &&
-                  address &&
-                  styles.submitButtonTextActive,
+                image && description && address && styles.submitButtonTextActive,
               ]}
             >
               Submit Issue
@@ -415,13 +263,8 @@ const IssueUploadScreen = ({ navigation }) => {
 };
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: "#f5f5f5",
-  },
-  formContainer: {
-    padding: 16,
-  },
+  container: { flex: 1, backgroundColor: "#f5f5f5" },
+  formContainer: { padding: 16 },
   uploadContainer: {
     backgroundColor: "#fff",
     borderRadius: 12,
@@ -438,64 +281,12 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 32,
   },
-  uploadIcon: {
-    fontSize: 48,
-    marginBottom: 12,
-  },
-  uploadText: {
-    fontSize: 16,
-    color: "#333",
-    fontWeight: "500",
-    marginBottom: 4,
-  },
-  uploadSubtext: {
-    fontSize: 14,
-    color: "#888",
-  },
-  dropdown: {
-    height: 50,
-    backgroundColor: "#fff",
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#ddd",
-    paddingHorizontal: 12,
-  },
-  dropdownContainer: {
-    borderRadius: 8,
-    borderWidth: 1,
-    borderColor: "#ddd",
-  },
-  placeholderStyle: {
-    fontSize: 14,
-    color: "#999",
-  },
-  selectedTextStyle: {
-    fontSize: 14,
-    color: "#333",
-  },
-  iconStyle: {
-    width: 20,
-    height: 20,
-  },
-  inputSearchStyle: {
-    height: 40,
-    fontSize: 14,
-    borderRadius: 8,
-  },
-  uploadedImage: {
-    width: "100%",
-    height: 200,
-    resizeMode: "cover",
-  },
-  inputGroup: {
-    marginBottom: 16,
-  },
-  label: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 8,
-  },
+  uploadIcon: { fontSize: 48, marginBottom: 12 },
+  uploadText: { fontSize: 16, color: "#333", fontWeight: "500", marginBottom: 4 },
+  uploadSubtext: { fontSize: 14, color: "#888" },
+  uploadedImage: { width: "100%", height: 200, resizeMode: "cover" },
+  inputGroup: { marginBottom: 16 },
+  label: { fontSize: 14, fontWeight: "600", color: "#333", marginBottom: 8 },
   textInput: {
     backgroundColor: "#fff",
     borderRadius: 8,
@@ -513,86 +304,27 @@ const styles = StyleSheet.create({
     fontSize: 14,
     minHeight: 100,
   },
-  coordinatesText: {
-    marginTop: 4,
-    fontSize: 12,
-    color: "#666",
-  },
-  anonymousContainer: {
+  locationHeader: {
     flexDirection: "row",
-    alignItems: "center",
-    marginBottom: 16,
-  },
-  checkbox: {
-    width: 20,
-    height: 20,
-    borderRadius: 4,
-    borderWidth: 2,
-    borderColor: "#ddd",
-    marginRight: 8,
-    alignItems: "center",
-    justifyContent: "center",
-  },
-  checkboxChecked: {
-    width: 12,
-    height: 12,
-    borderRadius: 2,
-    backgroundColor: "#5cb85c",
-  },
-  anonymousText: {
-    fontSize: 14,
-    color: "#333",
-  },
-  aiSection: {
-    marginBottom: 16,
-  },
-  aiLabel: {
-    fontSize: 14,
-    fontWeight: "600",
-    color: "#333",
-    marginBottom: 8,
-  },
-  tagContainer: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-  },
-  tag: {
-    backgroundColor: "#fff3cd",
-    borderRadius: 16,
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    marginRight: 8,
-    marginBottom: 8,
-  },
-  tagText: {
-    fontSize: 12,
-    color: "#856404",
-  },
-  submitButton: {
-    backgroundColor: "#ccc",
-    borderRadius: 8,
-    padding: 16,
+    justifyContent: "space-between",
     alignItems: "center",
   },
-  submitButtonActive: {
-    backgroundColor: "#4285f4",
-  },
-  submitButtonText: {
-    color: "#666",
-    fontSize: 16,
-    fontWeight: "600",
-  },
-  submitButtonTextActive: {
-    color: "#fff",
-  },
-  listView: {
+  locationButton: { flexDirection: "row", alignItems: "center" },
+  locationButtonText: { color: "#4285f4", fontWeight: "600" },
+  coordinatesText: { marginTop: 4, fontSize: 12, color: "#666" },
+  dropdown: {
+    height: 50,
     backgroundColor: "#fff",
     borderRadius: 8,
     borderWidth: 1,
     borderColor: "#ddd",
-    marginTop: 4,
-    maxHeight: 200,
+    paddingHorizontal: 12,
   },
+  dropdownContainer: { borderRadius: 8, borderWidth: 1, borderColor: "#ddd" },
+  placeholderStyle: { fontSize: 14, color: "#999" },
+  selectedTextStyle: { fontSize: 14, color: "#333" },
+  iconStyle: { width: 20, height: 20 },
+  inputSearchStyle: { height: 40, fontSize: 14, borderRadius: 8 },
   selectedTypesContainer: {
     flexDirection: "row",
     flexWrap: "wrap",
@@ -608,16 +340,39 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
     gap: 6,
   },
-  selectedTypeText: {
-    fontSize: 13,
-    color: "#1976d2",
-    fontWeight: "500",
+  selectedTypeText: { fontSize: 13, color: "#1976d2", fontWeight: "500" },
+  removeTypeText: { fontSize: 16, color: "#1976d2", fontWeight: "600" },
+  anonymousContainer: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  checkbox: {
+    width: 20,
+    height: 20,
+    borderRadius: 4,
+    borderWidth: 2,
+    borderColor: "#ddd",
+    marginRight: 8,
+    alignItems: "center",
+    justifyContent: "center",
   },
-  removeTypeText: {
-    fontSize: 16,
-    color: "#1976d2",
-    fontWeight: "600",
+  checkboxChecked: { width: 12, height: 12, borderRadius: 2, backgroundColor: "#5cb85c" },
+  anonymousText: { fontSize: 14, color: "#333" },
+  submitButton: {
+    backgroundColor: "#ccc",
+    borderRadius: 8,
+    padding: 16,
+    alignItems: "center",
+  },
+  submitButtonActive: { backgroundColor: "#4285f4" },
+  submitButtonText: { color: "#666", fontSize: 16, fontWeight: "600" },
+  submitButtonTextActive: { color: "#fff" },
+  listView: {
+    backgroundColor: "#fff",
+    borderRadius: 8,
+    borderWidth: 1,
+    borderColor: "#ddd",
+    marginTop: 4,
+    maxHeight: 200,
   },
 });
 
 export default IssueUploadScreen;
+
