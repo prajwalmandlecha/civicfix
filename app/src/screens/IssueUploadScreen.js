@@ -9,10 +9,11 @@ import {
   ActivityIndicator,
   Alert,
 } from "react-native";
-import { useActionSheet } from "@expo/react-native-action-sheet";
+import Constants from "expo-constants";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import GooglePlacesTextInput from "react-native-google-places-textinput";
 import { Dropdown } from "react-native-element-dropdown";
+import { MaterialIcons } from "@expo/vector-icons";
 import { getIssueTypesWithNames } from "../utils/issueTypeMapping";
 import { useImagePicker } from "../hooks/useImagePicker";
 import { useLocation } from "../hooks/useLocation";
@@ -22,11 +23,17 @@ const IssueUploadScreen = ({ navigation }) => {
   const [description, setDescription] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [issueTypes, setIssueTypes] = useState([]);
-  const { showActionSheetWithOptions } = useActionSheet();
 
   // Use custom hooks
   const { image, setImage, pickFromCamera, pickFromLibrary } = useImagePicker();
-  const { location, address, setLocation, setAddress, loading: loadingLocation, getCurrentLocation } = useLocation();
+  const {
+    location,
+    address,
+    setLocation,
+    setAddress,
+    loading: loadingLocation,
+    getCurrentLocation,
+  } = useLocation();
   const { uploading, uploadIssue } = useUpload();
 
   const issueTypesData = getIssueTypesWithNames();
@@ -35,27 +42,20 @@ const IssueUploadScreen = ({ navigation }) => {
     value: key,
   }));
 
+  const gmapskey = process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY;
+
+  if (!gmapskey) {
+    console.warn(
+      "Google Maps API key is missing. Set EXPO_PUBLIC_GOOGLE_MAPS_API_KEY in app/.env or configure android.config.googleMaps.apiKey in app.json."
+    );
+  }
+
   const handleGetLocation = async () => {
     const result = await getCurrentLocation();
     if (result) {
       setLocation(result.location);
       setAddress(result.address);
     }
-  };
-
-  const pickImage = async () => {
-    const options = ["Take Photo", "Choose from Library", "Cancel"];
-
-    showActionSheetWithOptions({ options }, async (selectedIndex) => {
-      switch (selectedIndex) {
-        case 0:
-          await pickFromCamera();
-          break;
-        case 1:
-          await pickFromLibrary();
-          break;
-      }
-    });
   };
 
   const handleSubmit = async () => {
@@ -93,17 +93,43 @@ const IssueUploadScreen = ({ navigation }) => {
       keyboardShouldPersistTaps="handled"
     >
       <View style={styles.formContainer}>
-        <TouchableOpacity style={styles.uploadContainer} onPress={pickImage}>
+        <View style={styles.uploadContainer}>
           {image ? (
             <Image source={{ uri: image }} style={styles.uploadedImage} />
           ) : (
             <View style={styles.uploadPlaceholder}>
-              <Text style={styles.uploadIcon}>📦</Text>
-              <Text style={styles.uploadText}>Drag & drop photos</Text>
-              <Text style={styles.uploadSubtext}>or click to browse</Text>
+              <TouchableOpacity
+                onPress={pickFromCamera}
+                style={[styles.actionButtonPrimary]}
+                accessibilityLabel="Take photo"
+                accessibilityRole="button"
+              >
+                <MaterialIcons
+                  name="photo-camera"
+                  size={20}
+                  color="#fff"
+                  style={{ marginRight: 10 }}
+                />
+                <Text style={styles.actionButtonTextPrimary}>Take photo</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity
+                onPress={pickFromLibrary}
+                style={[styles.actionButtonSecondary]}
+                accessibilityLabel="Upload photo from library"
+                accessibilityRole="button"
+              >
+                <MaterialIcons
+                  name="photo-library"
+                  size={20}
+                  color="#4285f4"
+                  style={{ marginRight: 10 }}
+                />
+                <Text style={styles.actionButtonTextSecondary}>Upload photo</Text>
+              </TouchableOpacity>
             </View>
           )}
-        </TouchableOpacity>
+        </View>
 
         <View style={styles.inputGroup}>
           <Text style={styles.label}>Issue Types (Optional)</Text>
@@ -185,11 +211,16 @@ const IssueUploadScreen = ({ navigation }) => {
           </View>
 
           <GooglePlacesTextInput
-            apiKey="AIzaSyArWfe-AqvplAJwvwmZC-QonAr4kmlTRjk"
+            apiKey={gmapskey}
             placeHolderText="Search for a location"
             value={address}
             fetchDetails={true}
-            detailsFields={["formattedAddress", "location", "displayName", "id"]}
+            detailsFields={[
+              "formattedAddress",
+              "location",
+              "displayName",
+              "id",
+            ]}
             onPlaceSelect={(place) => {
               if (place.details) {
                 setAddress(place.details.formattedAddress);
@@ -239,7 +270,11 @@ const IssueUploadScreen = ({ navigation }) => {
         <TouchableOpacity
           style={[
             styles.submitButton,
-            image && description && address && !uploading && styles.submitButtonActive,
+            image &&
+            description &&
+            address &&
+            !uploading &&
+            styles.submitButtonActive,
           ]}
           onPress={handleSubmit}
           disabled={uploading || !image || !description || !address}
@@ -250,7 +285,10 @@ const IssueUploadScreen = ({ navigation }) => {
             <Text
               style={[
                 styles.submitButtonText,
-                image && description && address && styles.submitButtonTextActive,
+                image &&
+                description &&
+                address &&
+                styles.submitButtonTextActive,
               ]}
             >
               Submit Issue
@@ -281,9 +319,32 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     padding: 32,
   },
-  uploadIcon: { fontSize: 48, marginBottom: 12 },
-  uploadText: { fontSize: 16, color: "#333", fontWeight: "500", marginBottom: 4 },
-  uploadSubtext: { fontSize: 14, color: "#888" },
+  actionButtonPrimary: {
+    width: "90%",
+    backgroundColor: "#4285f4",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    elevation: 2,
+  },
+  actionButtonTextPrimary: { fontSize: 16, color: "#fff", fontWeight: "700" },
+  actionButtonSecondary: {
+    width: "90%",
+    backgroundColor: "#fff",
+    borderRadius: 10,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "#4285f4",
+    marginTop: 10,
+  },
+  actionButtonTextSecondary: { fontSize: 16, color: "#4285f4", fontWeight: "700" },
   uploadedImage: { width: "100%", height: 200, resizeMode: "cover" },
   inputGroup: { marginBottom: 16 },
   label: { fontSize: 14, fontWeight: "600", color: "#333", marginBottom: 8 },
@@ -342,7 +403,11 @@ const styles = StyleSheet.create({
   },
   selectedTypeText: { fontSize: 13, color: "#1976d2", fontWeight: "500" },
   removeTypeText: { fontSize: 16, color: "#1976d2", fontWeight: "600" },
-  anonymousContainer: { flexDirection: "row", alignItems: "center", marginBottom: 16 },
+  anonymousContainer: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 16,
+  },
   checkbox: {
     width: 20,
     height: 20,
@@ -353,7 +418,12 @@ const styles = StyleSheet.create({
     alignItems: "center",
     justifyContent: "center",
   },
-  checkboxChecked: { width: 12, height: 12, borderRadius: 2, backgroundColor: "#5cb85c" },
+  checkboxChecked: {
+    width: 12,
+    height: 12,
+    borderRadius: 2,
+    backgroundColor: "#5cb85c",
+  },
   anonymousText: { fontSize: 14, color: "#333" },
   submitButton: {
     backgroundColor: "#ccc",
@@ -375,4 +445,3 @@ const styles = StyleSheet.create({
 });
 
 export default IssueUploadScreen;
-

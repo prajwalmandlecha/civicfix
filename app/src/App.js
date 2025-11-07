@@ -9,7 +9,7 @@ import LeaderboardScreen from "./screens/LeaderboardScreen";
 import ProfileScreen from "./screens/ProfileScreen";
 import IssueUploadScreen from "./screens/IssueUploadScreen";
 import FixUploadScreen from "./screens/FixUploadScreen";
-import { createStackNavigator } from "@react-navigation/stack";
+import { createNativeStackNavigator } from "@react-navigation/native-stack";
 import LoginScreen from "./screens/LoginScreen";
 import SignupScreen from "./screens/SignupScreen";
 import { ActionSheetProvider } from "@expo/react-native-action-sheet";
@@ -40,8 +40,8 @@ async function checkForUpdates() {
 }
 
 const Tab = createBottomTabNavigator();
-const Stack = createStackNavigator();
-const RootStack = createStackNavigator();
+const Stack = createNativeStackNavigator();
+const RootStack = createNativeStackNavigator();
 
 const StackNav = () => (
   <Stack.Navigator
@@ -195,7 +195,12 @@ export default function App() {
   const { user, loading } = subscribeToAuthState();
 
   useEffect(() => {
-    checkForUpdates();
+    // Defer update check to avoid blocking initial render
+    const timer = setTimeout(() => {
+      checkForUpdates();
+    }, 5000); // Check after 5 seconds
+
+    return () => clearTimeout(timer);
   }, []);
 
   if (loading) {

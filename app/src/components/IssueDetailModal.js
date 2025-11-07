@@ -178,7 +178,7 @@ const IssueDetailModal = ({
               Alert.alert(
                 "Error",
                 error.response?.data?.detail ||
-                  "Failed to report issue. Please check your connection and try again."
+                "Failed to report issue. Please check your connection and try again."
               );
             }
           } finally {
@@ -194,12 +194,12 @@ const IssueDetailModal = ({
   const getImpactColor = () => {
     // For closed issues, show light green background
     if (issueData.status?.toLowerCase() === "closed") {
-      return "#e8f5e9"; // Light green
+      return "#d4edda"; // Light green - Bootstrap success
     }
     // For open issues, use impact level colors
-    if (issueData.impactLevel === "High") return "#ffebee"; // Light red
-    if (issueData.impactLevel === "Medium") return "#fff3e0"; // Light orange
-    return "#e8f5e9"; // Light green
+    if (issueData.impactLevel === "High") return "#f8d7da"; // Light red - Bootstrap danger
+    if (issueData.impactLevel === "Medium") return "#fff3cd"; // Light yellow - Bootstrap warning
+    return "#d1ecf1"; // Light blue - Bootstrap info (low severity)
   };
 
   const getSeverityColor = (severity) => {
@@ -246,6 +246,27 @@ const IssueDetailModal = ({
                 <Text style={styles.locationText}>{issueData.location}</Text>
               </View>
 
+              {/* Uploaded On */}
+              {(issueData.createdAt || issueData.detailedData?.created_at) && (
+                <View style={[styles.locationRow, { marginTop: 8 }]}>
+                  <Ionicons
+                    name="calendar"
+                    size={16}
+                    color="#666"
+                    style={{ marginRight: 4 }}
+                  />
+                  <Text style={styles.uploaderText}>
+                    Uploaded on:{" "}
+                    <Text style={{ fontWeight: "600", color: "#333" }}>
+                      {new Date(
+                        issueData.createdAt ||
+                        issueData.detailedData?.created_at
+                      ).toLocaleString()}
+                    </Text>
+                  </Text>
+                </View>
+              )}
+
               {/* Uploaded By */}
               {issueData.detailedData?.uploader_display_name && (
                 <View style={styles.uploaderRow}>
@@ -288,18 +309,18 @@ const IssueDetailModal = ({
                     style={[
                       styles.statValue,
                       issueData.status?.toLowerCase() === "closed" &&
-                        styles.co2SavedValue,
+                      styles.co2SavedValue,
                     ]}
                   >
                     {issueData.status?.toLowerCase() === "closed"
                       ? fixDetails?.co2_saved
                         ? Math.round(fixDetails.co2_saved)
                         : issueData.detailedData?.fate_risk_co2
-                        ? Math.round(issueData.detailedData.fate_risk_co2)
-                        : 0
+                          ? Math.round(issueData.detailedData.fate_risk_co2)
+                          : 0
                       : issueData.detailedData?.fate_risk_co2
-                      ? Math.round(issueData.detailedData.fate_risk_co2)
-                      : 0}{" "}
+                        ? Math.round(issueData.detailedData.fate_risk_co2)
+                        : 0}{" "}
                     kg
                   </Text>
                 </View>
@@ -415,7 +436,7 @@ const IssueDetailModal = ({
                                       style={[
                                         styles.paginationDot,
                                         index === currentFixImageIndex &&
-                                          styles.paginationDotActive,
+                                        styles.paginationDotActive,
                                       ]}
                                     />
                                   ))}
@@ -493,7 +514,7 @@ const IssueDetailModal = ({
 
             {/* For Closed Issues: Show Fix Outcome Details */}
             {issueData.status?.toLowerCase() === "closed" &&
-            fixDetails?.fix_outcomes ? (
+              fixDetails?.fix_outcomes ? (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Fix Outcome</Text>
 
@@ -507,8 +528,8 @@ const IssueDetailModal = ({
                         fixDetails.overall_outcome === "closed"
                           ? styles.outcomeSuccess
                           : fixDetails.overall_outcome === "partially_closed"
-                          ? styles.outcomePartial
-                          : styles.outcomeRejected,
+                            ? styles.outcomePartial
+                            : styles.outcomeRejected,
                       ]}
                     >
                       {fixDetails.overall_outcome === "closed" &&
@@ -554,8 +575,8 @@ const IssueDetailModal = ({
                               outcome.fixed === "yes"
                                 ? "#4CAF79"
                                 : outcome.fixed === "partial"
-                                ? "#FF9800"
-                                : "#F44336",
+                                  ? "#FF9800"
+                                  : "#F44336",
                           },
                         ]}
                       >
@@ -563,8 +584,8 @@ const IssueDetailModal = ({
                           {outcome.fixed === "yes"
                             ? "FIXED"
                             : outcome.fixed === "partial"
-                            ? "PARTIAL"
-                            : "NOT FIXED"}
+                              ? "PARTIAL"
+                              : "NOT FIXED"}
                         </Text>
                       </View>
                     </View>
@@ -662,7 +683,7 @@ const IssueDetailModal = ({
               )
             )}
 
-            {/* Reported At */}
+            {/* Reported At (if present additionally) */}
             {issueData.detailedData?.reported_at && (
               <View style={styles.section}>
                 <Text style={styles.sectionTitle}>Reported</Text>
@@ -679,7 +700,7 @@ const IssueDetailModal = ({
           <View style={styles.actionFooter}>
             {/* For CLOSED issues - show Fixed/Not Fixed buttons (citizens only) */}
             {issueData.status?.toLowerCase() === "closed" &&
-            userType === "citizen" ? (
+              userType === "citizen" ? (
               <>
                 {/* Fixed Button (maps to closed upvote) */}
                 <TouchableOpacity
@@ -736,13 +757,13 @@ const IssueDetailModal = ({
                     {isReporting
                       ? "Submitting..."
                       : isReported
-                      ? "Not Fixed"
-                      : "Not Fixed"}
+                        ? "Not Fixed"
+                        : "Not Fixed"}
                   </Text>
                 </TouchableOpacity>
               </>
             ) : /* For OPEN issues - show Upload Fix button for NGOs */ userType ===
-                "ngo" && issueData.status?.toLowerCase() === "open" ? (
+              "ngo" && issueData.status?.toLowerCase() === "open" ? (
               <TouchableOpacity
                 style={[styles.actionButton, styles.uploadFixButton]}
                 onPress={() => {
@@ -770,9 +791,9 @@ const IssueDetailModal = ({
                 // Make close button full width if it's the only button
                 (issueData.status?.toLowerCase() !== "closed" ||
                   userType !== "citizen") &&
-                  (userType !== "ngo" ||
-                    issueData.status?.toLowerCase() !== "open") &&
-                  styles.closeButtonFullWidth,
+                (userType !== "ngo" ||
+                  issueData.status?.toLowerCase() !== "open") &&
+                styles.closeButtonFullWidth,
               ]}
               onPress={onClose}
             >

@@ -6,14 +6,13 @@ import {
   FlatList,
   RefreshControl,
   TouchableOpacity,
-  Modal,
-  ScrollView,
   ActivityIndicator,
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
 import SocialPost from "../components/SocialPost";
 import IssueDetailModal from "../components/IssueDetailModal";
+import FilterModal from "../components/FilterModal";
 import api from "../services/api";
 import { useUserContext } from "../context/UserContext";
 import * as Location from "expo-location";
@@ -26,10 +25,20 @@ const HomeScreen = ({ navigation }) => {
   const [modalVisible, setModalVisible] = useState(false);
   const [filtersVisible, setFiltersVisible] = useState(false);
   const [filters, setFilters] = useState({
-    status: "open", // Default to OPEN issues only
-    severity: "all", // all, high, medium, low
-    sortBy: "severity", // severity, date, likes
+    status: "open",
+    severity: "all",
+    sortBy: "severity",
+    days: 30,
+    radiusKm: 5,
+    issueTypes: [],
+    limit: 20,
   });
+  const [loadingLocation, setLoadingLocation] = useState(false);
+
+  // Pagination state
+  const [page, setPage] = useState(1);
+  const [hasMore, setHasMore] = useState(true);
+  const [loadingMore, setLoadingMore] = useState(false);
 
   const {
     lastLocation,
@@ -37,7 +46,6 @@ const HomeScreen = ({ navigation }) => {
     updateLastLocation,
     loading: contextLoading,
   } = useUserContext();
-  const [loadingLocation, setLoadingLocation] = useState(false);
 
   useEffect(() => {
     if (!contextLoading) {
@@ -45,20 +53,19 @@ const HomeScreen = ({ navigation }) => {
     }
   }, [lastLocation, filters, contextLoading]);
 
-  // Apply filters to posts
   const getFilteredPosts = () => {
-    let filteredPosts = [...posts];
+    let result = [...posts];
 
     // Filter by status
     if (filters.status !== "all") {
-      filteredPosts = filteredPosts.filter(
+      result = result.filter(
         (post) => post.status?.toLowerCase() === filters.status
       );
     }
 
     // Filter by severity
     if (filters.severity !== "all") {
-      filteredPosts = filteredPosts.filter((post) => {
+      result = result.filter((post) => {
         switch (filters.severity) {
           case "high":
             return post.severityScore >= 8;
@@ -72,8 +79,23 @@ const HomeScreen = ({ navigation }) => {
       });
     }
 
+    // Filter by issue types (intersection)
+    if (filters.issueTypes && filters.issueTypes.length > 0) {
+      const selectedSet = new Set(
+        filters.issueTypes.map((t) => String(t).toUpperCase())
+      );
+      result = result.filter((post) => {
+        const types = (post.issueTypes || []).map((t) =>
+          typeof t === "string"
+            ? t.toUpperCase()
+            : String(t?.type || t?.name || t).toUpperCase()
+        );
+        return types.some((t) => selectedSet.has(t));
+      });
+    }
+
     // Sort posts
-    filteredPosts.sort((a, b) => {
+    result.sort((a, b) => {
       switch (filters.sortBy) {
         case "date":
           return new Date(b.createdAt) - new Date(a.createdAt);
@@ -85,27 +107,21 @@ const HomeScreen = ({ navigation }) => {
       }
     });
 
-    return filteredPosts;
+    return result;
   };
 
-  // Handle filter changes
-  const updateFilter = (filterType, value) => {
-    setFilters((prev) => ({ ...prev, [filterType]: value }));
+  const filteredPosts = getFilteredPosts();
+
+  // Filter handlers - React Compiler will optimize
+  const handleApplyFilters = (newFilters) => {
+    setRefreshing(true);
+    setFilters(newFilters);
+    setFiltersVisible(false);
   };
 
-  // Reset filters
-  const resetFilters = () => {
-    setFilters({
-      status: "open", // Reset to open issues
-      severity: "all",
-      sortBy: "severity",
-    });
+  const handleResetFilters = (resetFilters) => {
+    setFilters(resetFilters);
   };
-
-  // Pagination state
-  const [page, setPage] = useState(1);
-  const [hasMore, setHasMore] = useState(true);
-  const [loadingMore, setLoadingMore] = useState(false);
 
   const handleLoadMore = async () => {
     if (loadingMore || !hasMore || !lastLocation?.coords) return;
@@ -122,8 +138,10 @@ const HomeScreen = ({ navigation }) => {
         params: {
           latitude: lastLocation.coords.latitude,
           longitude: lastLocation.coords.longitude,
-          limit: 20,
+          limit: filters.limit,
           skip: posts.length, // Use current posts length as offset to avoid duplicates
+          radius_km: filters.radiusKm,
+          days_back: filters.days,
         },
       });
 
@@ -149,8 +167,8 @@ const HomeScreen = ({ navigation }) => {
                 issue.severity_score >= 8
                   ? "High"
                   : issue.severity_score >= 4
-                  ? "Medium"
-                  : "Low",
+                    ? "Medium"
+                    : "Low",
               co2Impact: issue.co2Impact,
               likes: upvoteCount,
               status: issue.status,
@@ -169,10 +187,8 @@ const HomeScreen = ({ navigation }) => {
         );
 
         console.log(
-          `Loaded ${
-            newIssues.length
-          } new issues with user status. Total in backend: ${
-            response.data.total || "unknown"
+          `Loaded ${newIssues.length
+          } new issues with user status. Total in backend: ${response.data.total || "unknown"
           }, Current skip: ${response.data.skip || 0}`
         );
 
@@ -215,30 +231,58 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  // Location formatting with caching
+  const locationCache = React.useRef(new Map());
+
   const formatLocation = async (location) => {
     if (!location) return "Unknown location";
+
+    const lat =
+      typeof location.lat === "number"
+        ? location.lat
+        : typeof location.latitude === "number"
+          ? location.latitude
+          : undefined;
+    const lon =
+      typeof location.lon === "number"
+        ? location.lon
+        : typeof location.longitude === "number"
+          ? location.longitude
+          : undefined;
+
+    if (typeof lat !== "number" || typeof lon !== "number") {
+      return "Unknown location";
+    }
+
+    // Check cache first
+    const cacheKey = `${lat.toFixed(4)},${lon.toFixed(4)}`;
+    if (locationCache.current.has(cacheKey)) {
+      return locationCache.current.get(cacheKey);
+    }
+
     try {
       const addressParts = await Location.reverseGeocodeAsync({
-        latitude: location.lat,
-        longitude: location.lon,
+        latitude: lat,
+        longitude: lon,
       });
-      console.log(
-        "Reverse geocode result for location:",
-        location,
-        addressParts
-      );
+
       if (addressParts.length > 0) {
         const { name, street } = addressParts[0];
-        return [name, street].filter(Boolean).join(", ");
+        const formatted = [name, street].filter(Boolean).join(", ");
+
+        // Cache the result
+        locationCache.current.set(cacheKey, formatted);
+        return formatted;
       }
     } catch (e) {
       console.log("Error formatting location:", e);
     }
+
     return "Unknown location";
   };
 
-  const getPosts = async () => {
-    if (contextLoading) {
+  const getPosts = async (forceRefresh = false) => {
+    if (!forceRefresh && contextLoading) {
       console.log("Context still loading, skipping posts fetch");
       return;
     }
@@ -260,7 +304,9 @@ const HomeScreen = ({ navigation }) => {
         params: {
           latitude: lastLocation.coords.latitude,
           longitude: lastLocation.coords.longitude,
-          limit: 20,
+          limit: filters.limit,
+          radius_km: filters.radiusKm,
+          days_back: filters.days,
         },
       });
       console.log("API Response:", response.data);
@@ -290,8 +336,8 @@ const HomeScreen = ({ navigation }) => {
               issue.severity_score >= 8
                 ? "High"
                 : issue.severity_score >= 4
-                ? "Medium"
-                : "Low",
+                  ? "Medium"
+                  : "Low",
             co2Impact: issue.co2Impact,
             likes: upvoteCount,
             status: issue.status,
@@ -332,6 +378,7 @@ const HomeScreen = ({ navigation }) => {
     }
   };
 
+  // Event handlers - React Compiler will optimize
   const handlePostPress = (post) => {
     setSelectedIssue(post);
     setModalVisible(true);
@@ -343,7 +390,6 @@ const HomeScreen = ({ navigation }) => {
   };
 
   const handleUploadFix = (post) => {
-    // Navigate to FixUploadScreen with issue data
     navigation.navigate("FixUpload", {
       issueId: post.id,
       issueData: post,
@@ -352,9 +398,11 @@ const HomeScreen = ({ navigation }) => {
 
   const onRefresh = async () => {
     setRefreshing(true);
-    // getPosts will reset pagination state internally
-    await getPosts();
-    setRefreshing(false);
+    try {
+      await getPosts(true); // Force refresh, ignore context loading
+    } finally {
+      setRefreshing(false);
+    }
   };
 
   const handleSetLocation = async () => {
@@ -414,9 +462,11 @@ const HomeScreen = ({ navigation }) => {
           <Text style={styles.filterButtonText}>Filters</Text>
         </TouchableOpacity>
         <Text style={styles.filterSummary}>
-          {getFilteredPosts().length} of {posts.length} issues
+          {filteredPosts.length} of {posts.length} issues
         </Text>
       </View>
+
+      {/* Using built-in RefreshControl spinner instead of custom overlay */}
 
       {/* No Location Empty State */}
       {!contextLoading && (!lastLocation || !lastLocation.coords) && (
@@ -451,7 +501,7 @@ const HomeScreen = ({ navigation }) => {
       {/* Issues List */}
       {!contextLoading && lastLocation && lastLocation.coords && (
         <FlatList
-          data={getFilteredPosts()}
+          data={filteredPosts}
           renderItem={({ item }) => (
             <SocialPost
               postId={item.id}
@@ -476,6 +526,13 @@ const HomeScreen = ({ navigation }) => {
           keyExtractor={(item) => item.id.toString()}
           showsVerticalScrollIndicator={false}
           contentContainerStyle={styles.listContent}
+          // Performance optimizations
+          removeClippedSubviews={true}
+          maxToRenderPerBatch={10}
+          updateCellsBatchingPeriod={50}
+          initialNumToRender={5}
+          windowSize={5}
+          // Refresh
           refreshControl={
             <RefreshControl
               refreshing={refreshing}
@@ -484,6 +541,7 @@ const HomeScreen = ({ navigation }) => {
               colors={["#4285f4"]}
             />
           }
+          // Pagination
           onEndReached={handleLoadMore}
           onEndReachedThreshold={0.5}
           ListFooterComponent={
@@ -498,131 +556,30 @@ const HomeScreen = ({ navigation }) => {
               </View>
             ) : null
           }
+          ListEmptyComponent={
+            !refreshing && (
+              <View style={styles.emptyState}>
+                <Ionicons name="search-outline" size={64} color="#ccc" />
+                <Text style={styles.emptyStateTitle}>No Issues Found</Text>
+                <Text style={styles.emptyStateText}>
+                  Try adjusting your filters or check back later
+                </Text>
+              </View>
+            )
+          }
         />
       )}
 
-      {/* Filter Modal */}
-      <Modal
+      {/* Filter Modal - Using reusable component */}
+      <FilterModal
         visible={filtersVisible}
-        animationType="slide"
-        transparent={true}
-        onRequestClose={() => setFiltersVisible(false)}
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.filterModal}>
-            <View style={styles.filterHeader}>
-              <Text style={styles.filterTitle}>Filters</Text>
-              <TouchableOpacity
-                onPress={() => setFiltersVisible(false)}
-                style={styles.closeButton}
-              >
-                <Text style={styles.closeButtonText}>×</Text>
-              </TouchableOpacity>
-            </View>
-
-            <ScrollView style={styles.filterContent}>
-              {/* Status Filter */}
-              <View style={styles.filterSection}>
-                <Text style={styles.filterSectionTitle}>Status</Text>
-                <View style={styles.filterOptions}>
-                  {["all", "open", "closed"].map((status) => (
-                    <TouchableOpacity
-                      key={status}
-                      style={[
-                        styles.filterOption,
-                        filters.status === status &&
-                          styles.filterOptionSelected,
-                      ]}
-                      onPress={() => updateFilter("status", status)}
-                    >
-                      <Text
-                        style={[
-                          styles.filterOptionText,
-                          filters.status === status &&
-                            styles.filterOptionTextSelected,
-                        ]}
-                      >
-                        {status.charAt(0).toUpperCase() + status.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Severity Filter */}
-              <View style={styles.filterSection}>
-                <Text style={styles.filterSectionTitle}>Severity</Text>
-                <View style={styles.filterOptions}>
-                  {["all", "high", "medium", "low"].map((severity) => (
-                    <TouchableOpacity
-                      key={severity}
-                      style={[
-                        styles.filterOption,
-                        filters.severity === severity &&
-                          styles.filterOptionSelected,
-                      ]}
-                      onPress={() => updateFilter("severity", severity)}
-                    >
-                      <Text
-                        style={[
-                          styles.filterOptionText,
-                          filters.severity === severity &&
-                            styles.filterOptionTextSelected,
-                        ]}
-                      >
-                        {severity.charAt(0).toUpperCase() + severity.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Sort By */}
-              <View style={styles.filterSection}>
-                <Text style={styles.filterSectionTitle}>Sort By</Text>
-                <View style={styles.filterOptions}>
-                  {["severity", "date", "likes"].map((sort) => (
-                    <TouchableOpacity
-                      key={sort}
-                      style={[
-                        styles.filterOption,
-                        filters.sortBy === sort && styles.filterOptionSelected,
-                      ]}
-                      onPress={() => updateFilter("sortBy", sort)}
-                    >
-                      <Text
-                        style={[
-                          styles.filterOptionText,
-                          filters.sortBy === sort &&
-                            styles.filterOptionTextSelected,
-                        ]}
-                      >
-                        {sort.charAt(0).toUpperCase() + sort.slice(1)}
-                      </Text>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              </View>
-
-              {/* Action Buttons */}
-              <View style={styles.filterActions}>
-                <TouchableOpacity
-                  style={styles.resetButton}
-                  onPress={resetFilters}
-                >
-                  <Text style={styles.resetButtonText}>Reset</Text>
-                </TouchableOpacity>
-                <TouchableOpacity
-                  style={styles.applyButton}
-                  onPress={() => setFiltersVisible(false)}
-                >
-                  <Text style={styles.applyButtonText}>Apply</Text>
-                </TouchableOpacity>
-              </View>
-            </ScrollView>
-          </View>
-        </View>
-      </Modal>
+        onClose={() => setFiltersVisible(false)}
+        filters={filters}
+        onApply={handleApplyFilters}
+        onReset={handleResetFilters}
+        showRadiusFilter={true}
+        showLimitFilter={true}
+      />
 
       <IssueDetailModal
         visible={modalVisible}
@@ -677,7 +634,10 @@ const styles = StyleSheet.create({
     backgroundColor: "#fff",
     borderTopLeftRadius: 20,
     borderTopRightRadius: 20,
-    maxHeight: "80%",
+    height: "80%",
+    width: "100%",
+    alignSelf: "stretch",
+    overflow: "hidden",
   },
   filterHeader: {
     flexDirection: "row",
@@ -706,10 +666,15 @@ const styles = StyleSheet.create({
     fontWeight: "bold",
   },
   filterContent: {
-    padding: 16,
+    paddingHorizontal: 16,
+    paddingTop: 16,
+    flex: 1,
+  },
+  filterContentContainer: {
+    paddingBottom: 12,
   },
   filterSection: {
-    marginBottom: 24,
+    marginBottom: 16,
   },
   filterSectionTitle: {
     fontSize: 16,
@@ -743,7 +708,17 @@ const styles = StyleSheet.create({
   filterActions: {
     flexDirection: "row",
     justifyContent: "space-between",
-    marginTop: 24,
+    marginTop: 12,
+    marginBottom: 8,
+  },
+  filterFooter: {
+    flexDirection: "row",
+    justifyContent: "space-between",
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: "#e1e5e9",
+    backgroundColor: "#fff",
   },
   resetButton: {
     backgroundColor: "#f0f0f0",
@@ -765,6 +740,63 @@ const styles = StyleSheet.create({
     color: "#fff",
     fontWeight: "600",
   },
+  // Searchable types list
+  searchRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    marginBottom: 8,
+  },
+  searchInput: {
+    flex: 1,
+    borderWidth: 1,
+    borderColor: "#e1e5e9",
+    borderRadius: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    color: "#333",
+  },
+  clearBtn: {
+    marginLeft: 8,
+    paddingHorizontal: 12,
+    paddingVertical: 8,
+    borderRadius: 8,
+    backgroundColor: "#f0f0f0",
+  },
+  clearBtnText: {
+    color: "#666",
+    fontWeight: "600",
+  },
+  selectedSummaryRow: {
+    marginBottom: 8,
+  },
+  selectedSummaryText: {
+    fontSize: 12,
+    color: "#666",
+  },
+  optionListBox: {
+    borderWidth: 1,
+    borderColor: "#e1e5e9",
+    borderRadius: 12,
+    maxHeight: 200,
+    overflow: "hidden",
+  },
+  optionRow: {
+    paddingHorizontal: 12,
+    paddingVertical: 10,
+    flexDirection: "row",
+    justifyContent: "space-between",
+    alignItems: "center",
+    backgroundColor: "#fff",
+    borderBottomWidth: 1,
+    borderBottomColor: "#f3f4f6",
+  },
+  optionRowSelected: {
+    backgroundColor: "#eef6ff",
+  },
+  optionRowText: {
+    color: "#333",
+    fontSize: 14,
+  },
   loadingFooter: {
     paddingVertical: 20,
     alignItems: "center",
@@ -776,6 +808,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingVertical: 60,
   },
+
   loadingText: {
     marginTop: 10,
     fontSize: 14,

@@ -12,6 +12,18 @@ import { Ionicons } from "@expo/vector-icons";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
 import api from "../services/api";
 
+// Helper function moved outside component to prevent recreating on each render
+const getImpactColor = (status, impactLevel) => {
+  if (status?.toLowerCase() === "closed") {
+    return "#d4edda"; // Light green - indicates resolved/fixed
+  }
+  if (impactLevel === "High") return "#f8d7da"; // Light red
+  if (impactLevel === "Medium") return "#fff3cd"; // Light yellow
+  return "#d1ecf1"; // Light blue (low severity)
+};
+
+const getTagColor = () => "#FFF9E6";
+
 const SocialPost = ({
   postId,
   issueTypes,
@@ -40,23 +52,9 @@ const SocialPost = ({
   const [isUpvoted, setIsUpvoted] = useState(userStatus?.hasUpvoted || false);
   const [isUpvoting, setIsUpvoting] = useState(false);
   const [upvoteCount, setUpvoteCount] = useState(likes || 0);
+  const [fixedDate, setFixedDate] = useState(null);
 
-  const getImpactColor = () => {
-    // For closed issues, show light blue background (different from low)
-    if (status?.toLowerCase() === "closed") {
-      return "#e3f2fd"; // Light blue - indicates resolved/fixed
-    }
-    // For open issues, use impact level colors
-    if (impactLevel === "High") return "#ffebee"; // Light red
-    if (impactLevel === "Medium") return "#fff3e0"; // Light orange
-    return "#e8f5e9"; // Light green (low severity)
-  };
-
-  const getTagColor = () => {
-    return "#FFF9E6";
-  };
-
-  // Sync state with userStatus prop (if provided)
+  // React Compiler will optimize these
   useEffect(() => {
     // Initialize upvote count from props
     if (likes !== undefined && likes !== null) {
@@ -80,6 +78,34 @@ const SocialPost = ({
       setIsReported(hasReported);
     }
   }, [postId, userStatus?.hasUpvoted, userStatus?.hasReported]);
+
+  // If issue is closed but no closed_at present in detailedData, fetch fix-details to get a fixed date
+  useEffect(() => {
+    let cancelled = false;
+    const maybeFetchFixDate = async () => {
+      try {
+        if (status?.toLowerCase() !== "closed") return;
+        const closedAt = detailedData?.closed_at;
+        if (closedAt) {
+          setFixedDate(null);
+          return;
+        }
+        if (!postId) return;
+        const resp = await api.get(`/api/issues/${postId}/fix-details`);
+        if (!cancelled && resp?.data?.has_fix) {
+          const dateStr = resp.data.created_at || resp.data.submitted_at;
+          if (dateStr) setFixedDate(dateStr);
+        }
+      } catch (e) {
+        // Silent fallback; date chip will simply not render
+        // console.log("Fix date fetch skipped:", e?.message);
+      }
+    };
+    maybeFetchFixDate();
+    return () => {
+      cancelled = true;
+    };
+  }, [postId, status, detailedData?.closed_at]);
 
   const handleUpvote = async () => {
     // Prevent multiple simultaneous clicks
@@ -130,7 +156,7 @@ const SocialPost = ({
       Alert.alert(
         "Error",
         error.response?.data?.detail ||
-          "Failed to upvote. Please check your connection and try again."
+        "Failed to upvote. Please check your connection and try again."
       );
 
       // Revert optimistic update on error
@@ -206,7 +232,7 @@ const SocialPost = ({
               Alert.alert(
                 "Error",
                 error.response?.data?.detail ||
-                  "Failed to report issue. Please check your connection and try again."
+                "Failed to report issue. Please check your connection and try again."
               );
             }
           } finally {
@@ -219,7 +245,7 @@ const SocialPost = ({
 
   return (
     <TouchableOpacity
-      style={[styles.container, { backgroundColor: getImpactColor() }]}
+      style={[styles.container, { backgroundColor: getImpactColor(status, impactLevel) }]}
       onPress={onPress}
       activeOpacity={0.95}
     >
@@ -275,6 +301,38 @@ const SocialPost = ({
             </Text>
           )}
         </View>
+
+        {/* Dates Row */}
+        {(createdAt ||
+          detailedData?.created_at ||
+          detailedData?.closed_at ||
+          fixedDate) && (
+            <View style={styles.datesRow}>
+              {(createdAt || detailedData?.created_at) && (
+                <View style={styles.dateChip}>
+                  <Ionicons name="calendar" size={12} color="#666" />
+                  <Text style={styles.dateChipText}>
+                    Uploaded{" "}
+                    {new Date(
+                      createdAt || detailedData?.created_at
+                    ).toLocaleDateString()}
+                  </Text>
+                </View>
+              )}
+              {status?.toLowerCase() === "closed" &&
+                (detailedData?.closed_at || fixedDate) && (
+                  <View style={styles.dateChip}>
+                    <Ionicons name="checkmark-done" size={12} color="#4CAF79" />
+                    <Text style={[styles.dateChipText, { color: "#2f6e4f" }]}>
+                      Fixed on{" "}
+                      {new Date(
+                        detailedData?.closed_at || fixedDate
+                      ).toLocaleDateString()}
+                    </Text>
+                  </View>
+                )}
+            </View>
+          )}
 
         {/* Description */}
         {description && (
@@ -341,8 +399,8 @@ const SocialPost = ({
                   {isReporting
                     ? "Submitting..."
                     : isReported
-                    ? "Not Fixed"
-                    : "Not Fixed"}
+                      ? "Not Fixed"
+                      : "Not Fixed"}
                 </Text>
               </TouchableOpacity>
             </>
@@ -414,8 +472,8 @@ const SocialPost = ({
                     {isReporting
                       ? "Reporting..."
                       : isReported
-                      ? "Reported"
-                      : "Report"}
+                        ? "Reported"
+                        : "Report"}
                   </Text>
                 </TouchableOpacity>
               ) : null}
@@ -548,6 +606,27 @@ const styles = StyleSheet.create({
     lineHeight: 20,
     marginBottom: 12,
   },
+  datesRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 10,
+    marginBottom: 8,
+    flexWrap: "wrap",
+  },
+  dateChip: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: 6,
+    backgroundColor: "#f5f7fa",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  dateChipText: {
+    fontSize: 12,
+    color: "#666",
+    fontWeight: "600",
+  },
   actionsRow: {
     flexDirection: "row",
     alignItems: "center",
@@ -676,4 +755,5 @@ const styles = StyleSheet.create({
   },
 });
 
-export default SocialPost;
+// Wrap with React.memo to prevent unnecessary re-renders
+export default React.memo(SocialPost);

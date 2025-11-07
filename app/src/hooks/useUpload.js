@@ -1,8 +1,7 @@
 import { useState } from "react";
 import { Alert } from "react-native";
 import { auth } from "../services/firebase";
-import { submitIssue } from "../api/endpoints/issues.api";
-import { submitFix } from "../api/endpoints/fixes.api";
+import api from "../services/api";
 
 /**
  * Custom hook for file upload operations
@@ -69,7 +68,13 @@ export const useUpload = () => {
 
       setUploadProgress(50);
 
-      const response = await submitIssue(formData, token);
+      const response = await api.post("/submit-issue", formData, {
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 60000,
+      });
 
       setUploadProgress(100);
 
@@ -124,7 +129,12 @@ export const useUpload = () => {
 
       setUploadProgress(50);
 
-      const response = await submitFix(issueId, formData);
+      const response = await api.post(`/api/issues/${issueId}/submit-fix`, formData, {
+        headers: {
+          "Content-Type": "multipart/form-data",
+        },
+        timeout: 60000,
+      });
 
       setUploadProgress(100);
 

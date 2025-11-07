@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { fetchIssuesWithUserStatus } from "../api/endpoints/issues.api";
+import api from "../services/api";
 import { PAGINATION_CONFIG } from "../constants/config";
 import * as Location from "expo-location";
 
@@ -59,8 +59,8 @@ export const useIssues = (location) => {
         issue.severity_score >= 8
           ? "High"
           : issue.severity_score >= 4
-          ? "Medium"
-          : "Low",
+            ? "Medium"
+            : "Low",
       co2Impact: issue.co2Impact,
       likes: upvoteCount,
       status: issue.status,
@@ -87,11 +87,13 @@ export const useIssues = (location) => {
       }
 
       try {
-        const response = await fetchIssuesWithUserStatus({
-          latitude: location.coords.latitude,
-          longitude: location.coords.longitude,
-          limit: PAGINATION_CONFIG.DEFAULT_LIMIT,
-          skip: skipCount,
+        const response = await api.get("/api/issues/with-user-status", {
+          params: {
+            latitude: location.coords.latitude,
+            longitude: location.coords.longitude,
+            limit: PAGINATION_CONFIG.DEFAULT_LIMIT,
+            skip: skipCount,
+          },
         });
 
         if (!response.data?.issues) {

@@ -32,41 +32,12 @@ const LeaderboardScreen = () => {
       setLeaderboardData(response.data.leaderboard || []);
     } catch (error) {
       console.error("Error fetching leaderboard:", error);
-      // Set mock data for demonstration
-      setLeaderboardData(generateMockData(userType === "ngo"));
+      // No mock data - show empty state when API fails
+      setLeaderboardData([]);
     } finally {
       setLoading(false);
       setRefreshing(false);
     }
-  };
-
-  const generateMockData = (isNGO = false) => {
-    if (isNGO) {
-      return [
-        { rank: 1, name: "Community Builders NGO", co2: 3200, badges: [] },
-        { rank: 2, name: "Green Earth Foundation", co2: 2850, badges: [] },
-        { rank: 3, name: "Urban Care Society", co2: 2400, badges: [] },
-        { rank: 4, name: "Fix It Forward", co2: 2100, badges: [] },
-        { rank: 5, name: "City NGO Network", co2: 1900, badges: [] },
-        { rank: 6, name: "Road Warriors", co2: 1600, badges: [] },
-        { rank: 7, name: "Clean Streets Initiative", co2: 1400, badges: [] },
-        { rank: 8, name: "Civic Action Team", co2: 1200, badges: [] },
-        { rank: 9, name: "Local Heroes", co2: 1000, badges: [] },
-        { rank: 10, name: "Community First", co2: 800, badges: [] },
-      ];
-    }
-    return [
-      { rank: 1, name: "Citizen Hero", co2: 2450, badges: [] },
-      { rank: 2, name: "Community Champion", co2: 2100, badges: [] },
-      { rank: 3, name: "Civic Leader", co2: 1850, badges: [] },
-      { rank: 4, name: "Street Guardian", co2: 1600, badges: [] },
-      { rank: 5, name: "Urban Watcher", co2: 1400, badges: [] },
-      { rank: 6, name: "City Helper", co2: 1200, badges: [] },
-      { rank: 7, name: "Town Scout", co2: 1050, badges: [] },
-      { rank: 8, name: "Alert Citizen", co2: 900, badges: [] },
-      { rank: 9, name: "Watchful Eye", co2: 750, badges: [] },
-      { rank: 10, name: "Good Neighbor", co2: 600, badges: [] },
-    ];
   };
 
   const onRefresh = () => {
@@ -99,7 +70,6 @@ const LeaderboardScreen = () => {
   return (
     <View style={styles.container}>
       <View style={styles.header}>
-        <Text style={styles.headerTitle}>Leaderboard</Text>
         <Text style={styles.headerSubtitle}>
           {userType === "ngo"
             ? "Top NGO Organizations"
@@ -116,9 +86,11 @@ const LeaderboardScreen = () => {
       >
         {leaderboardData.length === 0 ? (
           <View style={styles.emptyContainer}>
-            <Text style={styles.emptyTitle}>No Data Yet</Text>
+            <Text style={styles.emptyIcon}>🏆</Text>
+            <Text style={styles.emptyTitle}>Coming Soon!</Text>
             <Text style={styles.emptySubtitle}>
-              Start reporting issues to appear on the leaderboard!
+              The leaderboard feature is being prepared. Keep reporting and
+              fixing issues to climb the ranks when it launches!
             </Text>
           </View>
         ) : (
@@ -235,19 +207,14 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: "#4285f4",
-    paddingTop: 20,
-    paddingBottom: 24,
+    paddingVertical: 16,
     paddingHorizontal: 20,
   },
-  headerTitle: {
-    fontSize: 28,
-    fontWeight: "bold",
-    color: "#fff",
-    marginBottom: 4,
-  },
   headerSubtitle: {
-    fontSize: 14,
-    color: "#e3f2fd",
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#fff",
+    textAlign: "center",
   },
   scrollView: {
     flex: 1,
@@ -384,16 +351,21 @@ const styles = StyleSheet.create({
     paddingTop: 80,
     paddingHorizontal: 40,
   },
+  emptyIcon: {
+    fontSize: 72,
+    marginBottom: 16,
+  },
   emptyTitle: {
-    fontSize: 20,
+    fontSize: 24,
     fontWeight: "bold",
     color: "#333",
-    marginBottom: 8,
+    marginBottom: 12,
   },
   emptySubtitle: {
-    fontSize: 14,
-    color: "#999",
+    fontSize: 16,
+    color: "#666",
     textAlign: "center",
+    lineHeight: 24,
   },
 });
 
