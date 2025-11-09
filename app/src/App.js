@@ -211,14 +211,14 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Remove loading screens - just show content directly
-  // if (loading) {
-  //   return <LoadingScreen type="auth" />;
-  // }
-
-  // if (checkingUpdates) {
-  //   return <LoadingScreen type="update" />;
-  // }
+  // Show loading indicator while checking authentication
+  if (loading) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+        <ActivityIndicator size="large" color="#4285f4" />
+      </View>
+    );
+  }
 
   return (
     <SafeAreaProvider>
