@@ -401,6 +401,44 @@ const MapScreen = ({ navigation }) => {
     setFixDetails(null);
   };
 
+  const handleUpvoteCallback = (postId, result) => {
+    // Update the selected issue if it matches
+    if (result.ok && selectedIssue && selectedIssue.id === postId) {
+      const isClosed = selectedIssue.status?.toLowerCase() === "closed";
+      const newLikes = result.upvotes
+        ? isClosed
+          ? result.upvotes.closed || 0
+          : result.upvotes.open || 0
+        : selectedIssue.likes;
+
+      setSelectedIssue({
+        ...selectedIssue,
+        likes: newLikes,
+        userStatus: {
+          ...selectedIssue.userStatus,
+          hasUpvoted: result.isActive,
+        },
+        detailedData: {
+          ...selectedIssue.detailedData,
+          upvotes: result.upvotes || selectedIssue.detailedData?.upvotes,
+        },
+      });
+    }
+  };
+
+  const handleReportCallback = (postId, result) => {
+    // Update the selected issue if it matches
+    if (result.ok && selectedIssue && selectedIssue.id === postId) {
+      setSelectedIssue({
+        ...selectedIssue,
+        userStatus: {
+          ...selectedIssue.userStatus,
+          hasReported: result.hasReported || true,
+        },
+      });
+    }
+  };
+
   const handleApplyFilters = (newFilters) => {
     setFilters(newFilters);
     setFiltersVisible(false);
@@ -451,14 +489,38 @@ const MapScreen = ({ navigation }) => {
       .filter(
         ({ lat, lon }) => typeof lat === "number" && typeof lon === "number"
       )
-      .map(({ issue, lat, lon }) => ({
-        latitude: lat,
-        longitude: lon,
-        weight: (issue.severity_score || 5) / 10,
-      }));
+      .map(({ issue, lat, lon }) => {
+        const raw = (issue.severity_score ?? 5) / 10; // 0..1
+        const weight = Math.min(1, Math.max(0.1, raw)); // clamp for stability
+        return {
+          latitude: lat,
+          longitude: lon,
+          weight,
+        };
+      });
   };
 
   const heatmapPoints = getHeatmapPoints();
+
+  // Compute dynamic heatmap parameters to improve smoothness
+  const computeHeatmapRadius = () => {
+    // currentZoom is maintained from onRegionChangeComplete
+    const minZoom = 8;
+    const maxZoom = 18;
+    const z = typeof currentZoom === "number" ? currentZoom : 13;
+    const t = Math.max(0, Math.min(1, (z - minZoom) / (maxZoom - minZoom)));
+    // Smaller radius for tighter, more precise heatmap units
+    return Math.round(15 + t * (30 - 15)); // 15-30 range for smaller units
+  };
+
+  const computeMaxIntensity = () => {
+    // Increase intensity slightly with zoom to keep look consistent
+    const minZoom = 8;
+    const maxZoom = 18;
+    const z = typeof currentZoom === "number" ? currentZoom : 13;
+    const t = Math.max(0, Math.min(1, (z - minZoom) / (maxZoom - minZoom)));
+    return Math.round(120 + t * 100); // 120..220 for better color spread
+  };
 
   if (loading && issues.length === 0) {
     return (
@@ -554,20 +616,36 @@ const MapScreen = ({ navigation }) => {
         {/* Heatmap Layer */}
         {showHeatmap && heatmapPoints.length > 0 && (
           <Heatmap
-            points={heatmapPoints}
-            radius={50}
+            points={heatmapPoints.map(p => ({
+              ...p,
+              // Minimal jitter to smooth grid artifacts but keep alignment with markers
+              latitude: p.latitude + (Math.random() - 0.5) * 0.0002,
+              longitude: p.longitude + (Math.random() - 0.5) * 0.0002,
+              // Normalize weight to 0..1 range with wider spread
+              weight: Math.min(1, Math.max(0.15, p.weight * 1.2))
+            }))}
+            radius={computeHeatmapRadius()}
             opacity={0.6}
-            maxIntensity={100}
-            gradientSmoothing={10}
+            maxIntensity={computeMaxIntensity()}
             gradient={{
+              // Ultra-smooth gradient with many color stops for perfectly smooth transitions
               colors: [
-                "#991B1B",                  // Dark red - high severity
-                "#EF4444",                  // Red - high severity
-                "#F97316",                  // Orange - medium severity
-                "rgba(34, 197, 94, 0.7)",  // Green - low severity
-                "rgba(34, 197, 94, 0)",    // Transparent green - very low severity
+                "rgba(34, 197, 94, 0)",    // Transparent green (start)
+                "#22C55E",                  // Green
+                "#65D66E",                  // Light green
+                "#84CC16",                  // Lime
+                "#A3E635",                  // Light lime
+                "#EAB308",                  // Yellow
+                "#FBBF24",                  // Light yellow
+                "#F59E0B",                  // Amber
+                "#FB923C",                  // Light orange
+                "#F97316",                  // Orange
+                "#FB7185",                  // Pink-orange
+                "#EF4444",                  // Red
+                "#DC2626",                  // Bright red
+                "#991B1B"                   // Dark red (max)
               ],
-              startPoints: [0.0, 0.25, 0.5, 0.75, 1.0],
+              startPoints: [0.0, 0.1, 0.2, 0.3, 0.4, 0.5, 0.55, 0.6, 0.65, 0.7, 0.75, 0.8, 0.9, 1.0],
               colorMapSize: 1024,
             }}
           />
@@ -617,6 +695,8 @@ const MapScreen = ({ navigation }) => {
         issueData={selectedIssue}
         userType={userType}
         onUploadFix={handleUploadFix}
+        onUpvote={handleUpvoteCallback}
+        onReport={handleReportCallback}
       />
     </View>
   );

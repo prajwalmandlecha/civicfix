@@ -15,11 +15,11 @@ import SignupScreen from "./screens/SignupScreen";
 import { ActionSheetProvider } from "@expo/react-native-action-sheet";
 import { KeyboardProvider } from "react-native-keyboard-controller";
 import subscribeToAuthState from "./hooks/subscribeToAuthState";
-import { ActivityIndicator } from "react-native";
 import LogoutButton from "./components/LogoutButton";
 import { UserProvider, useUserContext } from "./context/UserContext";
 import * as Updates from "expo-updates";
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
+import { View, ActivityIndicator } from "react-native";
 
 async function checkForUpdates() {
   try {
@@ -193,19 +193,32 @@ const MainNav = () => {
 
 export default function App() {
   const { user, loading } = subscribeToAuthState();
+  const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   useEffect(() => {
-    // Defer update check to avoid blocking initial render
+    // Check for updates on app start (non-blocking)
+    const checkUpdates = async () => {
+      setCheckingUpdates(true);
+      await checkForUpdates();
+      setCheckingUpdates(false);
+    };
+
+    // Defer update check slightly to allow faster initial render
     const timer = setTimeout(() => {
-      checkForUpdates();
-    }, 5000); // Check after 5 seconds
+      checkUpdates();
+    }, 2000);
 
     return () => clearTimeout(timer);
   }, []);
 
-  if (loading) {
-    return <ActivityIndicator size="large" color="#6FCF97" />;
-  }
+  // Remove loading screens - just show content directly
+  // if (loading) {
+  //   return <LoadingScreen type="auth" />;
+  // }
+
+  // if (checkingUpdates) {
+  //   return <LoadingScreen type="update" />;
+  // }
 
   return (
     <SafeAreaProvider>

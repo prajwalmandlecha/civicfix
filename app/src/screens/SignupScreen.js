@@ -90,12 +90,21 @@ const SignupScreen = ({ navigation }) => {
       if (cred.user) {
         await updateProfile(cred.user, { displayName: name });
       }
+      // Use setDoc with merge for consistent user creation
       await setDoc(doc(firestore, "users", cred.user.uid), {
         name,
         email,
         userType,
         createdAt: new Date(),
-      });
+        karma: 0,
+        has_posted_before: false,
+        lastLocation: null,
+        stats: {
+          issues_reported: 0,
+          issues_resolved: 0,
+          co2_saved: 0.0
+        }
+      }, { merge: true });
     } catch (error) {
       console.error("Error signing up:", error);
       setError(getErrorMessage(error.code));

@@ -1,5 +1,6 @@
 import { useState } from "react";
-import { Alert } from "react-native";
+import { Alert } from "react-native"; // still used for errors
+import { showError, showInfo } from "../utils/notify";
 import { auth } from "../services/firebase";
 import api from "../services/api";
 
@@ -22,15 +23,15 @@ export const useUpload = () => {
     isAnonymous = false,
   }) => {
     if (!image) {
-      Alert.alert("Error", "Please select an image");
+      showError("Please select an image");
       return { success: false, error: "No image" };
     }
     if (!description.trim()) {
-      Alert.alert("Error", "Please provide a description");
+      showError("Please provide a description");
       return { success: false, error: "No description" };
     }
     if (!address.trim()) {
-      Alert.alert("Error", "Please provide a location");
+      showError("Please provide a location");
       return { success: false, error: "No location" };
     }
 
@@ -61,7 +62,7 @@ export const useUpload = () => {
       // Get auth token
       const user = auth.currentUser;
       if (!user) {
-        Alert.alert("Error", "You must be logged in to submit an issue");
+        showError("You must be logged in to submit an issue");
         return { success: false, error: "Not authenticated" };
       }
       const token = await user.getIdToken();
@@ -79,7 +80,7 @@ export const useUpload = () => {
       setUploadProgress(100);
 
       if (response.data.no_issues_found) {
-        Alert.alert("Notice", "No issues were detected in the uploaded image.");
+        showInfo("No issues were detected in the uploaded image.");
         return { success: true, noIssuesFound: true, data: response.data };
       }
 
@@ -89,7 +90,7 @@ export const useUpload = () => {
       const errorMessage =
         error.response?.data?.detail ||
         "Failed to upload issue. Please check your connection and try again.";
-      Alert.alert("Upload Failed", errorMessage);
+      showError(errorMessage, "Upload Failed");
       return { success: false, error: errorMessage };
     } finally {
       setUploading(false);
@@ -102,7 +103,7 @@ export const useUpload = () => {
    */
   const uploadFix = async ({ issueId, images, description, title }) => {
     if (!images || images.length === 0) {
-      Alert.alert("Error", "Please select at least one image");
+      showError("Please select at least one image");
       return { success: false, error: "No images" };
     }
 
@@ -143,7 +144,7 @@ export const useUpload = () => {
       console.error("Fix upload error:", error);
       const errorMessage =
         error.response?.data?.detail || "Failed to upload fix. Please try again.";
-      Alert.alert("Upload Failed", errorMessage);
+      showError(errorMessage, "Upload Failed");
       return { success: false, error: errorMessage };
     } finally {
       setUploading(false);

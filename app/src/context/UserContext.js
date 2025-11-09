@@ -1,6 +1,6 @@
 import React, { createContext, useState, useContext, useEffect } from "react";
 import { onAuthStateChanged } from "firebase/auth";
-import { doc, getDoc, updateDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc } from "firebase/firestore";
 import { auth, firestore } from "../services/firebase";
 import * as Location from "expo-location";
 
@@ -18,8 +18,15 @@ export const UserProvider = ({ children }) => {
       const userDoc = await getDoc(doc(firestore, "users", uid));
       if (userDoc.exists()) {
         const data = userDoc.data();
+        console.log("[UserContext] Fetched user profile:", { uid, data });
+
         setProfile(data);
-        setUserType(data.userType || null);
+
+        // Set userType with fallback to "citizen" if not set
+        const userTypeValue = data.userType || "citizen";
+        console.log("[UserContext] Setting userType:", userTypeValue);
+        setUserType(userTypeValue);
+
         if (data.lastLocation) {
           setLastLocation(data.lastLocation);
         } else {
@@ -27,6 +34,11 @@ export const UserProvider = ({ children }) => {
           console.log("No stored location found, fetching current location...");
           await fetchAndSetInitialLocation(uid);
         }
+      } else {
+        console.warn(
+          "[UserContext] User document does not exist for uid:",
+          uid
+        );
       }
     } catch (error) {
       console.error("Error fetching user profile:", error);
@@ -94,10 +106,14 @@ export const UserProvider = ({ children }) => {
       setLastLocation(locationData);
 
       // Save to Firestore
-      await updateDoc(doc(firestore, "users", uid), {
-        lastLocation: locationData,
-        lastLocationUpdated: new Date().toISOString(),
-      });
+      await setDoc(
+        doc(firestore, "users", uid),
+        {
+          lastLocation: locationData,
+          lastLocationUpdated: new Date().toISOString(),
+        },
+        { merge: true }
+      );
 
       console.log("Initial location set successfully:", address);
     } catch (error) {
@@ -110,10 +126,14 @@ export const UserProvider = ({ children }) => {
     setLastLocation(location);
     if (user) {
       try {
-        await updateDoc(doc(firestore, "users", user.uid), {
-          lastLocation: location,
-          lastLocationUpdated: new Date().toISOString(),
-        });
+        await setDoc(
+          doc(firestore, "users", user.uid),
+          {
+            lastLocation: location,
+            lastLocationUpdated: new Date().toISOString(),
+          },
+          { merge: true }
+        );
       } catch (error) {
         console.error("Error updating last location:", error);
       }

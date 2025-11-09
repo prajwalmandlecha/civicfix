@@ -9,7 +9,6 @@ import {
   TextInput,
   ActivityIndicator,
   Alert,
-  Platform,
 } from "react-native";
 import { MaterialIcons } from "@expo/vector-icons";
 import * as ImagePicker from "expo-image-picker";
@@ -18,6 +17,7 @@ import api from "../services/api";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
 import { Ionicons } from "@expo/vector-icons";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
+import { showSuccess, showInfo, showError } from "../utils/notify";
 
 const FixUploadScreen = ({ route, navigation }) => {
   const { issueId, issueData } = route.params || {};
@@ -187,34 +187,32 @@ const FixUploadScreen = ({ route, navigation }) => {
               alertMessage = `Fix submitted successfully with ${images.length} image(s)! Your contribution has been recorded.`;
           }
 
-          Alert.alert(alertTitle, alertMessage, [
-            {
-              text: "OK",
-              onPress: () => {
-                setImages([]);
-                setDescription("");
-                setUploading(false);
-                navigation.goBack();
-              },
-            },
-          ]);
+          // Use non-intrusive toasts for outcome messaging
+          if (outcome === "closed") {
+            showSuccess(alertMessage);
+          } else if (outcome === "partially_closed") {
+            showInfo(alertMessage);
+          } else if (outcome === "rejected") {
+            showInfo(alertMessage);
+          } else if (outcome === "needs_manual_review") {
+            showInfo(alertMessage);
+          } else {
+            showSuccess(alertMessage);
+          }
+          // Reset and navigate back immediately
+          setImages([]);
+          setDescription("");
+          setUploading(false);
+          navigation.goBack();
         } else {
           // Fallback for when verification_result is not available
-          Alert.alert(
-            "Fix Submitted",
-            `Fix submitted successfully with ${images.length} image(s)! Your contribution has been recorded.`,
-            [
-              {
-                text: "OK",
-                onPress: () => {
-                  setImages([]);
-                  setDescription("");
-                  setUploading(false);
-                  navigation.goBack();
-                },
-              },
-            ]
+          showSuccess(
+            `Fix submitted successfully with ${images.length} image(s)! Your contribution has been recorded.`
           );
+          setImages([]);
+          setDescription("");
+          setUploading(false);
+          navigation.goBack();
         }
       }
     } catch (error) {
@@ -228,7 +226,7 @@ const FixUploadScreen = ({ route, navigation }) => {
         errorMessage = error.message;
       }
 
-      Alert.alert("Submission Failed", errorMessage);
+      showError(errorMessage, "Submission Failed");
       setUploading(false);
     }
   };
@@ -240,10 +238,13 @@ const FixUploadScreen = ({ route, navigation }) => {
       showsVerticalScrollIndicator={false}
       keyboardShouldPersistTaps="handled"
     >
-      {/* Issue Info */}
+      {/* Issue Info Card */}
       {issueData && (
         <View style={styles.issueCard}>
-          <Text style={styles.issueTitle}>Fixing Issue</Text>
+          <View style={styles.issueCardHeader}>
+            <MaterialIcons name="info-outline" size={20} color="#4285f4" />
+            <Text style={styles.issueCardTitle}>Fixing Issue</Text>
+          </View>
           {issueData.postImage && (
             <Image
               source={issueData.postImage}
@@ -257,56 +258,91 @@ const FixUploadScreen = ({ route, navigation }) => {
               <Text style={styles.issueLocation}>{issueData.location}</Text>
             </View>
             {issueData.issueTypes && issueData.issueTypes.length > 0 && (
-              <Text style={styles.issueType}>
-                {issueData.issueTypes
-                  .map((t) => getIssueDisplayName(t.type))
-                  .join(", ")}
-              </Text>
+              <View style={styles.issueTypesRow}>
+                {issueData.issueTypes.slice(0, 3).map((t, idx) => (
+                  <View key={idx} style={styles.issueTypeChip}>
+                    <Text style={styles.issueTypeText}>
+                      {getIssueDisplayName(t.type)}
+                    </Text>
+                  </View>
+                ))}
+              </View>
             )}
           </View>
         </View>
       )}
 
-      {/* Upload Section */}
+      {/* Upload Images Section */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Upload Fix Images</Text>
+        <Text style={styles.sectionTitle}>Upload Fix Photos</Text>
         <Text style={styles.sectionSubtitle}>
-          Add photos showing the completed fix (up to 5 images)
+          Add photos showing the completed work (up to 5 images)
         </Text>
 
-        {/* Images Grid */}
-        <View style={styles.imagesGrid}>
-          {images.map((image, index) => (
-            <View key={index} style={styles.imagePreviewContainer}>
-              <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-              <TouchableOpacity
-                style={styles.removeImageButton}
-                onPress={() => removeImage(index)}
-              >
-                <MaterialIcons name="close" size={20} color="#fff" />
-              </TouchableOpacity>
+        <View style={styles.imageUploadContainer}>
+          {images.length === 0 ? (
+            // Empty state
+            <View style={styles.uploadPlaceholder}>
+              <MaterialIcons
+                name="add-photo-alternate"
+                size={48}
+                color="#ccc"
+                style={{ marginBottom: 16 }}
+              />
+              <Text style={styles.uploadPlaceholderText}>
+                Add photos of the completed fix
+              </Text>
+
+              <View style={styles.uploadButtonsRow}>
+                <TouchableOpacity
+                  onPress={takePhoto}
+                  style={styles.uploadButton}
+                >
+                  <MaterialIcons name="photo-camera" size={24} color="#4CAF79" />
+                  <Text style={styles.uploadButtonText}>Camera</Text>
+                </TouchableOpacity>
+
+                <TouchableOpacity
+                  onPress={pickImages}
+                  style={styles.uploadButton}
+                >
+                  <MaterialIcons name="photo-library" size={24} color="#4CAF79" />
+                  <Text style={styles.uploadButtonText}>Gallery</Text>
+                </TouchableOpacity>
+              </View>
             </View>
-          ))}
+          ) : (
+            // Images grid
+            <View style={styles.imagesGrid}>
+              {images.map((image, index) => (
+                <View key={index} style={styles.imagePreviewContainer}>
+                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                  <TouchableOpacity
+                    style={styles.removeImageButton}
+                    onPress={() => removeImage(index)}
+                  >
+                    <MaterialIcons name="close" size={18} color="#fff" />
+                  </TouchableOpacity>
+                  <View style={styles.imageNumberBadge}>
+                    <Text style={styles.imageNumberText}>{index + 1}</Text>
+                  </View>
+                </View>
+              ))}
 
-          {/* Add Image Buttons */}
-          {images.length < 5 && (
-            <>
-              <TouchableOpacity
-                style={styles.addImageButton}
-                onPress={pickImages}
-              >
-                <MaterialIcons name="photo-library" size={32} color="#4285f4" />
-                <Text style={styles.addImageText}>Gallery</Text>
-              </TouchableOpacity>
-
-              <TouchableOpacity
-                style={styles.addImageButton}
-                onPress={takePhoto}
-              >
-                <MaterialIcons name="camera-alt" size={32} color="#4285f4" />
-                <Text style={styles.addImageText}>Camera</Text>
-              </TouchableOpacity>
-            </>
+              {/* Add More Button */}
+              {images.length < 5 && (
+                <TouchableOpacity
+                  style={styles.addMoreButton}
+                  onPress={pickImages}
+                >
+                  <MaterialIcons name="add" size={32} color="#4CAF79" />
+                  <Text style={styles.addMoreText}>Add More</Text>
+                  <Text style={styles.addMoreSubtext}>
+                    {5 - images.length} left
+                  </Text>
+                </TouchableOpacity>
+              )}
+            </View>
           )}
         </View>
       </View>
@@ -315,11 +351,12 @@ const FixUploadScreen = ({ route, navigation }) => {
       <View style={styles.section}>
         <Text style={styles.sectionTitle}>Description (Optional)</Text>
         <Text style={styles.sectionSubtitle}>
-          Add any notes about the fix you completed
+          Add details about the fix you completed
         </Text>
         <TextInput
-          style={styles.descriptionInput}
-          placeholder="E.g., Filled the pothole with asphalt, repaired the streetlight..."
+          style={styles.textArea}
+          placeholder="E.g., Filled the pothole with asphalt, replaced broken streetlight bulb..."
+          placeholderTextColor="#999"
           value={description}
           onChangeText={setDescription}
           multiline
@@ -332,7 +369,7 @@ const FixUploadScreen = ({ route, navigation }) => {
       <TouchableOpacity
         style={[
           styles.submitButton,
-          (uploading || images.length === 0) && styles.submitButtonDisabled,
+          images.length > 0 && !uploading && styles.submitButtonActive,
         ]}
         onPress={handleSubmit}
         disabled={uploading || images.length === 0}
@@ -341,8 +378,19 @@ const FixUploadScreen = ({ route, navigation }) => {
           <ActivityIndicator color="#fff" />
         ) : (
           <>
-            <MaterialIcons name="check-circle" size={24} color="#fff" />
-            <Text style={styles.submitButtonText}>Submit Fix</Text>
+            <MaterialIcons
+              name="check-circle"
+              size={20}
+              color={images.length > 0 ? "#fff" : "#999"}
+            />
+            <Text
+              style={[
+                styles.submitButtonText,
+                images.length > 0 && styles.submitButtonTextActive,
+              ]}
+            >
+              Submit Fix ({images.length} {images.length === 1 ? "photo" : "photos"})
+            </Text>
           </>
         )}
       </TouchableOpacity>
@@ -355,129 +403,255 @@ const FixUploadScreen = ({ route, navigation }) => {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: "#f8f9fa",
-  },
-  issueCard: {
     backgroundColor: "#fff",
-    margin: 16,
+  },
+
+  // Issue Info Card
+  issueCard: {
+    backgroundColor: "#f8f9fa",
     borderRadius: 12,
     padding: 16,
+    margin: 16,
+    marginTop: 8,
+    borderWidth: 1,
+    borderColor: "#e1e5e9",
     shadowColor: "#000",
-    shadowOffset: { width: 0, height: 2 },
-    shadowOpacity: 0.1,
-    shadowRadius: 4,
-    elevation: 3,
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.05,
+    shadowRadius: 2,
+    elevation: 1,
   },
-  issueTitle: {
-    fontSize: 18,
-    fontWeight: "700",
-    color: "#1a1a1a",
+  issueCardHeader: {
+    flexDirection: "row",
+    alignItems: "center",
     marginBottom: 12,
+  },
+  issueCardTitle: {
+    fontSize: 16,
+    fontWeight: "600",
+    color: "#333",
+    marginLeft: 8,
   },
   issueImage: {
     width: "100%",
-    height: 200,
+    height: 180,
     borderRadius: 8,
     marginBottom: 12,
   },
   issueInfo: {
+    gap: 8,
+  },
+  issueLocationRow: {
+    flexDirection: "row",
+    alignItems: "center",
     gap: 4,
   },
   issueLocation: {
     fontSize: 14,
     color: "#666",
+    flex: 1,
   },
-  issueType: {
-    fontSize: 13,
-    color: "#4285f4",
-    fontWeight: "600",
+  issueTypesRow: {
+    flexDirection: "row",
+    flexWrap: "wrap",
+    gap: 6,
   },
+  issueTypeChip: {
+    backgroundColor: "#e3f2fd",
+    paddingHorizontal: 10,
+    paddingVertical: 4,
+    borderRadius: 12,
+  },
+  issueTypeText: {
+    fontSize: 12,
+    color: "#1976d2",
+    fontWeight: "500",
+  },
+
+  // Section Container
   section: {
     paddingHorizontal: 16,
     marginBottom: 24,
   },
   sectionTitle: {
-    fontSize: 16,
-    fontWeight: "700",
-    color: "#1a1a1a",
+    fontSize: 18,
+    fontWeight: "600",
+    color: "#333",
     marginBottom: 4,
   },
   sectionSubtitle: {
-    fontSize: 13,
+    fontSize: 14,
     color: "#666",
-    marginBottom: 12,
+    marginBottom: 16,
   },
+
+  // Image Upload Container
+  imageUploadContainer: {
+    width: "100%",
+  },
+  uploadPlaceholder: {
+    backgroundColor: "#f8f9fa",
+    borderRadius: 12,
+    padding: 32,
+    alignItems: "center",
+    borderWidth: 2,
+    borderColor: "#e1e5e9",
+    borderStyle: "dashed",
+  },
+  uploadPlaceholderText: {
+    fontSize: 16,
+    color: "#999",
+    marginBottom: 20,
+    textAlign: "center",
+  },
+  uploadButtonsRow: {
+    flexDirection: "row",
+    gap: 12,
+    width: "100%",
+    justifyContent: "center",
+  },
+  uploadButton: {
+    backgroundColor: "#fff",
+    paddingHorizontal: 24,
+    paddingVertical: 14,
+    borderRadius: 8,
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 6,
+    borderWidth: 1,
+    borderColor: "#4CAF79",
+    minWidth: 120,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.1,
+    shadowRadius: 2,
+    elevation: 2,
+  },
+  uploadButtonText: {
+    fontSize: 14,
+    color: "#4CAF79",
+    fontWeight: "600",
+  },
+
+  // Images Grid
   imagesGrid: {
     flexDirection: "row",
     flexWrap: "wrap",
     gap: 12,
   },
   imagePreviewContainer: {
+    width: "48%",
+    aspectRatio: 1,
     position: "relative",
-    width: 100,
-    height: 100,
+    borderRadius: 12,
+    overflow: "hidden",
+    backgroundColor: "#f8f9fa",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
   imagePreview: {
     width: "100%",
     height: "100%",
-    borderRadius: 8,
   },
   removeImageButton: {
     position: "absolute",
-    top: -8,
-    right: -8,
-    backgroundColor: "#dc3545",
+    top: 8,
+    right: 8,
+    backgroundColor: "rgba(220, 53, 69, 0.95)",
     borderRadius: 12,
-    width: 24,
-    height: 24,
-    justifyContent: "center",
+    width: 28,
+    height: 28,
     alignItems: "center",
-  },
-  addImageButton: {
-    width: 100,
-    height: 100,
-    borderRadius: 8,
-    borderWidth: 2,
-    borderColor: "#4285f4",
-    borderStyle: "dashed",
     justifyContent: "center",
-    alignItems: "center",
-    backgroundColor: "#f0f7ff",
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.2,
+    shadowRadius: 2,
+    elevation: 3,
   },
-  addImageText: {
+  imageNumberBadge: {
+    position: "absolute",
+    bottom: 8,
+    left: 8,
+    backgroundColor: "rgba(66, 133, 244, 0.9)",
+    borderRadius: 12,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+  },
+  imageNumberText: {
+    color: "#fff",
     fontSize: 12,
-    color: "#4285f4",
-    marginTop: 4,
     fontWeight: "600",
   },
-  descriptionInput: {
-    backgroundColor: "#fff",
+
+  // Add More Button
+  addMoreButton: {
+    width: "48%",
+    aspectRatio: 1,
+    backgroundColor: "#f8f9fa",
+    borderRadius: 12,
+    borderWidth: 2,
+    borderColor: "#4CAF79",
+    borderStyle: "dashed",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 4,
+  },
+  addMoreText: {
+    fontSize: 14,
+    color: "#4CAF79",
+    fontWeight: "600",
+    marginTop: 4,
+  },
+  addMoreSubtext: {
+    fontSize: 12,
+    color: "#999",
+  },
+
+  // Text Input
+  textArea: {
+    backgroundColor: "#f8f9fa",
     borderRadius: 8,
     padding: 12,
-    fontSize: 14,
+    fontSize: 15,
     color: "#333",
     borderWidth: 1,
     borderColor: "#e1e5e9",
     minHeight: 100,
   },
+
+  // Submit Button
   submitButton: {
-    backgroundColor: "#4CAF79",
+    backgroundColor: "#ccc",
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
+    gap: 8,
     marginHorizontal: 16,
     paddingVertical: 16,
-    borderRadius: 12,
-    flexDirection: "row",
-    justifyContent: "center",
-    alignItems: "center",
-    gap: 8,
+    borderRadius: 8,
+    shadowColor: "#000",
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.1,
+    shadowRadius: 4,
+    elevation: 3,
   },
-  submitButtonDisabled: {
-    backgroundColor: "#ccc",
+  submitButtonActive: {
+    backgroundColor: "#4CAF79",
   },
   submitButtonText: {
-    color: "#fff",
     fontSize: 16,
-    fontWeight: "700",
+    fontWeight: "600",
+    color: "#999",
   },
+  submitButtonTextActive: {
+    color: "#fff",
+  },
+
+  // Bottom Padding
   bottomPadding: {
     height: 40,
   },

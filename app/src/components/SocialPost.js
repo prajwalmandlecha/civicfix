@@ -11,6 +11,7 @@ import {
 import { Ionicons } from "@expo/vector-icons";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
 import api from "../services/api";
+import { showSuccess, showError, showInfo } from "../utils/notify";
 
 // Helper function moved outside component to prevent recreating on each render
 const getImpactColor = (status, impactLevel) => {
@@ -45,14 +46,43 @@ const SocialPost = ({
   onUpvote,
   userStatus, // NEW: Contains hasUpvoted and hasReported from backend
 }) => {
-  const [isReported, setIsReported] = useState(
-    userStatus?.hasReported || false
-  );
+  const [isReported, setIsReported] = useState(false);
   const [isReporting, setIsReporting] = useState(false);
-  const [isUpvoted, setIsUpvoted] = useState(userStatus?.hasUpvoted || false);
+  const [isUpvoted, setIsUpvoted] = useState(false);
   const [isUpvoting, setIsUpvoting] = useState(false);
   const [upvoteCount, setUpvoteCount] = useState(likes || 0);
   const [fixedDate, setFixedDate] = useState(null);
+
+  // Initialize state from userStatus on mount and whenever it changes
+  useEffect(() => {
+    console.log(`[SocialPost ${postId}] Initializing from userStatus:`, {
+      postId,
+      userStatus,
+      hasUpvoted: userStatus?.hasUpvoted,
+      hasReported: userStatus?.hasReported,
+    });
+
+    // Set initial state from props
+    if (userStatus) {
+      setIsUpvoted(userStatus.hasUpvoted || false);
+      setIsReported(userStatus.hasReported || false);
+    }
+  }, [postId, userStatus?.hasUpvoted, userStatus?.hasReported]);
+
+  // Debug: Log button visibility conditions
+  useEffect(() => {
+    console.log(`[SocialPost ${postId}] Button visibility check:`, {
+      postId,
+      status,
+      userType,
+      statusLower: status?.toLowerCase(),
+      isClosed: status?.toLowerCase() === "closed",
+      isOpen: status?.toLowerCase() === "open",
+      shouldShowClosedButtons:
+        status?.toLowerCase() === "closed" && userType === "citizen",
+      shouldShowOpenButtons: status?.toLowerCase() === "open",
+    });
+  }, [postId, status, userType]);
 
   // React Compiler will optimize these
   useEffect(() => {
@@ -61,23 +91,6 @@ const SocialPost = ({
       setUpvoteCount(likes);
     }
   }, [likes]);
-
-  // Separate effect for userStatus to ensure it always updates
-  useEffect(() => {
-    if (userStatus) {
-      const hasUpvoted = userStatus.hasUpvoted || false;
-      const hasReported = userStatus.hasReported || false;
-
-      console.log(`[SocialPost ${postId}] Updating status:`, {
-        hasUpvoted,
-        hasReported,
-        userStatus,
-      });
-
-      setIsUpvoted(hasUpvoted);
-      setIsReported(hasReported);
-    }
-  }, [postId, userStatus?.hasUpvoted, userStatus?.hasReported]);
 
   // If issue is closed but no closed_at present in detailedData, fetch fix-details to get a fixed date
   useEffect(() => {
@@ -118,10 +131,14 @@ const SocialPost = ({
     const previousUpvoted = isUpvoted;
     const previousCount = upvoteCount;
 
-    // Optimistic update - toggle state
-    const newUpvotedState = !isUpvoted;
-    setIsUpvoted(newUpvotedState);
-    setUpvoteCount(newUpvotedState ? upvoteCount + 1 : upvoteCount - 1);
+    console.log(`[SocialPost ${postId}] Upvote clicked:`, {
+      currentIsUpvoted: isUpvoted,
+      currentCount: upvoteCount,
+      userStatus,
+    });
+
+    // Optimistic update for UI feedback, but no count change
+    setIsUpvoted(!isUpvoted);
 
     try {
       // Backend handles toggle - returns isActive state
@@ -133,33 +150,43 @@ const SocialPost = ({
           response.data.isActive || response.data.hasUpvoted || false;
         setIsUpvoted(backendIsActive);
 
-        // Update count from backend - use correct count based on status
+        // Update count from backend - use correct count based on issue status
         if (response.data.upvotes) {
           const isClosed = status?.toLowerCase() === "closed";
-          const newCount = isClosed
+          const backendCount = isClosed
             ? response.data.upvotes.closed || 0
             : response.data.upvotes.open || 0;
-          setUpvoteCount(newCount);
-        }
 
-        console.log(
-          `Upvote ${backendIsActive ? "added" : "removed"} for issue ${postId}`
-        );
+          console.log(`[SocialPost ${postId}] Backend response:`, {
+            status,
+            isClosed,
+            backendCount,
+            backendIsActive,
+            previousUpvoted,
+            previousCount,
+            upvotesObj: response.data.upvotes,
+          });
+
+          setUpvoteCount(backendCount);
+        }
       }
 
       // Call parent callback if provided
       if (onUpvote) {
-        onUpvote(postId, { ok: true, isActive: response.data?.isActive });
+        onUpvote(postId, {
+          ok: true,
+          isActive: response.data?.isActive,
+          upvotes: response.data?.upvotes, // Pass the full upvotes object
+        });
       }
     } catch (error) {
       console.error("Error upvoting issue:", error);
-      Alert.alert(
-        "Error",
+      showError(
         error.response?.data?.detail ||
-        "Failed to upvote. Please check your connection and try again."
+          "Failed to upvote. Please check your connection and try again."
       );
 
-      // Revert optimistic update on error
+      // Revert to previous state on error
       setIsUpvoted(previousUpvoted);
       setUpvoteCount(previousCount);
     } finally {
@@ -169,9 +196,15 @@ const SocialPost = ({
       }, 300);
     }
   };
-
   const handleReport = async () => {
-    if (isReporting || isReported) return;
+    // If already reported, show feedback immediately
+    if (isReported) {
+      showInfo("You have already reported this issue.");
+      return;
+    }
+
+    // If currently reporting, prevent duplicate clicks
+    if (isReporting) return;
 
     // Different messages based on issue status
     const isClosed = status?.toLowerCase() === "closed";
@@ -217,22 +250,19 @@ const SocialPost = ({
               ? "Thank you for your feedback! Your report has been recorded."
               : "Issue reported successfully. Thank you for helping maintain quality!";
 
-            Alert.alert("Success", successMessage);
+            showSuccess(successMessage);
           } catch (error) {
             console.error("Error reporting issue:", error);
 
-            // Check if already reported
-            if (error.response?.data?.message === "Already reported") {
+            // Check if already reported - backend returns this in detail field
+            const errorDetail = error.response?.data?.detail || "";
+            if (errorDetail.toLowerCase().includes("already reported")) {
               setIsReported(true);
-              Alert.alert(
-                "Already Reported",
-                "You have already reported this issue."
-              );
+              showInfo("You have already reported this issue.");
             } else {
-              Alert.alert(
-                "Error",
-                error.response?.data?.detail ||
-                "Failed to report issue. Please check your connection and try again."
+              showError(
+                errorDetail ||
+                  "Failed to report issue. Please check your connection and try again."
               );
             }
           } finally {
@@ -245,7 +275,10 @@ const SocialPost = ({
 
   return (
     <TouchableOpacity
-      style={[styles.container, { backgroundColor: getImpactColor(status, impactLevel) }]}
+      style={[
+        styles.container,
+        { backgroundColor: getImpactColor(status, impactLevel) },
+      ]}
       onPress={onPress}
       activeOpacity={0.95}
     >
@@ -307,32 +340,32 @@ const SocialPost = ({
           detailedData?.created_at ||
           detailedData?.closed_at ||
           fixedDate) && (
-            <View style={styles.datesRow}>
-              {(createdAt || detailedData?.created_at) && (
+          <View style={styles.datesRow}>
+            {(createdAt || detailedData?.created_at) && (
+              <View style={styles.dateChip}>
+                <Ionicons name="calendar" size={12} color="#666" />
+                <Text style={styles.dateChipText}>
+                  Uploaded{" "}
+                  {new Date(
+                    createdAt || detailedData?.created_at
+                  ).toLocaleDateString()}
+                </Text>
+              </View>
+            )}
+            {status?.toLowerCase() === "closed" &&
+              (detailedData?.closed_at || fixedDate) && (
                 <View style={styles.dateChip}>
-                  <Ionicons name="calendar" size={12} color="#666" />
-                  <Text style={styles.dateChipText}>
-                    Uploaded{" "}
+                  <Ionicons name="checkmark-done" size={12} color="#4CAF79" />
+                  <Text style={[styles.dateChipText, { color: "#2f6e4f" }]}>
+                    Fixed on{" "}
                     {new Date(
-                      createdAt || detailedData?.created_at
+                      detailedData?.closed_at || fixedDate
                     ).toLocaleDateString()}
                   </Text>
                 </View>
               )}
-              {status?.toLowerCase() === "closed" &&
-                (detailedData?.closed_at || fixedDate) && (
-                  <View style={styles.dateChip}>
-                    <Ionicons name="checkmark-done" size={12} color="#4CAF79" />
-                    <Text style={[styles.dateChipText, { color: "#2f6e4f" }]}>
-                      Fixed on{" "}
-                      {new Date(
-                        detailedData?.closed_at || fixedDate
-                      ).toLocaleDateString()}
-                    </Text>
-                  </View>
-                )}
-            </View>
-          )}
+          </View>
+        )}
 
         {/* Description */}
         {description && (
@@ -343,142 +376,175 @@ const SocialPost = ({
 
         {/* Actions Row */}
         <View style={styles.actionsRow}>
-          {/* For CLOSED issues - show Fixed/Not Fixed buttons (citizens only) */}
-          {status?.toLowerCase() === "closed" && userType === "citizen" ? (
-            <>
-              {/* Fixed Button (maps to closed upvote) */}
-              <TouchableOpacity
-                style={[
-                  styles.fixedButton,
-                  isUpvoted && styles.fixedButtonActive,
-                  isUpvoting && styles.fixedButtonDisabled,
-                ]}
-                onPress={handleUpvote}
-                disabled={isUpvoting}
-              >
-                <Ionicons
-                  name={
-                    isUpvoted ? "checkmark-circle" : "checkmark-circle-outline"
-                  }
-                  size={16}
-                  color={isUpvoted ? "#fff" : "#4CAF79"}
-                  style={{ marginRight: 6 }}
-                />
-                <Text
-                  style={[
-                    styles.fixedButtonText,
-                    isUpvoted && styles.fixedButtonTextActive,
-                  ]}
-                >
-                  Fixed {upvoteCount > 0 ? `(${upvoteCount})` : ""}
-                </Text>
-              </TouchableOpacity>
+          {(() => {
+            // Debug logging for button rendering
+            const statusLower = status?.toLowerCase();
+            const isClosed = statusLower === "closed";
+            const isOpen = statusLower === "open";
 
-              {/* Not Fixed Button (maps to closed report) */}
-              <TouchableOpacity
-                style={[
-                  styles.notFixedButton,
-                  isReported && styles.notFixedButtonActive,
-                  isReporting && styles.notFixedButtonDisabled,
-                ]}
-                onPress={handleReport}
-                disabled={isReporting || isReported}
-              >
-                <Ionicons
-                  name={isReported ? "close-circle" : "close-circle-outline"}
-                  size={16}
-                  color={isReported ? "#fff" : "#dc3545"}
-                  style={{ marginRight: 6 }}
-                />
-                <Text
-                  style={[
-                    styles.notFixedButtonText,
-                    isReported && styles.notFixedButtonTextActive,
-                  ]}
-                >
-                  {isReporting
-                    ? "Submitting..."
-                    : isReported
-                      ? "Not Fixed"
-                      : "Not Fixed"}
-                </Text>
-              </TouchableOpacity>
-            </>
-          ) : status?.toLowerCase() === "open" ? (
-            /* For OPEN issues - show original upvote/report buttons */
-            <>
-              {/* Upvote Button - visible to all for open issues */}
-              <TouchableOpacity
-                style={[
-                  styles.upvoteButton,
-                  isUpvoted && styles.upvoteButtonActive,
-                  isUpvoting && styles.upvoteButtonDisabled,
-                ]}
-                onPress={handleUpvote}
-                disabled={isUpvoting}
-              >
-                <Ionicons
-                  name={isUpvoted ? "heart" : "heart-outline"}
-                  size={16}
-                  color={isUpvoted ? "#fff" : "#4CAF79"}
-                  style={{ marginRight: 6 }}
-                />
-                <Text
-                  style={[
-                    styles.upvoteButtonText,
-                    isUpvoted && styles.upvoteButtonTextActive,
-                  ]}
-                >
-                  {upvoteCount}
-                </Text>
-              </TouchableOpacity>
+            console.log(`[SocialPost ${postId}] Rendering buttons:`, {
+              status,
+              statusLower,
+              userType,
+              isClosed,
+              isOpen,
+              willRenderClosedButtons: isClosed && userType === "citizen",
+              willRenderOpenButtons: isOpen,
+            });
 
-              {userType === "ngo" ? (
-                <TouchableOpacity
-                  style={styles.uploadFixButton}
-                  onPress={onUploadFix}
-                >
-                  <Ionicons
-                    name="construct"
-                    size={16}
-                    color="#fff"
-                    style={{ marginRight: 6 }}
-                  />
-                  <Text style={styles.uploadFixButtonText}>Upload Fix</Text>
-                </TouchableOpacity>
-              ) : userType === "citizen" ? (
-                // Report Button - ONLY for citizens on open issues
-                <TouchableOpacity
-                  style={[
-                    styles.reportButton,
-                    isReported && styles.reportButtonReported,
-                    isReporting && styles.reportButtonDisabled,
-                  ]}
-                  onPress={handleReport}
-                  disabled={isReporting || isReported}
-                >
-                  <Ionicons
-                    name={isReported ? "flag" : "flag-outline"}
-                    size={16}
-                    color={isReported ? "#fff" : "#dc3545"}
-                    style={{ marginRight: 6 }}
-                  />
-                  <Text
+            // For CLOSED issues - show Fixed/Not Fixed buttons (citizens only)
+            if (isClosed && userType === "citizen") {
+              return (
+                <>
+                  {/* Fixed Button (maps to closed upvote) */}
+                  <TouchableOpacity
                     style={[
-                      styles.reportButtonText,
-                      isReported && styles.reportButtonTextReported,
+                      styles.fixedButton,
+                      isUpvoted && styles.fixedButtonActive,
+                      isUpvoting && styles.fixedButtonDisabled,
                     ]}
+                    onPress={handleUpvote}
+                    disabled={isUpvoting}
                   >
-                    {isReporting
-                      ? "Reporting..."
-                      : isReported
-                        ? "Reported"
-                        : "Report"}
-                  </Text>
-                </TouchableOpacity>
-              ) : null}
-            </>
-          ) : null}
+                    <Ionicons
+                      name={
+                        isUpvoted
+                          ? "checkmark-circle"
+                          : "checkmark-circle-outline"
+                      }
+                      size={16}
+                      color={isUpvoted ? "#fff" : "#4CAF79"}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text
+                      style={[
+                        styles.fixedButtonText,
+                        isUpvoted && styles.fixedButtonTextActive,
+                      ]}
+                    >
+                      Fixed {upvoteCount > 0 ? `(${upvoteCount})` : ""}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {/* Not Fixed Button (maps to closed report) */}
+                  <TouchableOpacity
+                    style={[
+                      styles.notFixedButton,
+                      isReported && styles.notFixedButtonActive,
+                      isReporting && styles.notFixedButtonDisabled,
+                    ]}
+                    onPress={handleReport}
+                    disabled={isReporting || isReported}
+                  >
+                    <Ionicons
+                      name={
+                        isReported ? "close-circle" : "close-circle-outline"
+                      }
+                      size={16}
+                      color={isReported ? "#fff" : "#dc3545"}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text
+                      style={[
+                        styles.notFixedButtonText,
+                        isReported && styles.notFixedButtonTextActive,
+                      ]}
+                    >
+                      {isReporting
+                        ? "Submitting..."
+                        : isReported
+                        ? "Not Fixed"
+                        : "Not Fixed"}
+                    </Text>
+                  </TouchableOpacity>
+                </>
+              );
+            }
+
+            // For OPEN issues - show original upvote/report buttons
+            if (isOpen) {
+              return (
+                <>
+                  {/* Upvote Button - visible to all for open issues */}
+                  <TouchableOpacity
+                    style={[
+                      styles.upvoteButton,
+                      isUpvoted && styles.upvoteButtonActive,
+                      isUpvoting && styles.upvoteButtonDisabled,
+                    ]}
+                    onPress={handleUpvote}
+                    disabled={isUpvoting}
+                  >
+                    <Ionicons
+                      name={isUpvoted ? "heart" : "heart-outline"}
+                      size={16}
+                      color={isUpvoted ? "#fff" : "#4CAF79"}
+                      style={{ marginRight: 6 }}
+                    />
+                    <Text
+                      style={[
+                        styles.upvoteButtonText,
+                        isUpvoted && styles.upvoteButtonTextActive,
+                      ]}
+                    >
+                      {upvoteCount}
+                    </Text>
+                  </TouchableOpacity>
+
+                  {userType === "ngo" ? (
+                    <TouchableOpacity
+                      style={styles.uploadFixButton}
+                      onPress={onUploadFix}
+                    >
+                      <Ionicons
+                        name="construct"
+                        size={16}
+                        color="#fff"
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text style={styles.uploadFixButtonText}>Upload Fix</Text>
+                    </TouchableOpacity>
+                  ) : userType === "citizen" ? (
+                    // Report Button - ONLY for citizens on open issues
+                    <TouchableOpacity
+                      style={[
+                        styles.reportButton,
+                        isReported && styles.reportButtonReported,
+                        isReporting && styles.reportButtonDisabled,
+                      ]}
+                      onPress={handleReport}
+                      disabled={isReporting || isReported}
+                    >
+                      <Ionicons
+                        name={isReported ? "flag" : "flag-outline"}
+                        size={16}
+                        color={isReported ? "#fff" : "#dc3545"}
+                        style={{ marginRight: 6 }}
+                      />
+                      <Text
+                        style={[
+                          styles.reportButtonText,
+                          isReported && styles.reportButtonTextReported,
+                        ]}
+                      >
+                        {isReporting
+                          ? "Reporting..."
+                          : isReported
+                          ? "Reported"
+                          : "Report"}
+                      </Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </>
+              );
+            }
+
+            // Fallback: no buttons if status is neither open nor closed
+            console.warn(
+              `[SocialPost ${postId}] No buttons rendered! Status: ${status}, UserType: ${userType}`
+            );
+            return null;
+          })()}
         </View>
       </View>
     </TouchableOpacity>
@@ -755,5 +821,26 @@ const styles = StyleSheet.create({
   },
 });
 
-// Wrap with React.memo to prevent unnecessary re-renders
-export default React.memo(SocialPost);
+// Custom comparison function for React.memo to properly check userStatus changes
+const arePropsEqual = (prevProps, nextProps) => {
+  // If userStatus changes, we need to re-render
+  if (
+    prevProps.userStatus?.hasUpvoted !== nextProps.userStatus?.hasUpvoted ||
+    prevProps.userStatus?.hasReported !== nextProps.userStatus?.hasReported
+  ) {
+    return false; // Props changed, re-render
+  }
+
+  // Check other props that should trigger re-renders
+  return (
+    prevProps.postId === nextProps.postId &&
+    prevProps.likes === nextProps.likes &&
+    prevProps.status === nextProps.status &&
+    prevProps.location === nextProps.location &&
+    prevProps.description === nextProps.description
+  );
+};
+
+// Wrap with React.memo with custom comparison to prevent unnecessary re-renders
+// but still update when userStatus changes
+export default React.memo(SocialPost, arePropsEqual);

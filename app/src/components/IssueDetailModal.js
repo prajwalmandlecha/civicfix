@@ -14,6 +14,7 @@ import {
 import { Ionicons, FontAwesome } from "@expo/vector-icons";
 import { getIssueDisplayName } from "../utils/issueTypeMapping";
 import api from "../services/api";
+import { showSuccess, showError, showInfo } from "../utils/notify";
 
 const { width } = Dimensions.get("window");
 
@@ -23,6 +24,7 @@ const IssueDetailModal = ({
   issueData,
   userType,
   onUploadFix,
+  onUpvote, // NEW: Callback to notify parent of upvote changes
 }) => {
   const [isLiked, setIsLiked] = useState(false);
   const [fixDetails, setFixDetails] = useState(null);
@@ -93,10 +95,14 @@ const IssueDetailModal = ({
     const previousUpvoted = isUpvoted;
     const previousCount = upvoteCount;
 
-    // Optimistic update
-    const newUpvotedState = !isUpvoted;
-    setIsUpvoted(newUpvotedState);
-    setUpvoteCount(newUpvotedState ? upvoteCount + 1 : upvoteCount - 1);
+    console.log(`[IssueDetailModal ${issueData.id}] Upvote clicked:`, {
+      currentIsUpvoted: isUpvoted,
+      currentCount: upvoteCount,
+      userStatus: issueData.userStatus,
+    });
+
+    // Optimistic update for UI feedback, but no count change
+    setIsUpvoted(!isUpvoted);
 
     try {
       const response = await api.post(`/api/issues/${issueData.id}/upvote`);
@@ -108,15 +114,39 @@ const IssueDetailModal = ({
 
         if (response.data.upvotes) {
           const isClosed = issueData.status?.toLowerCase() === "closed";
-          const newCount = isClosed
+          const backendCount = isClosed
             ? response.data.upvotes.closed || 0
             : response.data.upvotes.open || 0;
-          setUpvoteCount(newCount);
+
+          console.log(`[IssueDetailModal ${issueData.id}] Backend response:`, {
+            status: issueData.status,
+            isClosed,
+            backendCount,
+            backendIsActive,
+            previousUpvoted,
+            previousCount,
+            upvotesObj: response.data.upvotes
+          });
+
+          setUpvoteCount(backendCount);
         }
+      }
+
+      // Call parent callback if provided
+      if (onUpvote) {
+        onUpvote(issueData.id, {
+          ok: true,
+          isActive: response.data?.isActive,
+          upvotes: response.data?.upvotes // Pass the full upvotes object
+        });
       }
     } catch (error) {
       console.error("Error upvoting issue:", error);
-      // Revert on error
+      showError(
+        error.response?.data?.detail ||
+        "Failed to upvote. Please check your connection and try again."
+      );
+      // Revert to previous state on error
       setIsUpvoted(previousUpvoted);
       setUpvoteCount(previousCount);
     } finally {
@@ -124,11 +154,18 @@ const IssueDetailModal = ({
         setIsUpvoting(false);
       }, 300);
     }
-  };
-
-  // Report handler
+  };  // Report handler
   const handleReport = async () => {
-    if (isReporting || isReported || !issueData?.id) return;
+    if (!issueData?.id) return;
+
+    // If already reported, show feedback immediately
+    if (isReported) {
+      showInfo("You have already reported this issue.");
+      return;
+    }
+
+    // If currently reporting, prevent duplicate clicks
+    if (isReporting) return;
 
     const isClosed = issueData.status?.toLowerCase() === "closed";
     const title = isClosed ? "Report as Not Fixed" : "Report as Spam";
@@ -164,20 +201,18 @@ const IssueDetailModal = ({
               ? "Thank you for your feedback! Your report has been recorded."
               : "Issue reported successfully. Thank you for helping maintain quality!";
 
-            Alert.alert("Success", successMessage);
+            showSuccess(successMessage);
           } catch (error) {
             console.error("Error reporting issue:", error);
 
-            if (error.response?.data?.message === "Already reported") {
+            // Check if already reported - backend returns this in detail field
+            const errorDetail = error.response?.data?.detail || "";
+            if (errorDetail.toLowerCase().includes("already reported")) {
               setIsReported(true);
-              Alert.alert(
-                "Already Reported",
-                "You have already reported this issue."
-              );
+              showInfo("You have already reported this issue.");
             } else {
-              Alert.alert(
-                "Error",
-                error.response?.data?.detail ||
+              showError(
+                errorDetail ||
                 "Failed to report issue. Please check your connection and try again."
               );
             }

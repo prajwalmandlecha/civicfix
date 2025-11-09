@@ -7,6 +7,7 @@ import {
   TextInput,
   Alert,
   ActivityIndicator,
+  RefreshControl,
 } from "react-native";
 import { auth, firestore } from "../services/firebase";
 import { getDoc, doc, updateDoc } from "firebase/firestore";
@@ -29,6 +30,7 @@ const ProfileScreen = () => {
   // const [badges, setBadges] = useState([]);
   const [loadingLocation, setLoadingLocation] = useState(false);
   const [loadingStats, setLoadingStats] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
 
   const { updateLastLocation, lastLocation, userType, profile } =
     useUserContext();
@@ -95,7 +97,13 @@ const ProfileScreen = () => {
       );
     } finally {
       setLoadingStats(false);
+      setRefreshing(false);
     }
+  };
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    fetchUserData();
   };
 
   const handleSetLocation = async () => {
@@ -147,7 +155,18 @@ const ProfileScreen = () => {
   }
 
   return (
-    <ScrollView style={styles.container} showsVerticalScrollIndicator={false}>
+    <ScrollView
+      style={styles.container}
+      showsVerticalScrollIndicator={false}
+      refreshControl={
+        <RefreshControl
+          refreshing={refreshing}
+          onRefresh={onRefresh}
+          tintColor="#4285f4"
+          colors={["#4285f4"]}
+        />
+      }
+    >
       {/* Header Section */}
       <View style={styles.header}>
         <View style={styles.avatarContainer}>
@@ -164,8 +183,8 @@ const ProfileScreen = () => {
             {userData?.userType === "ngo"
               ? " NGO"
               : userData?.userType === "volunteer"
-              ? " Volunteer"
-              : " Citizen"}
+                ? " Volunteer"
+                : " Citizen"}
           </Text>
         </View>
         <View style={styles.headerStats}>

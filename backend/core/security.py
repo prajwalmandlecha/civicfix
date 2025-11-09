@@ -33,7 +33,8 @@ async def verify_firebase_token_middleware(request: Request, call_next):
         "/openapi.json",
         "/api/issues",
         "/issues/",
-        "/issues/latest",
+        "/api/leaderboard/citizens",
+        "/api/leaderboard/ngos",
         "/favicon.ico",
     ]
     

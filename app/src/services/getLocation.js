@@ -1,5 +1,5 @@
 import * as Location from "expo-location";
-import { Alert, Platform } from "react-native";
+import { Alert } from "react-native";
 
 export const getCurrentLocation = async (setLoadingLocation) => {
   try {

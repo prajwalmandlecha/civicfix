@@ -17,6 +17,7 @@ import api from "../services/api";
 import { useUserContext } from "../context/UserContext";
 import * as Location from "expo-location";
 import { getCurrentLocation } from "../services/getLocation";
+import { showSuccess, showError, showInfo } from "../utils/notify";
 
 const HomeScreen = ({ navigation }) => {
   const [refreshing, setRefreshing] = useState(false);
@@ -40,18 +41,61 @@ const HomeScreen = ({ navigation }) => {
   const [hasMore, setHasMore] = useState(true);
   const [loadingMore, setLoadingMore] = useState(false);
 
+  // Dynamic expansion state for load more
+  const [expandedParams, setExpandedParams] = useState({
+    radiusKm: 5,
+    days: 30,
+    limit: 20,
+  });
+
   const {
     lastLocation,
     userType,
     updateLastLocation,
     loading: contextLoading,
+    profile,
   } = useUserContext();
+
+  // Debug: Log userType changes
+  useEffect(() => {
+    console.log("[HomeScreen] UserContext updated:", {
+      userType,
+      hasProfile: !!profile,
+      profileUserType: profile?.userType,
+      loading: contextLoading,
+    });
+  }, [userType, profile, contextLoading]);
+
+  // Fallback once flag to avoid repeated navigation
+  const hasAppliedLocationFallback = React.useRef(false);
 
   useEffect(() => {
     if (!contextLoading) {
+      // Reset expanded params when filters change
+      setExpandedParams({
+        radiusKm: filters.radiusKm,
+        days: filters.days,
+        limit: filters.limit,
+      });
+      setHasMore(true);
       getPosts();
     }
   }, [lastLocation, filters, contextLoading]);
+
+  // If device location isn't available, fall back to user's saved profile location and open map
+  useEffect(() => {
+    if (contextLoading) return;
+    if (hasAppliedLocationFallback.current) return;
+
+    const profileLoc = profile?.lastLocation;
+    if ((!lastLocation || !lastLocation?.coords) && profileLoc?.coords) {
+      hasAppliedLocationFallback.current = true;
+      // Apply saved profile location as current app location
+      updateLastLocation(profileLoc);
+      // Navigate user to the Location tab centered on their saved location
+      navigation.navigate("Location");
+    }
+  }, [contextLoading, lastLocation?.coords, profile?.lastLocation]);
 
   const getFilteredPosts = () => {
     let result = [...posts];
@@ -94,7 +138,7 @@ const HomeScreen = ({ navigation }) => {
       });
     }
 
-    // Sort posts
+    // Sort posts - REMOVED liked posts prioritization
     result.sort((a, b) => {
       switch (filters.sortBy) {
         case "date":
@@ -103,6 +147,7 @@ const HomeScreen = ({ navigation }) => {
           return b.likes - a.likes;
         case "severity":
         default:
+          // Sort by severity score (most relevant issues first)
           return b.severityScore - a.severityScore;
       }
     });
@@ -133,15 +178,15 @@ const HomeScreen = ({ navigation }) => {
     const nextPage = page + 1;
 
     try {
-      // NEW: Use the combined endpoint that includes user status
+      // First try to load more with current parameters
       const response = await api.get("/api/issues/with-user-status", {
         params: {
           latitude: lastLocation.coords.latitude,
           longitude: lastLocation.coords.longitude,
-          limit: filters.limit,
-          skip: posts.length, // Use current posts length as offset to avoid duplicates
-          radius_km: filters.radiusKm,
-          days_back: filters.days,
+          limit: expandedParams.limit,
+          skip: posts.length,
+          radius_km: expandedParams.radiusKm,
+          days_back: expandedParams.days,
         },
       });
 
@@ -150,7 +195,6 @@ const HomeScreen = ({ navigation }) => {
       if (response.data && response.data.issues) {
         const newIssues = await Promise.all(
           response.data.issues.map(async (issue) => {
-            // Show correct upvote count based on issue status
             const isClosed = issue.status?.toLowerCase() === "closed";
             const upvoteCount = isClosed
               ? issue.upvotes?.closed || 0
@@ -177,7 +221,6 @@ const HomeScreen = ({ navigation }) => {
               severityScore: issue.severity_score,
               distanceKm: issue.distance_km,
               detailedData: issue,
-              // NEW: User status is already included in the response!
               userStatus: issue.userStatus || {
                 hasUpvoted: false,
                 hasReported: false,
@@ -187,45 +230,73 @@ const HomeScreen = ({ navigation }) => {
         );
 
         console.log(
-          `Loaded ${newIssues.length
-          } new issues with user status. Total in backend: ${response.data.total || "unknown"
-          }, Current skip: ${response.data.skip || 0}`
+          `Loaded ${newIssues.length} new issues. Total in backend: ${response.data.total || "unknown"
+          }`
         );
 
         if (newIssues.length === 0) {
-          setHasMore(false);
+          // No more issues with current parameters - try expanding
+          console.log("No new issues found, attempting to expand search parameters...");
+
+          // Expand search parameters progressively
+          const newExpandedParams = { ...expandedParams };
+          let expanded = false;
+
+          // Priority: radius > days > limit
+          if (expandedParams.radiusKm < 50) {
+            newExpandedParams.radiusKm = Math.min(expandedParams.radiusKm + 5, 50);
+            expanded = true;
+            console.log(`Expanding radius to ${newExpandedParams.radiusKm}km`);
+          } else if (expandedParams.days < 180) {
+            newExpandedParams.days = Math.min(expandedParams.days + 30, 180);
+            expanded = true;
+            console.log(`Expanding days to ${newExpandedParams.days} days`);
+          } else if (expandedParams.limit < 100) {
+            newExpandedParams.limit = Math.min(expandedParams.limit + 20, 100);
+            expanded = true;
+            console.log(`Expanding limit to ${newExpandedParams.limit}`);
+          }
+
+          if (expanded) {
+            setExpandedParams(newExpandedParams);
+            setHasMore(true); // Re-enable loading more
+            showInfo(`Expanding search to ${newExpandedParams.radiusKm}km radius`);
+          } else {
+            // Reached maximum expansion
+            setHasMore(false);
+            console.log("Reached maximum search parameters");
+          }
         } else {
-          // Filter out duplicates by checking if issue ID already exists
+          // Filter out duplicates
           setPosts((prev) => {
             const existingIds = new Set(prev.map((p) => p.id));
             const uniqueNewIssues = newIssues.filter(
               (issue) => !existingIds.has(issue.id)
             );
 
-            // If no new unique issues, we've reached the end
             if (uniqueNewIssues.length === 0) {
-              setHasMore(false);
+              // All issues were duplicates - try expanding
+              console.log("All issues were duplicates, will expand on next load");
+              setHasMore(true);
               return prev;
             }
 
             const newTotal = prev.length + uniqueNewIssues.length;
-            // Check if we've loaded all available issues
             if (response.data.total && newTotal >= response.data.total) {
-              setHasMore(false);
+              // Loaded all available issues for current params
+              setHasMore(true); // Keep trying with expanded params
             }
 
             return [...prev, ...uniqueNewIssues];
           });
           setPage(nextPage);
-
-          // NO LONGER NEEDED: Batch fetch upvote/report status
-          // The status is already included in the response from /api/issues/with-user-status
         }
       } else {
         setHasMore(false);
       }
     } catch (error) {
       console.error("Error loading more posts:", error);
+      setHasMore(false);
     } finally {
       setLoadingMore(false);
     }
@@ -317,6 +388,15 @@ const HomeScreen = ({ navigation }) => {
         return;
       }
 
+      // Log raw issues data to debug userStatus
+      console.log("[HomeScreen] Raw issues from backend:",
+        response.data.issues.slice(0, 2).map(i => ({
+          id: i.issue_id,
+          userStatus: i.userStatus,
+          upvotes: i.upvotes
+        }))
+      );
+
       const issues = await Promise.all(
         response.data.issues.map(async (issue) => {
           // Show correct upvote count based on issue status
@@ -324,6 +404,11 @@ const HomeScreen = ({ navigation }) => {
           const upvoteCount = isClosed
             ? issue.upvotes?.closed || 0
             : issue.upvotes?.open || 0;
+
+          // Debug logging for userStatus
+          if (issue.userStatus?.hasUpvoted) {
+            console.log(`[HomeScreen] Issue ${issue.issue_id} has userStatus:`, issue.userStatus);
+          }
 
           return {
             id: issue.issue_id,
@@ -396,6 +481,60 @@ const HomeScreen = ({ navigation }) => {
     });
   };
 
+  const handleUpvoteCallback = (postId, result) => {
+    if (result.ok) {
+      // Update the posts array to reflect the new upvote status
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.id === postId) {
+            // Calculate new like count based on status
+            const isClosed = post.status?.toLowerCase() === "closed";
+            const newLikes = result.upvotes
+              ? isClosed
+                ? result.upvotes.closed || 0
+                : result.upvotes.open || 0
+              : post.likes;
+
+            return {
+              ...post,
+              likes: newLikes, // Update the displayed like count
+              userStatus: {
+                ...post.userStatus,
+                hasUpvoted: result.isActive,
+              },
+              // Update detailedData to keep it in sync
+              detailedData: {
+                ...post.detailedData,
+                upvotes: result.upvotes || post.detailedData?.upvotes,
+              },
+            };
+          }
+          return post;
+        })
+      );
+    }
+  };
+
+  const handleReportCallback = (postId, result) => {
+    if (result.ok) {
+      // Update the posts array to reflect the new report status
+      setPosts((prevPosts) =>
+        prevPosts.map((post) => {
+          if (post.id === postId) {
+            return {
+              ...post,
+              userStatus: {
+                ...post.userStatus,
+                hasReported: result.hasReported || true,
+              },
+            };
+          }
+          return post;
+        })
+      );
+    }
+  };
+
   const onRefresh = async () => {
     setRefreshing(true);
     try {
@@ -438,13 +577,13 @@ const HomeScreen = ({ navigation }) => {
         };
 
         await updateLastLocation(locationData);
-        Alert.alert("Success", "Location updated! Loading nearby issues...");
+        showSuccess("Location updated! Loading nearby issues...");
       }
     } catch (error) {
       console.error("Error setting location:", error);
-      Alert.alert(
-        "Location Error",
-        "Failed to update location. Please check your device settings and try again."
+      showError(
+        "Failed to update location. Please check your device settings and try again.",
+        "Location Error"
       );
     } finally {
       setLoadingLocation(false);
@@ -468,14 +607,30 @@ const HomeScreen = ({ navigation }) => {
 
       {/* Using built-in RefreshControl spinner instead of custom overlay */}
 
-      {/* No Location Empty State */}
+      {/* No Location Inline Prompt */}
       {!contextLoading && (!lastLocation || !lastLocation.coords) && (
         <View style={styles.emptyState}>
           <Ionicons name="location-outline" size={64} color="#ccc" />
-          <Text style={styles.emptyStateTitle}>Location Required</Text>
+          <Text style={styles.emptyStateTitle}>Location Needed</Text>
           <Text style={styles.emptyStateText}>
-            We need your location to show nearby civic issues.
+            Turn on device location, use your saved location, or open the map.
           </Text>
+
+          {/* Use Saved Location (from profile) */}
+          {profile?.lastLocation?.coords && (
+            <TouchableOpacity
+              style={[styles.setLocationButton, { backgroundColor: "#6FCF97" }]}
+              onPress={async () => {
+                await updateLastLocation(profile.lastLocation);
+                navigation.navigate("Location");
+              }}
+              disabled={loadingLocation}
+            >
+              <Text style={styles.setLocationButtonText}>Use Saved Location</Text>
+            </TouchableOpacity>
+          )}
+
+          {/* Try to fetch device location */}
           <TouchableOpacity
             style={styles.setLocationButton}
             onPress={handleSetLocation}
@@ -484,8 +639,16 @@ const HomeScreen = ({ navigation }) => {
             {loadingLocation ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.setLocationButtonText}>Set My Location</Text>
+              <Text style={styles.setLocationButtonText}>Use Device Location</Text>
             )}
+          </TouchableOpacity>
+
+          {/* Open Map directly */}
+          <TouchableOpacity
+            style={[styles.setLocationButton, { backgroundColor: "#4285f4" }]}
+            onPress={() => navigation.navigate("Location")}
+          >
+            <Text style={styles.setLocationButtonText}>Open Map</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -521,6 +684,8 @@ const HomeScreen = ({ navigation }) => {
               userStatus={item.userStatus}
               onPress={() => handlePostPress(item)}
               onUploadFix={() => handleUploadFix(item)}
+              onUpvote={handleUpvoteCallback}
+              onReport={handleReportCallback}
             />
           )}
           keyExtractor={(item) => item.id.toString()}
@@ -552,17 +717,18 @@ const HomeScreen = ({ navigation }) => {
               </View>
             ) : !hasMore && posts.length > 0 ? (
               <View style={styles.endFooter}>
-                <Text style={styles.endText}>No more issues to load</Text>
+                <Text style={styles.endText}>
+                  Showing all available issues within {expandedParams.radiusKm}km
+                </Text>
               </View>
             ) : null
           }
           ListEmptyComponent={
-            !refreshing && (
-              <View style={styles.emptyState}>
-                <Ionicons name="search-outline" size={64} color="#ccc" />
-                <Text style={styles.emptyStateTitle}>No Issues Found</Text>
-                <Text style={styles.emptyStateText}>
-                  Try adjusting your filters or check back later
+            !refreshing && !contextLoading && !loadingMore && (
+              <View style={{ paddingVertical: 40, alignItems: "center" }}>
+                <Ionicons name="search-outline" size={28} color="#999" />
+                <Text style={{ marginTop: 8, color: "#666" }}>
+                  No issues found for the current filters.
                 </Text>
               </View>
             )
@@ -587,6 +753,8 @@ const HomeScreen = ({ navigation }) => {
         issueData={selectedIssue}
         userType={userType}
         onUploadFix={handleUploadFix}
+        onUpvote={handleUpvoteCallback}
+        onReport={handleReportCallback}
       />
     </View>
   );

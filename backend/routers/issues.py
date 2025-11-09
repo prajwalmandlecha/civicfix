@@ -1,75 +1,295 @@
 """
-Issues router - Handles all issue-related endpoints.
+Issues router - All issue-related endpoints used by the mobile app.
 """
-
 import logging
-from typing import List, Optional
+from typing import List, Optional, Dict
+from datetime import datetime, timedelta, timezone
 from fastapi import APIRouter, Depends, HTTPException, File, Form, UploadFile, Query
 from core.dependencies import get_current_user, get_optional_user
-from core.database import get_elasticsearch_client
+from core.database import get_elasticsearch_client, get_firestore_client
 from services.geocoding_service import geocode_location
 from services.storage_service import upload_file_to_gcs
 from services.analyzer_service import analyze_issue
 from services.user_service import award_first_post_karma, get_user_display_name
-from services.issue_service import upvote_issue, remove_upvote, report_issue
+from services.issue_service import upvote_issue, report_issue, toggle_upvote
 
 logger = logging.getLogger(__name__)
-
 router = APIRouter()
 
 
-@router.get("/issues")
-async def get_all_issues(
+@router.get("/issues/")
+async def get_issues(
+    latitude: float,
+    longitude: float,
+    radius_km: float = 5.0,
+    limit: int = 10,
+    skip: int = 0,
+    days_back: int = 30,
     user: Optional[dict] = Depends(get_optional_user),
-    latitude: Optional[float] = Query(None, description="User's latitude"),
-    longitude: Optional[float] = Query(None, description="User's longitude"),
-    radius_km: float = Query(5.0, description="Search radius in kilometers", gt=0),
 ):
     """
-    Get all issues, optionally filtered by location.
-    Public endpoint (no auth required).
+    Get issues near a location, sorted by distance and recency.
+    Used by: LocationScreen.js
+    
+    Args:
+        latitude: Location latitude
+        longitude: Location longitude
+        radius_km: Search radius in kilometers (default 5km)
+        limit: Maximum number of results (default 10)
+        skip: Number of results to skip for pagination (default 0)
+        days_back: Only include issues from last N days (default 30)
     """
     es_client = get_elasticsearch_client()
     if not es_client:
-        raise HTTPException(503, "Database unavailable")
+        raise HTTPException(503, "DB unavailable")
 
     try:
-        query = {"match_all": {}}
-        
-        # Add location filter if provided
-        if latitude is not None and longitude is not None:
-            query = {
+        date_threshold = (
+            datetime.now(timezone.utc) - timedelta(days=days_back)
+        ).isoformat()
+
+        query = {
+            "size": limit,
+            "from": skip,
+            "query": {
                 "bool": {
-                    "must": {"match_all": {}},
-                    "filter": {
-                        "geo_distance": {
-                            "distance": f"{radius_km}km",
-                            "location": {"lat": latitude, "lon": longitude},
+                    "must": [{"range": {"created_at": {"gte": date_threshold}}}],
+                    "must_not": [
+                        {"term": {"hidden_for_review": True}}
+                    ],
+                    "filter": [
+                        {
+                            "geo_distance": {
+                                "distance": f"{radius_km}km",
+                                "location": {"lat": latitude, "lon": longitude},
+                            }
                         }
-                    },
+                    ],
                 }
-            }
+            },
+            "sort": [
+                {
+                    "_geo_distance": {
+                        "location": {"lat": latitude, "lon": longitude},
+                        "order": "asc",
+                        "unit": "km",
+                    }
+                },
+                {"created_at": {"order": "desc"}},
+            ],
+            "_source": [
+                "issue_id",
+                "location",
+                "description",
+                "issue_types",
+                "severity_score",
+                "status",
+                "created_at",
+                "photo_url",
+                "upvotes",
+                "impact_score",
+                "detected_issues",
+                "uploader_display_name",
+                "reported_by",
+            ],
+        }
 
         response = await es_client.search(
-            index="issues",
-            body={
-                "query": query,
-                "size": 100,
-                "sort": [{"created_at": {"order": "desc"}}],
+            index="issues", body=query, request_timeout=45
+        )
+        issues = []
+
+        for hit in response["hits"]["hits"]:
+            issue_data = hit["_source"]
+            if hit.get("sort"):
+                issue_data["distance_km"] = hit["sort"][0]
+            issues.append(issue_data)
+
+        total_hits = response["hits"]["total"]["value"]
+
+        logger.info(
+            f"Found {len(issues)} issues near ({latitude}, {longitude}) within {radius_km}km (skip={skip}, total={total_hits})"
+        )
+        return {
+            "location": {"latitude": latitude, "longitude": longitude},
+            "radius_km": radius_km,
+            "count": len(issues),
+            "total": total_hits,
+            "skip": skip,
+            "issues": issues,
+        }
+
+    except Exception as e:
+        logger.exception("Failed to retrieve nearby issues from Elasticsearch")
+        raise HTTPException(500, "Internal server error")
+
+
+@router.get("/issues/with-user-status")
+async def get_issues_with_user_status(
+    latitude: float,
+    longitude: float,
+    radius_km: float = 5.0,
+    limit: int = 10,
+    skip: int = 0,
+    days_back: int = 30,
+    user: dict = Depends(get_current_user),
+):
+    """
+    Get issues near a location with user's upvote and report status included.
+    Used by: HomeScreen.js, useIssues.js
+    """
+    es_client = get_elasticsearch_client()
+    db = get_firestore_client()
+    if not es_client:
+        raise HTTPException(503, "Elasticsearch unavailable")
+    if not db:
+        raise HTTPException(503, "Firestore unavailable")
+
+    user_uid = user.get("uid")
+    logger.info(
+        f"User {user_uid} fetching issues with status near ({latitude}, {longitude})"
+    )
+
+    try:
+        date_threshold = (
+            datetime.now(timezone.utc) - timedelta(days=days_back)
+        ).isoformat()
+
+        query = {
+            "size": limit,
+            "from": skip,
+            "query": {
+                "bool": {
+                    "must": [{"range": {"created_at": {"gte": date_threshold}}}],
+                    "must_not": [
+                        {"term": {"hidden_for_review": True}}
+                    ],
+                    "filter": [
+                        {
+                            "geo_distance": {
+                                "distance": f"{radius_km}km",
+                                "location": {"lat": latitude, "lon": longitude},
+                            }
+                        }
+                    ],
+                }
             },
+            "sort": [
+                {
+                    "_geo_distance": {
+                        "location": {"lat": latitude, "lon": longitude},
+                        "order": "asc",
+                        "unit": "km",
+                    }
+                },
+                {"created_at": {"order": "desc"}},
+            ],
+            "_source": [
+                "issue_id",
+                "location",
+                "description",
+                "issue_types",
+                "severity_score",
+                "status",
+                "created_at",
+                "photo_url",
+                "upvotes",
+                "impact_score",
+                "detected_issues",
+                "uploader_display_name",
+                "reported_by",
+            ],
+        }
+
+        response = await es_client.search(
+            index="issues", body=query, request_timeout=45
         )
 
         issues = []
+        issue_ids = []
+
         for hit in response["hits"]["hits"]:
             issue_data = hit["_source"]
-            issue_data["issue_id"] = hit["_id"]
+            if hit.get("sort"):
+                issue_data["distance_km"] = hit["sort"][0]
             issues.append(issue_data)
+            issue_ids.append(issue_data["issue_id"])
 
-        return {"count": len(issues), "issues": issues}
+        total_hits = response["hits"]["total"]["value"]
 
+        # Batch fetch upvote and report status from Firestore
+        upvote_status = {}
+        report_status = {}
+
+        if issue_ids:
+            try:
+                upvote_refs = [db.collection("upvotes").document(f"{iid}__{user_uid}") for iid in issue_ids]
+                report_refs = [db.collection("reports").document(f"{iid}__{user_uid}") for iid in issue_ids]
+                
+                upvote_docs = db.get_all(upvote_refs)
+                report_docs = db.get_all(report_refs)
+
+                for i, doc in enumerate(upvote_docs):
+                    iid = issue_ids[i]
+                    if doc.exists:
+                        doc_data = doc.to_dict()
+                        is_active = bool(doc_data.get("isActive", False))
+                        has_upvoted = doc.exists and is_active
+                        logger.info(f"[UPVOTE CHECK] Issue {iid}: exists={doc.exists}, isActive={is_active}, hasUpvoted={has_upvoted}, doc_data={doc_data}")
+                    else:
+                        has_upvoted = False
+                        logger.info(f"[UPVOTE CHECK] Issue {iid}: No upvote document found")
+                    upvote_status[iid] = has_upvoted
+                    
+                for i, doc in enumerate(report_docs):
+                    iid = issue_ids[i]
+                    has_reported = doc.exists and bool(doc.to_dict().get("isActive", False))
+                    report_status[iid] = has_reported
+                    if has_reported:
+                        logger.info(f"[REPORT CHECK] Issue {iid}: hasReported={has_reported}")
+                    
+            except Exception as e:
+                logger.error(f"Error fetching user status: {e}")
+                upvote_status = {iid: False for iid in issue_ids}
+                report_status = {iid: False for iid in issue_ids}
+
+        # Merge user status into each issue
+        issues_with_status = []
+        for issue in issues:
+            iid = issue["issue_id"]
+            user_status = {
+                "hasUpvoted": upvote_status.get(iid, False),
+                "hasReported": report_status.get(iid, False),
+            }
+            issues_with_status.append({
+                **issue,
+                "userStatus": user_status,
+            })
+
+        # Log a sample for debugging
+        if issues_with_status and any(upvote_status.values()):
+            sample = next((i for i in issues_with_status if i["userStatus"]["hasUpvoted"]), None)
+            if sample:
+                logger.info(f"Sample issue with upvote: {sample['issue_id']} -> userStatus: {sample['userStatus']}")
+
+        logger.info(
+            f"Returning {len(issues_with_status)} issues with user status for user {user_uid}"
+        )
+
+        return {
+            "location": {"latitude": latitude, "longitude": longitude},
+            "radius_km": radius_km,
+            "count": len(issues_with_status),
+            "total": total_hits,
+            "skip": skip,
+            "issues": issues_with_status,
+        }
+
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.exception("Failed to retrieve issues")
-        raise HTTPException(500, "Internal server error")
+        logger.exception("Failed to retrieve issues with user status")
+        raise HTTPException(500, f"Internal server error: {str(e)}")
 
 
 @router.post("/submit-issue")
@@ -83,7 +303,7 @@ async def submit_issue(
 ):
     """
     Submit a single issue report with image, location, and description.
-    Used by the React Native mobile app.
+    Used by: useUpload.js
     """
     logger.info(f"User {user.get('uid')} submitting issue report")
 
@@ -118,6 +338,9 @@ async def submit_issue(
         timestamp=geocoded.get("timestamp", ""),
         description=description,
         user_selected_labels=labels,
+        reported_by=reporter_id,
+        source=source_type,
+        uploader_display_name=user_display_name,
     )
 
     if not analysis_result:
@@ -150,50 +373,41 @@ async def submit_issue(
 
 
 @router.post("/issues/{issue_id}/upvote")
-async def upvote_issue_endpoint(
-    issue_id: str,
-    user: dict = Depends(get_current_user),
-):
-    """Upvote an issue"""
+async def upvote_issue_endpoint(issue_id: str, user: dict = Depends(get_current_user)):
+    """
+    Toggle upvote for an issue.
+    Used by: SocialPost.js, IssueDetailModal.js
+    """
+    logger.info(f"User {user.get('uid')} toggling upvote for {issue_id}")
+    
     try:
-        result = await upvote_issue(issue_id, user.get("uid"))
-        if not result["success"]:
-            raise HTTPException(400, result["message"])
+        # Use toggle semantics: if already upvoted -> deactivate, else activate
+        result = await toggle_upvote(issue_id, user.get("uid"))
+        if not result.get("success"):
+            raise HTTPException(400, result.get("message", "Failed to upvote"))
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error upvoting issue: {e}")
+        logger.exception(f"Error upvoting issue: {e}")
         raise HTTPException(500, "Failed to upvote issue")
 
 
-@router.post("/issues/{issue_id}/unlike")
-async def unlike_issue_endpoint(
-    issue_id: str,
-    user: dict = Depends(get_current_user),
-):
-    """Remove upvote from an issue"""
-    try:
-        result = await remove_upvote(issue_id, user.get("uid"))
-        if not result["success"]:
-            raise HTTPException(400, result["message"])
-        return result
-    except Exception as e:
-        logger.error(f"Error removing upvote: {e}")
-        raise HTTPException(500, "Failed to remove upvote")
-
-
 @router.post("/issues/{issue_id}/report")
-async def report_issue_endpoint(
-    issue_id: str,
-    reason: str = Form(...),
-    user: dict = Depends(get_current_user),
-):
-    """Report an issue for review"""
+async def report_issue_endpoint(issue_id: str, user: dict = Depends(get_current_user)):
+    """
+    Report an issue as spam or not fixed.
+    Used by: SocialPost.js, IssueDetailModal.js
+    """
+    logger.info(f"User {user.get('uid')} reporting issue {issue_id}")
+    
     try:
-        result = await report_issue(issue_id, user.get("uid"), reason)
-        if not result["success"]:
-            raise HTTPException(400, result["message"])
+        result = await report_issue(issue_id, user.get("uid"))
+        if not result.get("success"):
+            raise HTTPException(400, result.get("message", "Failed to report"))
         return result
+    except HTTPException:
+        raise
     except Exception as e:
-        logger.error(f"Error reporting issue: {e}")
+        logger.exception(f"Error reporting issue: {e}")
         raise HTTPException(500, "Failed to report issue")
-
