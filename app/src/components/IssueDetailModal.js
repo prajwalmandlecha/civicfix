@@ -90,71 +90,31 @@ const IssueDetailModal = ({
   // Upvote handler
   const handleUpvote = async () => {
     if (isUpvoting || !issueData?.id) return;
-
     setIsUpvoting(true);
-    const previousUpvoted = isUpvoted;
-    const previousCount = upvoteCount;
 
-    console.log(`[IssueDetailModal ${issueData.id}] Upvote clicked:`, {
-      currentIsUpvoted: isUpvoted,
-      currentCount: upvoteCount,
-      userStatus: issueData.userStatus,
-    });
-
-    // Optimistic update for UI feedback, but no count change
-    setIsUpvoted(!isUpvoted);
+    const wasUpvoted = isUpvoted;
+    setUpvoteCount((prev) => (wasUpvoted ? prev - 1 : prev + 1));
+    setIsUpvoted(!wasUpvoted);
 
     try {
       const response = await api.post(`/api/issues/${issueData.id}/upvote`);
+      const { isActive, upvotes } = response.data;
 
-      if (response.data) {
-        const backendIsActive =
-          response.data.isActive || response.data.hasUpvoted || false;
-        setIsUpvoted(backendIsActive);
-
-        if (response.data.upvotes) {
-          const isClosed = issueData.status?.toLowerCase() === "closed";
-          const backendCount = isClosed
-            ? response.data.upvotes.closed || 0
-            : response.data.upvotes.open || 0;
-
-          console.log(`[IssueDetailModal ${issueData.id}] Backend response:`, {
-            status: issueData.status,
-            isClosed,
-            backendCount,
-            backendIsActive,
-            previousUpvoted,
-            previousCount,
-            upvotesObj: response.data.upvotes
-          });
-
-          setUpvoteCount(backendCount);
-        }
+      setIsUpvoted(isActive);
+      if (upvotes) {
+        const isClosed = issueData.status?.toLowerCase() === "closed";
+        setUpvoteCount(isClosed ? upvotes.closed || 0 : upvotes.open || 0);
       }
-
-      // Call parent callback if provided
-      if (onUpvote) {
-        onUpvote(issueData.id, {
-          ok: true,
-          isActive: response.data?.isActive,
-          upvotes: response.data?.upvotes // Pass the full upvotes object
-        });
-      }
+      if (onUpvote) onUpvote(issueData.id, { ok: true, isActive, upvotes });
     } catch (error) {
-      console.error("Error upvoting issue:", error);
-      showError(
-        error.response?.data?.detail ||
-        "Failed to upvote. Please check your connection and try again."
-      );
-      // Revert to previous state on error
-      setIsUpvoted(previousUpvoted);
-      setUpvoteCount(previousCount);
+      showError(error.response?.data?.detail || "Failed to upvote.");
+      setIsUpvoted(wasUpvoted);
+      setUpvoteCount((prev) => (wasUpvoted ? prev + 1 : prev - 1));
     } finally {
-      setTimeout(() => {
-        setIsUpvoting(false);
-      }, 300);
+      setIsUpvoting(false);
     }
-  };  // Report handler
+  };
+  // Report handler
   const handleReport = async () => {
     if (!issueData?.id) return;
 
@@ -483,27 +443,29 @@ const IssueDetailModal = ({
                       )}
 
                     {/* Fixed By Information */}
-                    <View style={styles.fixedBySection}>
-                      <Text style={styles.fixSubtitle}>Fixed By</Text>
-                      <View style={styles.fixedByCard}>
-                        <View style={styles.fixedByHeader}>
-                          <Ionicons name="business" size={40} color="#4CAF79" />
-                          <View style={styles.fixedByInfo}>
-                            <Text style={styles.fixedByName}>
-                              {fixDetails.fixed_by.name}
-                            </Text>
-                            <View style={styles.ngoBadge}>
-                              <Ionicons
-                                name="construct"
-                                size={12}
-                                color="#4CAF79"
-                              />
-                              <Text style={styles.ngoBadgeText}>NGO</Text>
+                    {fixDetails.fixed_by && (
+                      <View style={styles.fixedBySection}>
+                        <Text style={styles.fixSubtitle}>Fixed By</Text>
+                        <View style={styles.fixedByCard}>
+                          <View style={styles.fixedByHeader}>
+                            <Ionicons name="business" size={40} color="#4CAF79" />
+                            <View style={styles.fixedByInfo}>
+                              <Text style={styles.fixedByName}>
+                                {fixDetails.fixed_by.name}
+                              </Text>
+                              <View style={styles.ngoBadge}>
+                                <Ionicons
+                                  name="construct"
+                                  size={12}
+                                  color="#4CAF79"
+                                />
+                                <Text style={styles.ngoBadgeText}>NGO</Text>
+                              </View>
                             </View>
                           </View>
                         </View>
                       </View>
-                    </View>
+                    )}
 
                     {/* Fix Description */}
                     {fixDetails.description && (
@@ -773,20 +735,21 @@ const IssueDetailModal = ({
                     styles.actionButton,
                     styles.notFixedButton,
                     isReported && styles.notFixedButtonActive,
+                    isUpvoted && styles.disabledButton, // Disable if already marked as "Fixed"
                   ]}
                   onPress={handleReport}
-                  disabled={isReporting || isReported}
+                  disabled={isReporting || isReported || isUpvoted}
                 >
                   <Ionicons
                     name={isReported ? "close-circle" : "close-circle-outline"}
                     size={20}
-                    color={isReported ? "#fff" : "#dc3545"}
+                    color={isReported || isUpvoted ? "#fff" : "#dc3545"}
                   />
                   <Text
                     style={[
                       styles.actionButtonText,
                       styles.notFixedButtonText,
-                      isReported && styles.actionButtonTextActive,
+                      (isReported || isUpvoted) && styles.actionButtonTextActive,
                     ]}
                   >
                     {isReporting
@@ -1110,6 +1073,10 @@ const styles = StyleSheet.create({
   },
   notFixedButtonText: {
     color: "#dc3545",
+  },
+  disabledButton: {
+    backgroundColor: "#ccc",
+    borderColor: "#bbb",
   },
   // Close button styles
   closeButtonStyle: {

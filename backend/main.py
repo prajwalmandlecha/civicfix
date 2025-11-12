@@ -132,8 +132,6 @@ async def root():
         "version": "2.0.0",
         "db_status": "connected",
         "firebase_status": firebase_status,
-        "firebase_app": app.state.firebase_app is not None,
-        "firestore_client": db is not None,
     }
 
 

@@ -192,7 +192,6 @@ const MainNav = () => {
 };
 
 export default function App() {
-  const { user, loading } = subscribeToAuthState();
   const [checkingUpdates, setCheckingUpdates] = useState(false);
 
   useEffect(() => {
@@ -211,10 +210,26 @@ export default function App() {
     return () => clearTimeout(timer);
   }, []);
 
-  // Show loading indicator while checking authentication
+  return (
+    <UserProvider>
+      <AppContent />
+    </UserProvider>
+  );
+}
+
+function AppContent() {
+  const { loading } = useUserContext();
+
   if (loading) {
     return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#fff' }}>
+      <View
+        style={{
+          flex: 1,
+          justifyContent: "center",
+          alignItems: "center",
+          backgroundColor: "#fff",
+        }}
+      >
         <ActivityIndicator size="large" color="#4285f4" />
       </View>
     );
@@ -224,12 +239,10 @@ export default function App() {
     <SafeAreaProvider>
       <ActionSheetProvider>
         <KeyboardProvider>
-          <UserProvider>
-            <NavigationContainer>
-              <StatusBar style="dark" />
-              <MainNav />
-            </NavigationContainer>
-          </UserProvider>
+          <NavigationContainer>
+            <StatusBar style="dark" />
+            <MainNav />
+          </NavigationContainer>
         </KeyboardProvider>
       </ActionSheetProvider>
     </SafeAreaProvider>

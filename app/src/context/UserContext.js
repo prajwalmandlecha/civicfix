@@ -39,9 +39,13 @@ export const UserProvider = ({ children }) => {
           "[UserContext] User document does not exist for uid:",
           uid
         );
+        // If user doc doesn't exist, default to citizen
+        setUserType("citizen");
       }
     } catch (error) {
       console.error("Error fetching user profile:", error);
+      // Fallback to citizen on error
+      setUserType("citizen");
     }
   };
 
@@ -58,20 +62,22 @@ export const UserProvider = ({ children }) => {
       }
 
       if (status !== "granted") {
-        console.log("Location permission denied by user");
-        return;
+        console.log("Location permission denied by user - will show location prompt");
+        // Set a flag so the app knows to show the location setup screen
+        return null;
       }
 
       // Check if location services are enabled
       const isLocationEnabled = await Location.hasServicesEnabledAsync();
       if (!isLocationEnabled) {
-        console.log("Location services are disabled");
-        return;
+        console.log("Location services are disabled - will show location prompt");
+        return null;
       }
 
       console.log("Fetching initial location...");
       const location = await Location.getCurrentPositionAsync({
         accuracy: Location.Accuracy.Balanced,
+        timeout: 10000, // 10 second timeout
       });
 
       // Get address
@@ -116,9 +122,11 @@ export const UserProvider = ({ children }) => {
       );
 
       console.log("Initial location set successfully:", address);
+      return locationData;
     } catch (error) {
       console.error("Error fetching initial location:", error);
       // Don't throw - we want the app to continue even if location fetch fails
+      return null;
     }
   };
 

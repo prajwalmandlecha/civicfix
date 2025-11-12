@@ -69,9 +69,16 @@ const HomeScreen = ({ navigation }) => {
   // Fallback once flag to avoid repeated navigation
   const hasAppliedLocationFallback = React.useRef(false);
 
+  // Initial data fetch when context is ready
   useEffect(() => {
     if (!contextLoading) {
-      // Reset expanded params when filters change
+      getPosts();
+    }
+  }, [contextLoading]);
+
+  // Reset and fetch when filters change
+  useEffect(() => {
+    if (!contextLoading) {
       setExpandedParams({
         radiusKm: filters.radiusKm,
         days: filters.days,
@@ -80,7 +87,7 @@ const HomeScreen = ({ navigation }) => {
       setHasMore(true);
       getPosts();
     }
-  }, [lastLocation, filters, contextLoading]);
+  }, [filters]);
 
   // If device location isn't available, fall back to user's saved profile location and open map
   useEffect(() => {
@@ -159,7 +166,6 @@ const HomeScreen = ({ navigation }) => {
 
   // Filter handlers - React Compiler will optimize
   const handleApplyFilters = (newFilters) => {
-    setRefreshing(true);
     setFilters(newFilters);
     setFiltersVisible(false);
   };
@@ -380,22 +386,12 @@ const HomeScreen = ({ navigation }) => {
           days_back: filters.days,
         },
       });
-      console.log("API Response:", response.data);
 
       if (!response.data || !response.data.issues) {
         console.error("API Response missing issues data:", response.data);
         setPosts([]);
         return;
       }
-
-      // Log raw issues data to debug userStatus
-      console.log("[HomeScreen] Raw issues from backend:",
-        response.data.issues.slice(0, 2).map(i => ({
-          id: i.issue_id,
-          userStatus: i.userStatus,
-          upvotes: i.upvotes
-        }))
-      );
 
       const issues = await Promise.all(
         response.data.issues.map(async (issue) => {
@@ -404,11 +400,6 @@ const HomeScreen = ({ navigation }) => {
           const upvoteCount = isClosed
             ? issue.upvotes?.closed || 0
             : issue.upvotes?.open || 0;
-
-          // Debug logging for userStatus
-          if (issue.userStatus?.hasUpvoted) {
-            console.log(`[HomeScreen] Issue ${issue.issue_id} has userStatus:`, issue.userStatus);
-          }
 
           return {
             id: issue.issue_id,
@@ -442,23 +433,13 @@ const HomeScreen = ({ navigation }) => {
 
       issues.sort((a, b) => b.severityScore - a.severityScore);
 
-      console.log("Fetched Issues with user status:", issues);
-      console.log("First issue userStatus:", issues[0]?.userStatus);
       setPosts(issues);
-
-      // NO LONGER NEEDED: Batch fetch upvote/report status
-      // The status is already included in the response from /api/issues/with-user-status
 
       if (issues.length === 0) {
         console.log("No issues found for this location");
       }
     } catch (error) {
       console.error("Error fetching posts:", error);
-      console.error("Error details:", {
-        message: error.message,
-        status: error.response?.status,
-        data: error.response?.data,
-      });
       setPosts([]);
     }
   };
@@ -502,11 +483,6 @@ const HomeScreen = ({ navigation }) => {
                 ...post.userStatus,
                 hasUpvoted: result.isActive,
               },
-              // Update detailedData to keep it in sync
-              detailedData: {
-                ...post.detailedData,
-                upvotes: result.upvotes || post.detailedData?.upvotes,
-              },
             };
           }
           return post;
@@ -547,16 +523,21 @@ const HomeScreen = ({ navigation }) => {
   const handleSetLocation = async () => {
     try {
       setLoadingLocation(true);
-      const { addressParts, location, error } = await getCurrentLocation(
-        setLoadingLocation
-      );
-      if (error) {
-        Alert.alert(
-          "Location Error",
-          "Unable to get your location. Please check your location settings."
-        );
+      const result = await getCurrentLocation(setLoadingLocation);
+
+      if (!result || result.error) {
+        let errorMessage = "Unable to get your location. Please check your location settings.";
+        if (result?.error === "permission_denied") {
+          errorMessage = "Location permission denied. Please enable it in your device settings to use this feature.";
+        } else if (result?.error === "services_disabled") {
+          errorMessage = "Location services are disabled. Please enable them in your device settings.";
+        }
+        Alert.alert("Location Error", errorMessage);
         return;
       }
+
+      const { addressParts, location } = result;
+
       if (location && addressParts) {
         const formattedAddress = [
           addressParts.street,
@@ -610,46 +591,40 @@ const HomeScreen = ({ navigation }) => {
       {/* No Location Inline Prompt */}
       {!contextLoading && (!lastLocation || !lastLocation.coords) && (
         <View style={styles.emptyState}>
-          <Ionicons name="location-outline" size={64} color="#ccc" />
-          <Text style={styles.emptyStateTitle}>Location Needed</Text>
+          <Ionicons name="location-outline" size={72} color="#4285f4" />
+          <Text style={styles.emptyStateTitle}>Welcome to CivicFix!</Text>
           <Text style={styles.emptyStateText}>
-            Turn on device location, use your saved location, or open the map.
+            To get started, we need your location to show you nearby civic issues in your community.
           </Text>
 
-          {/* Use Saved Location (from profile) */}
-          {profile?.lastLocation?.coords && (
-            <TouchableOpacity
-              style={[styles.setLocationButton, { backgroundColor: "#6FCF97" }]}
-              onPress={async () => {
-                await updateLastLocation(profile.lastLocation);
-                navigation.navigate("Location");
-              }}
-              disabled={loadingLocation}
-            >
-              <Text style={styles.setLocationButtonText}>Use Saved Location</Text>
-            </TouchableOpacity>
-          )}
-
-          {/* Try to fetch device location */}
+          {/* Primary action: Try to fetch device location */}
           <TouchableOpacity
-            style={styles.setLocationButton}
+            style={[styles.setLocationButton, styles.primaryButton]}
             onPress={handleSetLocation}
             disabled={loadingLocation}
           >
             {loadingLocation ? (
               <ActivityIndicator color="#fff" />
             ) : (
-              <Text style={styles.setLocationButtonText}>Use Device Location</Text>
+              <>
+                <Ionicons name="locate" size={20} color="#fff" style={{ marginRight: 8 }} />
+                <Text style={styles.setLocationButtonText}>Enable Location</Text>
+              </>
             )}
           </TouchableOpacity>
 
-          {/* Open Map directly */}
+          {/* Alternative: Browse the map */}
           <TouchableOpacity
-            style={[styles.setLocationButton, { backgroundColor: "#4285f4" }]}
+            style={[styles.setLocationButton, styles.secondaryButton]}
             onPress={() => navigation.navigate("Location")}
           >
-            <Text style={styles.setLocationButtonText}>Open Map</Text>
+            <Ionicons name="map-outline" size={20} color="#4285f4" style={{ marginRight: 8 }} />
+            <Text style={styles.secondaryButtonText}>Browse Map Instead</Text>
           </TouchableOpacity>
+
+          <Text style={styles.helperText}>
+            You can change your location anytime from your profile or the map screen.
+          </Text>
         </View>
       )}
 
@@ -997,15 +972,17 @@ const styles = StyleSheet.create({
     alignItems: "center",
     paddingHorizontal: 40,
     paddingVertical: 60,
+    backgroundColor: "#f8f9fa",
   },
   emptyStateIcon: {
     fontSize: 64,
     marginBottom: 20,
   },
   emptyStateTitle: {
-    fontSize: 22,
+    fontSize: 24,
     fontWeight: "700",
-    color: "#333",
+    color: "#1a1a1a",
+    marginTop: 24,
     marginBottom: 12,
     textAlign: "center",
   },
@@ -1015,24 +992,49 @@ const styles = StyleSheet.create({
     textAlign: "center",
     marginBottom: 32,
     lineHeight: 24,
+    maxWidth: 320,
   },
   setLocationButton: {
-    backgroundColor: "#4285f4",
-    paddingHorizontal: 32,
-    paddingVertical: 14,
-    borderRadius: 25,
-    minWidth: 200,
+    flexDirection: "row",
     alignItems: "center",
+    justifyContent: "center",
+    paddingHorizontal: 32,
+    paddingVertical: 16,
+    borderRadius: 12,
+    minWidth: 260,
+    marginBottom: 12,
     shadowColor: "#000",
     shadowOffset: { width: 0, height: 2 },
     shadowOpacity: 0.1,
     shadowRadius: 4,
     elevation: 3,
   },
+  primaryButton: {
+    backgroundColor: "#4285f4",
+  },
+  secondaryButton: {
+    backgroundColor: "#fff",
+    borderWidth: 2,
+    borderColor: "#4285f4",
+    shadowOpacity: 0.05,
+  },
   setLocationButtonText: {
     color: "#fff",
     fontSize: 16,
     fontWeight: "700",
+  },
+  secondaryButtonText: {
+    color: "#4285f4",
+    fontSize: 16,
+    fontWeight: "700",
+  },
+  helperText: {
+    fontSize: 13,
+    color: "#999",
+    textAlign: "center",
+    marginTop: 24,
+    fontStyle: "italic",
+    maxWidth: 280,
   },
 });
 

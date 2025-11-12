@@ -10,7 +10,7 @@ from core.dependencies import get_current_user
 from core.database import get_elasticsearch_client, get_firestore_client
 from services.storage_service import upload_multiple_files_to_gcs
 from services.analyzer_service import verify_fix
-from services.user_service import increment_fix_count
+from services.user_service import increment_fix_count, award_karma_for_fix
 
 logger = logging.getLogger(__name__)
 
@@ -130,17 +130,8 @@ async def submit_fix(
     # Award karma to reporter if issue is fully closed
     if new_status == "closed":
         reporter_id = issue_data.get("reported_by")
-        if reporter_id and reporter_id != "anonymous" and db:
-            try:
-                from firebase_admin import firestore as fb_firestore
-                user_ref = db.collection("users").document(reporter_id)
-                user_ref.update({
-                    "karma": fb_firestore.Increment(20),
-                    "stats.issues_resolved": fb_firestore.Increment(1),
-                })
-                logger.info(f"Awarded 20 karma to reporter {reporter_id}")
-            except Exception as e:
-                logger.error(f"Failed to award karma to reporter: {e}")
+        if reporter_id and reporter_id != "anonymous":
+            await award_karma_for_fix(reporter_id)
 
     logger.info(f"Fix submitted successfully for issue {issue_id} by user {user_id}")
 
@@ -191,8 +182,8 @@ async def get_fix_details(
             user_doc = db.collection("users").document(closed_by).get()
             if user_doc.exists:
                 user_data = user_doc.to_dict()
-                ngo_name = user_data.get("organization_name") or user_data.get("display_name") or user_data.get("name") or "Unknown NGO"
-                ngo_logo = user_data.get("logo_url") or user_data.get("photoURL")
+                ngo_name = user_data.get("organization_name") or user_data.get("displayName") or "Unknown NGO"
+                ngo_logo = user_data.get("logoUrl") or user_data.get("photoURL")
         except Exception as e:
             logger.error(f"Failed to fetch NGO details: {e}")
 

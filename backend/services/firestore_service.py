@@ -175,7 +175,8 @@ class FirestoreService:
         user_id: str,
         issues_reported: int = 0,
         issues_resolved: int = 0,
-        co2_saved: float = 0.0
+        co2_saved: float = 0.0,
+        karma: int = 0
     ) -> bool:
         """
         Increment user's statistics.
@@ -185,6 +186,7 @@ class FirestoreService:
             issues_reported: Number to add to issues_reported
             issues_resolved: Number to add to issues_resolved
             co2_saved: CO2 amount to add (kg)
+            karma: Karma amount to add
             
         Returns:
             True if successful, False otherwise
@@ -202,6 +204,8 @@ class FirestoreService:
                 updates["stats.issues_resolved"] = Increment(issues_resolved)
             if co2_saved != 0.0:
                 updates["stats.co2_saved"] = Increment(co2_saved)
+            if karma != 0:
+                updates["karma"] = Increment(karma)
             
             if updates:
                 user_ref.set(updates, merge=True)

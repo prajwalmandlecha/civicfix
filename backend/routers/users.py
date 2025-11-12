@@ -104,8 +104,7 @@ async def get_user_stats_firebase(user_id: str, user: dict = Depends(get_current
         karma = user_data.get("karma", 0)
 
         issues_reported = stats.get("issues_reported", 0)
-        issues_resolved = stats.get("issues_resolved", 0) if user_type == "citizen" else 0
-        issues_fixed = stats.get("issues_fixed", 0) if user_type in ["ngo", "volunteer"] else 0
+        issues_resolved = stats.get("issues_resolved", 0)
         co2_saved = stats.get("co2_saved", 0)
 
         current_rank = 0
@@ -125,7 +124,6 @@ async def get_user_stats_firebase(user_id: str, user: dict = Depends(get_current
             "currentRank": current_rank,
             "issuesReported": issues_reported,
             "issuesResolved": issues_resolved,
-            "issuesFixed": issues_fixed,
             "co2Saved": round(co2_saved, 2),
             "badges": [],
             "source": "firebase",

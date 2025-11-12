@@ -13,6 +13,7 @@ class UserStats(BaseModel):
     total_upvotes: int = 0
     total_fixes: int = 0
     total_co2_saved: float = 0.0
+    karma: int = 0
     rank: Optional[int] = None
 
 

@@ -55,34 +55,20 @@ const SocialPost = ({
 
   // Initialize state from userStatus on mount and whenever it changes
   useEffect(() => {
-    console.log(`[SocialPost ${postId}] Initializing from userStatus:`, {
-      postId,
-      userStatus,
-      hasUpvoted: userStatus?.hasUpvoted,
-      hasReported: userStatus?.hasReported,
-    });
-
     // Set initial state from props
     if (userStatus) {
-      setIsUpvoted(userStatus.hasUpvoted || false);
-      setIsReported(userStatus.hasReported || false);
+      const initUp = !!userStatus.hasUpvoted;
+      const initRep = !!userStatus.hasReported;
+      // Normalize: for CLOSED issues, ensure mutual exclusivity on mount
+      if (status?.toLowerCase() === "closed" && initUp && initRep) {
+        setIsUpvoted(false);
+        setIsReported(true);
+      } else {
+        setIsUpvoted(initUp);
+        setIsReported(initRep);
+      }
     }
-  }, [postId, userStatus?.hasUpvoted, userStatus?.hasReported]);
-
-  // Debug: Log button visibility conditions
-  useEffect(() => {
-    console.log(`[SocialPost ${postId}] Button visibility check:`, {
-      postId,
-      status,
-      userType,
-      statusLower: status?.toLowerCase(),
-      isClosed: status?.toLowerCase() === "closed",
-      isOpen: status?.toLowerCase() === "open",
-      shouldShowClosedButtons:
-        status?.toLowerCase() === "closed" && userType === "citizen",
-      shouldShowOpenButtons: status?.toLowerCase() === "open",
-    });
-  }, [postId, status, userType]);
+  }, [userStatus]);
 
   // React Compiler will optimize these
   useEffect(() => {
@@ -121,81 +107,38 @@ const SocialPost = ({
   }, [postId, status, detailedData?.closed_at]);
 
   const handleUpvote = async () => {
-    // Prevent multiple simultaneous clicks
-    if (isUpvoting) {
-      console.log("Already processing upvote, ignoring click");
-      return;
-    }
-
+    if (isUpvoting) return;
+    // For CLOSED issues, prevent upvote if user has already reported "Not Fixed"
+    if (status?.toLowerCase() === "closed" && isReported) return;
     setIsUpvoting(true);
-    const previousUpvoted = isUpvoted;
-    const previousCount = upvoteCount;
 
-    console.log(`[SocialPost ${postId}] Upvote clicked:`, {
-      currentIsUpvoted: isUpvoted,
-      currentCount: upvoteCount,
-      userStatus,
-    });
-
-    // Optimistic update for UI feedback, but no count change
-    setIsUpvoted(!isUpvoted);
+    const wasUpvoted = isUpvoted;
+    setUpvoteCount((prev) => (wasUpvoted ? prev - 1 : prev + 1));
+    setIsUpvoted(!wasUpvoted);
 
     try {
-      // Backend handles toggle - returns isActive state
       const response = await api.post(`/api/issues/${postId}/upvote`);
+      const { isActive, upvotes } = response.data;
 
-      // Sync with backend response
-      if (response.data) {
-        const backendIsActive =
-          response.data.isActive || response.data.hasUpvoted || false;
-        setIsUpvoted(backendIsActive);
-
-        // Update count from backend - use correct count based on issue status
-        if (response.data.upvotes) {
-          const isClosed = status?.toLowerCase() === "closed";
-          const backendCount = isClosed
-            ? response.data.upvotes.closed || 0
-            : response.data.upvotes.open || 0;
-
-          console.log(`[SocialPost ${postId}] Backend response:`, {
-            status,
-            isClosed,
-            backendCount,
-            backendIsActive,
-            previousUpvoted,
-            previousCount,
-            upvotesObj: response.data.upvotes,
-          });
-
-          setUpvoteCount(backendCount);
-        }
+      setIsUpvoted(isActive);
+      // Enforce exclusivity visually: if upvote becomes active, clear report state locally
+      if (isActive && isReported) {
+        setIsReported(false);
       }
-
-      // Call parent callback if provided
-      if (onUpvote) {
-        onUpvote(postId, {
-          ok: true,
-          isActive: response.data?.isActive,
-          upvotes: response.data?.upvotes, // Pass the full upvotes object
-        });
+      if (upvotes) {
+        const isClosed = status?.toLowerCase() === "closed";
+        setUpvoteCount(isClosed ? upvotes.closed || 0 : upvotes.open || 0);
       }
+      if (onUpvote) onUpvote(postId, { ok: true, isActive, upvotes });
     } catch (error) {
-      console.error("Error upvoting issue:", error);
-      showError(
-        error.response?.data?.detail ||
-          "Failed to upvote. Please check your connection and try again."
-      );
-
-      // Revert to previous state on error
-      setIsUpvoted(previousUpvoted);
-      setUpvoteCount(previousCount);
+      showError(error.response?.data?.detail || "Failed to upvote.");
+      setIsUpvoted(wasUpvoted);
+      setUpvoteCount((prev) => (wasUpvoted ? prev + 1 : prev - 1));
     } finally {
-      // Add small delay before allowing next click to prevent rapid clicking
-      setTimeout(() => {
-        setIsUpvoting(false);
-      }, 300);
+      setIsUpvoting(false);
     }
   };
+
   const handleReport = async () => {
     // If already reported, show feedback immediately
     if (isReported) {
@@ -231,9 +174,15 @@ const SocialPost = ({
 
             // Sync with backend response
             if (response.data) {
-              const hasReported =
-                response.data.hasReported || response.data.isActive || true;
+              const hasReported = response.data.hasReported || response.data.isActive || true;
               setIsReported(hasReported);
+              // If we previously had an upvote (esp. in CLOSED state), ensure exclusivity
+              if (hasReported && isUpvoted) {
+                setIsUpvoted(false);
+                // Reflect potential backend decrement for closed upvote counts
+                const isClosed = status?.toLowerCase() === "closed";
+                if (isClosed && upvoteCount > 0) setUpvoteCount((c) => Math.max(0, c - 1));
+              }
 
               console.log(`Issue ${postId} reported successfully`);
             } else {
@@ -262,7 +211,7 @@ const SocialPost = ({
             } else {
               showError(
                 errorDetail ||
-                  "Failed to report issue. Please check your connection and try again."
+                "Failed to report issue. Please check your connection and try again."
               );
             }
           } finally {
@@ -340,32 +289,32 @@ const SocialPost = ({
           detailedData?.created_at ||
           detailedData?.closed_at ||
           fixedDate) && (
-          <View style={styles.datesRow}>
-            {(createdAt || detailedData?.created_at) && (
-              <View style={styles.dateChip}>
-                <Ionicons name="calendar" size={12} color="#666" />
-                <Text style={styles.dateChipText}>
-                  Uploaded{" "}
-                  {new Date(
-                    createdAt || detailedData?.created_at
-                  ).toLocaleDateString()}
-                </Text>
-              </View>
-            )}
-            {status?.toLowerCase() === "closed" &&
-              (detailedData?.closed_at || fixedDate) && (
+            <View style={styles.datesRow}>
+              {(createdAt || detailedData?.created_at) && (
                 <View style={styles.dateChip}>
-                  <Ionicons name="checkmark-done" size={12} color="#4CAF79" />
-                  <Text style={[styles.dateChipText, { color: "#2f6e4f" }]}>
-                    Fixed on{" "}
+                  <Ionicons name="calendar" size={12} color="#666" />
+                  <Text style={styles.dateChipText}>
+                    Uploaded{" "}
                     {new Date(
-                      detailedData?.closed_at || fixedDate
+                      createdAt || detailedData?.created_at
                     ).toLocaleDateString()}
                   </Text>
                 </View>
               )}
-          </View>
-        )}
+              {status?.toLowerCase() === "closed" &&
+                (detailedData?.closed_at || fixedDate) && (
+                  <View style={styles.dateChip}>
+                    <Ionicons name="checkmark-done" size={12} color="#4CAF79" />
+                    <Text style={[styles.dateChipText, { color: "#2f6e4f" }]}>
+                      Fixed on{" "}
+                      {new Date(
+                        detailedData?.closed_at || fixedDate
+                      ).toLocaleDateString()}
+                    </Text>
+                  </View>
+                )}
+            </View>
+          )}
 
         {/* Description */}
         {description && (
@@ -397,14 +346,15 @@ const SocialPost = ({
               return (
                 <>
                   {/* Fixed Button (maps to closed upvote) */}
+                  {/* Fixed Button (maps to closed upvote) */}
                   <TouchableOpacity
                     style={[
                       styles.fixedButton,
                       isUpvoted && styles.fixedButtonActive,
-                      isUpvoting && styles.fixedButtonDisabled,
+                      (isUpvoting || isReported) && styles.fixedButtonDisabled,
                     ]}
                     onPress={handleUpvote}
-                    disabled={isUpvoting}
+                    disabled={isUpvoting || isReported}
                   >
                     <Ionicons
                       name={
@@ -413,13 +363,14 @@ const SocialPost = ({
                           : "checkmark-circle-outline"
                       }
                       size={16}
-                      color={isUpvoted ? "#fff" : "#4CAF79"}
+                      color={isUpvoted ? "#fff" : (isReported ? "#98A2B3" : "#4CAF79")}
                       style={{ marginRight: 6 }}
                     />
                     <Text
                       style={[
                         styles.fixedButtonText,
                         isUpvoted && styles.fixedButtonTextActive,
+                        !isUpvoted && isReported && { color: "#98A2B3" },
                       ]}
                     >
                       Fixed {upvoteCount > 0 ? `(${upvoteCount})` : ""}
@@ -431,30 +382,37 @@ const SocialPost = ({
                     style={[
                       styles.notFixedButton,
                       isReported && styles.notFixedButtonActive,
-                      isReporting && styles.notFixedButtonDisabled,
+                      (isReporting || isUpvoted) && styles.notFixedButtonDisabled,
                     ]}
                     onPress={handleReport}
-                    disabled={isReporting || isReported}
+                    disabled={isReporting || isReported || isUpvoted}
                   >
                     <Ionicons
                       name={
                         isReported ? "close-circle" : "close-circle-outline"
                       }
                       size={16}
-                      color={isReported ? "#fff" : "#dc3545"}
+                      color={
+                        isReported
+                          ? "#fff"
+                          : isUpvoted
+                            ? "#98A2B3"
+                            : "#dc3545"
+                      }
                       style={{ marginRight: 6 }}
                     />
                     <Text
                       style={[
                         styles.notFixedButtonText,
                         isReported && styles.notFixedButtonTextActive,
+                        !isReported && isUpvoted && { color: "#98A2B3" },
                       ]}
                     >
                       {isReporting
                         ? "Submitting..."
                         : isReported
-                        ? "Not Fixed"
-                        : "Not Fixed"}
+                          ? "Not Fixed"
+                          : "Not Fixed"}
                     </Text>
                   </TouchableOpacity>
                 </>
@@ -530,8 +488,8 @@ const SocialPost = ({
                         {isReporting
                           ? "Reporting..."
                           : isReported
-                          ? "Reported"
-                          : "Report"}
+                            ? "Reported"
+                            : "Report"}
                       </Text>
                     </TouchableOpacity>
                   ) : null}
@@ -821,26 +779,4 @@ const styles = StyleSheet.create({
   },
 });
 
-// Custom comparison function for React.memo to properly check userStatus changes
-const arePropsEqual = (prevProps, nextProps) => {
-  // If userStatus changes, we need to re-render
-  if (
-    prevProps.userStatus?.hasUpvoted !== nextProps.userStatus?.hasUpvoted ||
-    prevProps.userStatus?.hasReported !== nextProps.userStatus?.hasReported
-  ) {
-    return false; // Props changed, re-render
-  }
-
-  // Check other props that should trigger re-renders
-  return (
-    prevProps.postId === nextProps.postId &&
-    prevProps.likes === nextProps.likes &&
-    prevProps.status === nextProps.status &&
-    prevProps.location === nextProps.location &&
-    prevProps.description === nextProps.description
-  );
-};
-
-// Wrap with React.memo with custom comparison to prevent unnecessary re-renders
-// but still update when userStatus changes
-export default React.memo(SocialPost, arePropsEqual);
+export default React.memo(SocialPost);

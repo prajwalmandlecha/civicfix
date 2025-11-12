@@ -70,23 +70,28 @@ const MapScreen = ({ navigation }) => {
     limit: 50,
   });
   const [loadingFilters, setLoadingFilters] = useState(false);
-  const [region, setRegion] = useState(
-    lastLocation?.coords
-      ? {
+  const { userType, lastLocation } = useUserContext();
+
+  // Initialize region with lastLocation from UserContext if available
+  const getInitialRegion = () => {
+    if (lastLocation?.coords) {
+      return {
         latitude: lastLocation.coords.latitude,
         longitude: lastLocation.coords.longitude,
         latitudeDelta: 0.05,
         longitudeDelta: 0.05,
-      }
-      : {
-        latitude: 12.9716,
-        longitude: 77.5946,
-        latitudeDelta: 0.0922,
-        longitudeDelta: 0.0421,
-      }
-  );
+      };
+    }
+    // Fallback to default location (Bangalore)
+    return {
+      latitude: 12.9716,
+      longitude: 77.5946,
+      latitudeDelta: 0.0922,
+      longitudeDelta: 0.0421,
+    };
+  };
 
-  const { userType, lastLocation } = useUserContext();
+  const [region, setRegion] = useState(getInitialRegion());
 
   // Helper: normalize location to support {lat, lon} and {latitude, longitude}
   const getLatLon = (loc) => {
@@ -166,6 +171,26 @@ const MapScreen = ({ navigation }) => {
     try {
       setLocationError(false);
 
+      // First, check if we have a stored location from UserContext
+      if (lastLocation?.coords && !userLocation) {
+        console.log("Using stored location from UserContext:", lastLocation);
+        const { latitude, longitude } = lastLocation.coords;
+
+        setUserLocation({ latitude, longitude });
+        const newRegion = {
+          latitude,
+          longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        };
+        setRegion(newRegion);
+
+        // Fetch issues for stored location
+        await fetchIssues(latitude, longitude);
+        setLoading(false);
+        return;
+      }
+
       // Request location permissions
       let { status } = await Location.getForegroundPermissionsAsync();
 
@@ -176,6 +201,22 @@ const MapScreen = ({ navigation }) => {
       }
 
       if (status !== "granted") {
+        // If permission denied but we have stored location, use it
+        if (lastLocation?.coords) {
+          const { latitude, longitude } = lastLocation.coords;
+          setUserLocation({ latitude, longitude });
+          const newRegion = {
+            latitude,
+            longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          };
+          setRegion(newRegion);
+          await fetchIssues(latitude, longitude);
+          setLoading(false);
+          return;
+        }
+
         Alert.alert(
           "Permission Denied",
           "Location permission is required to show nearby issues"
@@ -188,6 +229,22 @@ const MapScreen = ({ navigation }) => {
       // Check if location services are enabled
       const isLocationEnabled = await Location.hasServicesEnabledAsync();
       if (!isLocationEnabled) {
+        // If services disabled but we have stored location, use it
+        if (lastLocation?.coords) {
+          const { latitude, longitude } = lastLocation.coords;
+          setUserLocation({ latitude, longitude });
+          const newRegion = {
+            latitude,
+            longitude,
+            latitudeDelta: 0.05,
+            longitudeDelta: 0.05,
+          };
+          setRegion(newRegion);
+          await fetchIssues(latitude, longitude);
+          setLoading(false);
+          return;
+        }
+
         Alert.alert(
           "Location Services Disabled",
           "Please enable location services in your device settings to see nearby issues.",
@@ -227,6 +284,23 @@ const MapScreen = ({ navigation }) => {
       await fetchIssues(latitude, longitude);
     } catch (error) {
       console.error("Error initializing map:", error);
+
+      // If there's an error but we have stored location, use it as fallback
+      if (lastLocation?.coords) {
+        console.log("Using stored location as fallback after error");
+        const { latitude, longitude } = lastLocation.coords;
+        setUserLocation({ latitude, longitude });
+        const newRegion = {
+          latitude,
+          longitude,
+          latitudeDelta: 0.05,
+          longitudeDelta: 0.05,
+        };
+        setRegion(newRegion);
+        await fetchIssues(latitude, longitude);
+        setLoading(false);
+        return;
+      }
 
       let errorMessage = "Failed to get your location. ";
       if (error.message.includes("Location request timed out")) {
@@ -514,7 +588,6 @@ const MapScreen = ({ navigation }) => {
   };
 
   const computeMaxIntensity = () => {
-    // Increase intensity slightly with zoom to keep look consistent
     const minZoom = 8;
     const maxZoom = 18;
     const z = typeof currentZoom === "number" ? currentZoom : 13;
@@ -528,14 +601,20 @@ const MapScreen = ({ navigation }) => {
         <ActivityIndicator size="large" color="#6FCF97" />
         <Text style={styles.loadingText}>
           {locationError
-            ? "Waiting for location..."
+            ? "Unable to get your location"
             : "Loading nearby issues..."}
         </Text>
-        {locationError && (
-          <TouchableOpacity style={styles.retryButton} onPress={initializeMap}>
-            <Text style={styles.retryButtonText}>Retry</Text>
-          </TouchableOpacity>
-        )}
+        {locationError ? (
+          <View style={styles.errorActions}>
+            <Text style={styles.errorHint}>
+              Please enable location services in your device settings
+            </Text>
+            <TouchableOpacity style={styles.retryButton} onPress={initializeMap}>
+              <Ionicons name="refresh" size={20} color="#fff" style={{ marginRight: 8 }} />
+              <Text style={styles.retryButtonText}>Try Again</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
       </View>
     );
   }
@@ -606,7 +685,7 @@ const MapScreen = ({ navigation }) => {
         initialRegion={region}
         onRegionChangeComplete={onRegionChangeComplete}
         showsUserLocation={true}
-        showsMyLocationButton={false}
+        showsMyLocationButton={true}
         maxZoomLevel={18}
         minZoomLevel={8}
         loadingEnabled={true}
@@ -714,14 +793,29 @@ const styles = StyleSheet.create({
     justifyContent: "center",
     alignItems: "center",
     backgroundColor: "#fff",
+    paddingHorizontal: 40,
   },
   loadingText: {
     marginTop: 10,
     fontSize: 16,
     color: "#666",
+    textAlign: "center",
+  },
+  errorActions: {
+    marginTop: 20,
+    alignItems: "center",
+  },
+  errorHint: {
+    fontSize: 14,
+    color: "#999",
+    textAlign: "center",
+    marginBottom: 16,
+    maxWidth: 280,
   },
   retryButton: {
-    marginTop: 20,
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "center",
     backgroundColor: "#4285f4",
     paddingHorizontal: 24,
     paddingVertical: 12,

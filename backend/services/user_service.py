@@ -64,3 +64,20 @@ async def increment_fix_count(user_id: str, co2_saved: float = 0.0):
     if not success:
         logger.error(f"Failed to increment fix count for {user_id}")
 
+
+async def award_karma_for_fix(user_id: str):
+    """
+    Award karma for fixing an issue.
+    
+    Args:
+        user_id: Firebase user ID
+    """
+    fs = get_firestore_service()
+    success = await fs.increment_user_stats(
+        user_id,
+        karma=20
+    )
+    
+    if not success:
+        logger.error(f"Failed to award karma for fix to {user_id}")
+

@@ -69,6 +69,6 @@ export default {
     url: "https://u.expo.dev/c7f67732-3e2d-4455-8baf-3b30337961d3",
   },
   experiments: {
-    reactCompiler: true,
+    reactCompiler: false,
   },
 };

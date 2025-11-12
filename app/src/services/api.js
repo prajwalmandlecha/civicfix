@@ -1,19 +1,20 @@
 import axios from "axios";
 import { auth } from "./firebase";
+import { API_URL } from "../constants/config";
 
 const api = axios.create({
-  baseURL: "https://civicfix-backend-809180458813.asia-south1.run.app",
+  baseURL: API_URL,
 });
-
-// const api = axios.create({
-//   baseURL: "http://172.28.99.8:8000",
-// });
 
 api.interceptors.request.use(async (config) => {
   const user = auth.currentUser;
   if (user) {
-    const token = await user.getIdToken();
-    config.headers.Authorization = `Bearer ${token}`;
+    try {
+      const token = await user.getIdToken();
+      config.headers.Authorization = `Bearer ${token}`;
+    } catch (error) {
+      console.error("Error getting ID token:", error);
+    }
   }
   return config;
 });
