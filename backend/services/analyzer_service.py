@@ -15,7 +15,10 @@ def analyze_issue(
     location_dict: Dict[str, float],
     timestamp: str,
     description: str = "",
-    user_selected_labels: List[str] = None
+    user_selected_labels: List[str] = None,
+    reported_by: str = "anonymous",
+    source: str = "citizen",
+    uploader_display_name: str = "Anonymous"
 ) -> Optional[Dict[str, Any]]:
     """
     Send issue to AI analyzer service for detection and classification.
@@ -26,6 +29,9 @@ def analyze_issue(
         timestamp: ISO timestamp string
         description: User-provided description
         user_selected_labels: User-selected issue types
+        reported_by: User ID of the reporter
+        source: Source type (citizen, anonymous, etc.)
+        uploader_display_name: Display name of the uploader
         
     Returns:
         Optional[Dict]: Analysis response from AI service
@@ -39,12 +45,15 @@ def analyze_issue(
         "timestamp": timestamp,
         "description": description,
         "user_selected_labels": user_selected_labels,
+        "reported_by": reported_by,
+        "source": source,
+        "uploader_display_name": uploader_display_name,
     }
 
     try:
         logger.info(f"Sending issue to analyzer at {settings.CLOUD_ANALYZER_URL}")
         response = requests.post(
-            f"{settings.CLOUD_ANALYZER_URL}/analyze",
+            f"{settings.CLOUD_ANALYZER_URL}/analyze/",
             json=payload,
             timeout=60,
         )
@@ -94,7 +103,7 @@ def verify_fix(
     try:
         logger.info(f"Sending fix verification to {settings.VERIFIER_URL}")
         response = requests.post(
-            f"{settings.VERIFIER_URL}/verify-fix",
+            f"{settings.VERIFIER_URL}/verify-fix/",
             json=payload,
             timeout=60,
         )

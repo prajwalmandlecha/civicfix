@@ -19,6 +19,7 @@ class Settings(BaseSettings):
     
     # Google Cloud Storage
     GCS_BUCKET_NAME: Optional[str] = None
+    GCS_CREDENTIALS_PATH: str = "../secrets/civicfix-474613-613212b7d832.json"
     
     # External Services
     CLOUD_ANALYZER_URL: str = "http://localhost:8001"

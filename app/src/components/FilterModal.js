@@ -26,6 +26,7 @@ const FilterModal = ({
     onReset,
     showRadiusFilter = true, // HomeScreen uses this
     showLimitFilter = true,  // Both use this
+    userType = 'citizen',    // User type to conditionally show filters
 }) => {
     const [draftFilters, setDraftFilters] = useState(filters);
 
@@ -49,6 +50,7 @@ const FilterModal = ({
             radiusKm: showRadiusFilter ? 5 : undefined,
             issueTypes: [],
             limit: 20,
+            myIssues: 'all',
         };
         setDraftFilters(resetFilters);
         if (onReset) onReset(resetFilters);
@@ -148,6 +150,69 @@ const FilterModal = ({
                                         </Text>
                                     </TouchableOpacity>
                                 ))}
+                            </View>
+                        </View>
+
+                        {/* My Issues Filter - Conditionally shown based on user type */}
+                        <View style={[styles.filterSection, styles.filterSectionLower]}>
+                            <Text style={styles.filterSectionTitle}>My Contributions</Text>
+                            <View style={styles.filterOptions}>
+                                <TouchableOpacity
+                                    style={[
+                                        styles.filterOption,
+                                        draftFilters.myIssues === 'all' && styles.filterOptionSelected,
+                                    ]}
+                                    onPress={() => updateDraftFilter('myIssues', 'all')}
+                                >
+                                    <Text
+                                        style={[
+                                            styles.filterOptionText,
+                                            draftFilters.myIssues === 'all' && styles.filterOptionTextSelected,
+                                        ]}
+                                    >
+                                        All Issues
+                                    </Text>
+                                </TouchableOpacity>
+
+                                {/* Show 'Uploaded by Me' only for citizens */}
+                                {userType === 'citizen' && (
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.filterOption,
+                                            draftFilters.myIssues === 'uploaded' && styles.filterOptionSelected,
+                                        ]}
+                                        onPress={() => updateDraftFilter('myIssues', 'uploaded')}
+                                    >
+                                        <Text
+                                            style={[
+                                                styles.filterOptionText,
+                                                draftFilters.myIssues === 'uploaded' && styles.filterOptionTextSelected,
+                                            ]}
+                                        >
+                                            Uploaded by Me
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
+
+                                {/* Show 'Fixed by Me' only for NGOs */}
+                                {userType === 'ngo' && (
+                                    <TouchableOpacity
+                                        style={[
+                                            styles.filterOption,
+                                            draftFilters.myIssues === 'fixed' && styles.filterOptionSelected,
+                                        ]}
+                                        onPress={() => updateDraftFilter('myIssues', 'fixed')}
+                                    >
+                                        <Text
+                                            style={[
+                                                styles.filterOptionText,
+                                                draftFilters.myIssues === 'fixed' && styles.filterOptionTextSelected,
+                                            ]}
+                                        >
+                                            Fixed by Me
+                                        </Text>
+                                    </TouchableOpacity>
+                                )}
                             </View>
                         </View>
 

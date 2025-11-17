@@ -33,6 +33,7 @@ const HomeScreen = ({ navigation }) => {
     radiusKm: 5,
     issueTypes: [],
     limit: 20,
+    myIssues: "all",
   });
   const [loadingLocation, setLoadingLocation] = useState(false);
 
@@ -107,6 +108,38 @@ const HomeScreen = ({ navigation }) => {
   const getFilteredPosts = () => {
     let result = [...posts];
 
+    // Filter by My Issues (uploaded/fixed by current user)
+    if (filters.myIssues !== "all" && profile?.uid) {
+      console.log("[Filter Debug] Filtering by myIssues:", filters.myIssues);
+      console.log("[Filter Debug] Profile UID:", profile.uid);
+
+      // Debug: Log first post's full data to see field names
+      if (result.length > 0) {
+        console.log("[Filter Debug] First post data:", JSON.stringify(result[0].detailedData, null, 2));
+      }
+
+      result = result.filter((post) => {
+        if (filters.myIssues === "uploaded") {
+          // Prefer ES field if present, else fallback to computed userStatus
+          const reporterId = post.detailedData?.reported_by;
+          const hasReported = post.userStatus?.hasReported === true;
+          const match = (reporterId && reporterId === profile.uid) || hasReported;
+          console.log(`[Filter] Post ${post.id}: reported_by=${reporterId}, hasReported=${hasReported}, match=${match}`);
+          return match;
+        } else if (filters.myIssues === "fixed") {
+          // Prefer ES field if present; fallback if API provides a hasFixed flag
+          const closedBy = post.detailedData?.closed_by;
+          const hasFixed = post.userStatus?.hasFixed === true || post.userStatus?.fixedByMe === true;
+          const match = (closedBy && closedBy === profile.uid) || hasFixed;
+          console.log(`[Filter] Post ${post.id}: closed_by=${closedBy}, hasFixed=${hasFixed}, match=${match}`);
+          return match;
+        }
+        return true;
+      });
+
+      console.log("[Filter Debug] After myIssues filter, results:", result.length);
+    }
+
     // Filter by status
     if (filters.status !== "all") {
       result = result.filter(
@@ -166,11 +199,13 @@ const HomeScreen = ({ navigation }) => {
 
   // Filter handlers - React Compiler will optimize
   const handleApplyFilters = (newFilters) => {
+    console.log("[HomeScreen] Applying new filters:", newFilters);
     setFilters(newFilters);
     setFiltersVisible(false);
   };
 
   const handleResetFilters = (resetFilters) => {
+    console.log("[HomeScreen] Resetting filters:", resetFilters);
     setFilters(resetFilters);
   };
 
@@ -720,6 +755,7 @@ const HomeScreen = ({ navigation }) => {
         onReset={handleResetFilters}
         showRadiusFilter={true}
         showLimitFilter={true}
+        userType={userType}
       />
 
       <IssueDetailModal

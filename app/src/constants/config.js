@@ -2,7 +2,9 @@
  * App configuration constants
  */
 
-export const API_URL = "http://172.28.99.8:8000";
+// export const API_URL = "http://172.28.99.8:8000";
+export const API_URL = "https://skilled-moth-greatly.ngrok-free.app/";
+// export const API_URL = "https://civicfix-backend-809180458813.asia-south1.run.app";
 
 export const API_CONFIG = {
   BASE_URL: API_URL,

@@ -11,6 +11,7 @@ import api from "../services/api";
 export const useUpload = () => {
   const [uploading, setUploading] = useState(false);
   const [uploadProgress, setUploadProgress] = useState(0);
+  const [currentStep, setCurrentStep] = useState(0);
 
   /**
    * Upload an issue with image, location, and description
@@ -18,9 +19,10 @@ export const useUpload = () => {
   const uploadIssue = async ({
     image,
     description,
-    address,
+    location,
     issueTypes = [],
     isAnonymous = false,
+    onStepChange,
   }) => {
     if (!image) {
       showError("Please select an image");
@@ -30,7 +32,7 @@ export const useUpload = () => {
       showError("Please provide a description");
       return { success: false, error: "No description" };
     }
-    if (!address.trim()) {
+    if (!location?.latitude || !location?.longitude) {
       showError("Please provide a location");
       return { success: false, error: "No location" };
     }
@@ -38,6 +40,11 @@ export const useUpload = () => {
     try {
       setUploading(true);
       setUploadProgress(0);
+      setCurrentStep(0);
+
+      // Step 0: Preparing upload
+      if (onStepChange) onStepChange(0);
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       const formData = new FormData();
 
@@ -49,7 +56,8 @@ export const useUpload = () => {
         name: image.substring(image.lastIndexOf("/") + 1),
         type: type,
       });
-      formData.append("locationstr", address);
+      formData.append("latitude", location.latitude.toString());
+      formData.append("longitude", location.longitude.toString());
       formData.append("description", description);
 
       if (issueTypes && issueTypes.length > 0) {
@@ -67,7 +75,10 @@ export const useUpload = () => {
       }
       const token = await user.getIdToken();
 
-      setUploadProgress(50);
+      // Step 1: Uploading image
+      setCurrentStep(1);
+      if (onStepChange) onStepChange(1);
+      setUploadProgress(30);
 
       const response = await api.post("/submit-issue", formData, {
         headers: {
@@ -77,10 +88,19 @@ export const useUpload = () => {
         timeout: 60000,
       });
 
+      // Step 2: Identifying issues
+      setCurrentStep(2);
+      if (onStepChange) onStepChange(2);
+      setUploadProgress(70);
+      await new Promise(resolve => setTimeout(resolve, 800));
+
+      // Step 3: Finalizing
+      setCurrentStep(3);
+      if (onStepChange) onStepChange(3);
       setUploadProgress(100);
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       if (response.data.no_issues_found) {
-        showInfo("No issues were detected in the uploaded image.");
         return { success: true, noIssuesFound: true, data: response.data };
       }
 
@@ -95,13 +115,14 @@ export const useUpload = () => {
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      setCurrentStep(0);
     }
   };
 
   /**
    * Upload a fix with images and description
    */
-  const uploadFix = async ({ issueId, images, description, title }) => {
+  const uploadFix = async ({ issueId, images, description, title, onStepChange }) => {
     if (!images || images.length === 0) {
       showError("Please select at least one image");
       return { success: false, error: "No images" };
@@ -110,6 +131,11 @@ export const useUpload = () => {
     try {
       setUploading(true);
       setUploadProgress(0);
+      setCurrentStep(0);
+
+      // Step 0: Preparing upload
+      if (onStepChange) onStepChange(0);
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       const formData = new FormData();
 
@@ -128,7 +154,10 @@ export const useUpload = () => {
         });
       });
 
-      setUploadProgress(50);
+      // Step 1: Uploading images
+      setCurrentStep(1);
+      if (onStepChange) onStepChange(1);
+      setUploadProgress(30);
 
       const response = await api.post(`/api/issues/${issueId}/submit-fix`, formData, {
         headers: {
@@ -137,7 +166,17 @@ export const useUpload = () => {
         timeout: 60000,
       });
 
+      // Step 2: Verifying fix
+      setCurrentStep(2);
+      if (onStepChange) onStepChange(2);
+      setUploadProgress(70);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Step 3: Finalizing
+      setCurrentStep(3);
+      if (onStepChange) onStepChange(3);
       setUploadProgress(100);
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       return { success: true, data: response.data };
     } catch (error) {
@@ -149,12 +188,14 @@ export const useUpload = () => {
     } finally {
       setUploading(false);
       setUploadProgress(0);
+      setCurrentStep(0);
     }
   };
 
   return {
     uploading,
     uploadProgress,
+    currentStep,
     uploadIssue,
     uploadFix,
   };

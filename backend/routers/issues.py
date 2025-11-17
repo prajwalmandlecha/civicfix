@@ -91,6 +91,8 @@ async def get_issues(
                 "detected_issues",
                 "uploader_display_name",
                 "reported_by",
+                "closed_by",
+                "closed_at",
             ],
         }
 
@@ -349,6 +351,12 @@ async def get_issues_with_user_status(
                 "reported_by",
 
 
+                "closed_by",
+
+
+                "closed_at",
+
+
             ],
 
 
@@ -462,6 +470,8 @@ async def get_issues_with_user_status(
             user_status = {
                 "hasUpvoted": upvote_status.get(iid, False),
                 "hasReported": report_status.get(iid, False),
+                "hasUploaded": issue.get("reported_by") == user_uid,
+                "hasFixed": issue.get("closed_by") == user_uid,
             }
             issues_with_status.append({
                 **issue,
@@ -547,7 +557,8 @@ async def submit_issue(
     file: UploadFile = File(...),
 
 
-    locationstr: str = Form(...),
+    latitude: float = Form(...),
+    longitude: float = Form(...),
 
 
     description: str = Form(...),
@@ -598,16 +609,12 @@ async def submit_issue(
 
 
 
-    # Geocode location
-
-
-    geocoded = geocode_location(locationstr)
-
-
-    if not geocoded:
-
-
-        raise HTTPException(400, f"Could not geocode location: '{locationstr}'")
+    # Create geocoded data from provided coordinates
+    geocoded = {
+        "latitude": latitude,
+        "longitude": longitude,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
 
 
 
@@ -671,17 +678,9 @@ async def submit_issue(
 
 
         user_selected_labels=labels,
-
-
         reported_by=reporter_id,
-
-
         source=source_type,
-
-
         uploader_display_name=user_display_name,
-
-
     )
 
 
@@ -739,7 +738,6 @@ async def submit_issue(
             "image_url": public_url,
 
 
-            "location_text": locationstr,
 
 
             "location_coords": geocoded,
@@ -760,7 +758,6 @@ async def submit_issue(
         "analysis": analysis_result,
 
 
-        "location_text": locationstr,
 
 
         "location_coords": geocoded,
@@ -866,4 +863,5 @@ async def report_issue_endpoint(issue_id: str, user: dict = Depends(get_current_
 
 
         raise HTTPException(500, "Failed to report issue")
+
 

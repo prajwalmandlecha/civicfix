@@ -18,12 +18,17 @@ import { getIssueDisplayName } from "../utils/issueTypeMapping";
 import { Ionicons } from "@expo/vector-icons";
 import { KeyboardAwareScrollView } from "react-native-keyboard-controller";
 import { showSuccess, showInfo, showError } from "../utils/notify";
+import UploadProgressModal from "../components/UploadProgressModal";
+import FixResultModal from "../components/FixResultModal";
 
 const FixUploadScreen = ({ route, navigation }) => {
   const { issueId, issueData } = route.params || {};
   const [images, setImages] = useState([]);
   const [description, setDescription] = useState("");
   const [uploading, setUploading] = useState(false);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
 
   const pickImages = async () => {
     try {
@@ -102,6 +107,13 @@ const FixUploadScreen = ({ route, navigation }) => {
     setImages(images.filter((_, i) => i !== index));
   };
 
+  const uploadSteps = [
+    "Preparing upload...",
+    "Uploading images...",
+    "Verifying fix...",
+    "Finalizing...",
+  ];
+
   const handleSubmit = async () => {
     if (!auth.currentUser) {
       Alert.alert(
@@ -132,11 +144,14 @@ const FixUploadScreen = ({ route, navigation }) => {
     try {
       const token = await auth.currentUser.getIdToken();
 
+      // Step 0: Preparing
+      setCurrentStep(0);
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       const formData = new FormData();
       formData.append("description", description || "");
 
       // Backend now expects multiple files with key "files"
-      // Send all images
       images.forEach((image, index) => {
         formData.append("files", {
           uri: image.uri,
@@ -144,6 +159,10 @@ const FixUploadScreen = ({ route, navigation }) => {
           name: image.name,
         });
       });
+
+      // Step 1: Uploading
+      setCurrentStep(1);
+      await new Promise(resolve => setTimeout(resolve, 500));
 
       const response = await api.post(
         `/api/issues/${issueId}/submit-fix`,
@@ -156,64 +175,25 @@ const FixUploadScreen = ({ route, navigation }) => {
         }
       );
 
+      // Step 2: Verifying
+      setCurrentStep(2);
+      await new Promise(resolve => setTimeout(resolve, 1000));
+
+      // Step 3: Finalizing
+      setCurrentStep(3);
+      await new Promise(resolve => setTimeout(resolve, 500));
+
       if (response.status === 200) {
-        const verificationResult = response.data.verification_result;
-
-        if (verificationResult && verificationResult.overall_outcome) {
-          const outcome = verificationResult.overall_outcome;
-
-          let alertTitle = "Fix Submitted";
-          let alertMessage = "";
-
-          switch (outcome) {
-            case "closed":
-              alertTitle = "Fix Verified ✓";
-              alertMessage = `Your fix has been verified and accepted! ${images.length} image(s) processed successfully. You earned karma points for this contribution.`;
-              break;
-            case "partially_closed":
-              alertTitle = "Partial Fix Verified ⚠️";
-              alertMessage = `Your fix has been partially verified. Some issues were successfully resolved while others need additional work. ${images.length} image(s) processed. Partial karma points have been awarded for the completed work.`;
-              break;
-            case "rejected":
-              alertTitle = "Fix Verification Failed ❌";
-              alertMessage = `Unfortunately, your fix could not be verified. The evidence shows the issues remain unaddressed. ${images.length} image(s) were reviewed. No karma points awarded. Please ensure your photos clearly show the completed repair work and try again.`;
-              break;
-            case "needs_manual_review":
-              alertTitle = "Manual Review Required ⏳";
-              alertMessage = `Your fix submission requires manual review by our team due to unclear or insufficient evidence. We'll verify it within 24-48 hours and update you via the app. ${images.length} image(s) submitted for review. Thank you for your patience.`;
-              break;
-            default:
-              alertTitle = "Fix Submitted";
-              alertMessage = `Fix submitted successfully with ${images.length} image(s)! Your contribution has been recorded.`;
-          }
-
-          // Use non-intrusive toasts for outcome messaging
-          if (outcome === "closed") {
-            showSuccess(alertMessage);
-          } else if (outcome === "partially_closed") {
-            showInfo(alertMessage);
-          } else if (outcome === "rejected") {
-            showInfo(alertMessage);
-          } else if (outcome === "needs_manual_review") {
-            showInfo(alertMessage);
-          } else {
-            showSuccess(alertMessage);
-          }
-          // Reset and navigate back immediately
-          setImages([]);
-          setDescription("");
-          setUploading(false);
-          navigation.goBack();
-        } else {
-          // Fallback for when verification_result is not available
-          showSuccess(
-            `Fix submitted successfully with ${images.length} image(s)! Your contribution has been recorded.`
-          );
-          setImages([]);
-          setDescription("");
-          setUploading(false);
-          navigation.goBack();
-        }
+        // Stop progress UI before showing result modal
+        setUploading(false);
+        setCurrentStep(0);
+        // Show result modal
+        setUploadResult(response.data);
+        setShowResultModal(true);
+      } else {
+        // Non-200 response, ensure progress stops
+        setUploading(false);
+        setCurrentStep(0);
       }
     } catch (error) {
       console.error("Error submitting fix:", error.message || error);
@@ -228,175 +208,202 @@ const FixUploadScreen = ({ route, navigation }) => {
 
       showError(errorMessage, "Submission Failed");
       setUploading(false);
+      setCurrentStep(0);
     }
   };
 
+  const handleCloseResultModal = () => {
+    setShowResultModal(false);
+    setUploadResult(null);
+    setImages([]);
+    setDescription("");
+    setUploading(false);
+    setCurrentStep(0);
+    navigation.goBack();
+  };
+
   return (
-    <KeyboardAwareScrollView
-      style={styles.container}
-      bottomOffset={250}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      {/* Issue Info Card */}
-      {issueData && (
-        <View style={styles.issueCard}>
-          <View style={styles.issueCardHeader}>
-            <MaterialIcons name="info-outline" size={20} color="#4285f4" />
-            <Text style={styles.issueCardTitle}>Fixing Issue</Text>
-          </View>
-          {issueData.postImage && (
-            <Image
-              source={issueData.postImage}
-              style={styles.issueImage}
-              resizeMode="cover"
-            />
-          )}
-          <View style={styles.issueInfo}>
-            <View style={styles.issueLocationRow}>
-              <Ionicons name="location" size={16} color="#666" />
-              <Text style={styles.issueLocation}>{issueData.location}</Text>
+    <>
+      <KeyboardAwareScrollView
+        style={styles.container}
+        bottomOffset={250}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        {/* Issue Info Card */}
+        {issueData && (
+          <View style={styles.issueCard}>
+            <View style={styles.issueCardHeader}>
+              <MaterialIcons name="info-outline" size={20} color="#4285f4" />
+              <Text style={styles.issueCardTitle}>Fixing Issue</Text>
             </View>
-            {issueData.issueTypes && issueData.issueTypes.length > 0 && (
-              <View style={styles.issueTypesRow}>
-                {issueData.issueTypes.slice(0, 3).map((t, idx) => (
-                  <View key={idx} style={styles.issueTypeChip}>
-                    <Text style={styles.issueTypeText}>
-                      {getIssueDisplayName(t.type)}
-                    </Text>
+            {issueData.postImage && (
+              <Image
+                source={issueData.postImage}
+                style={styles.issueImage}
+                resizeMode="cover"
+              />
+            )}
+            <View style={styles.issueInfo}>
+              <View style={styles.issueLocationRow}>
+                <Ionicons name="location" size={16} color="#666" />
+                <Text style={styles.issueLocation}>{issueData.location}</Text>
+              </View>
+              {issueData.issueTypes && issueData.issueTypes.length > 0 && (
+                <View style={styles.issueTypesRow}>
+                  {issueData.issueTypes.slice(0, 3).map((t, idx) => (
+                    <View key={idx} style={styles.issueTypeChip}>
+                      <Text style={styles.issueTypeText}>
+                        {getIssueDisplayName(t.type)}
+                      </Text>
+                    </View>
+                  ))}
+                </View>
+              )}
+            </View>
+          </View>
+        )}
+
+        {/* Upload Images Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Upload Fix Photos</Text>
+          <Text style={styles.sectionSubtitle}>
+            Add photos showing the completed work (up to 5 images)
+          </Text>
+
+          <View style={styles.imageUploadContainer}>
+            {images.length === 0 ? (
+              // Empty state
+              <View style={styles.uploadPlaceholder}>
+                <MaterialIcons
+                  name="add-photo-alternate"
+                  size={48}
+                  color="#ccc"
+                  style={{ marginBottom: 16 }}
+                />
+                <Text style={styles.uploadPlaceholderText}>
+                  Add photos of the completed fix
+                </Text>
+
+                <View style={styles.uploadButtonsRow}>
+                  <TouchableOpacity
+                    onPress={takePhoto}
+                    style={styles.uploadButton}
+                  >
+                    <MaterialIcons name="photo-camera" size={24} color="#4CAF79" />
+                    <Text style={styles.uploadButtonText}>Camera</Text>
+                  </TouchableOpacity>
+
+                  <TouchableOpacity
+                    onPress={pickImages}
+                    style={styles.uploadButton}
+                  >
+                    <MaterialIcons name="photo-library" size={24} color="#4CAF79" />
+                    <Text style={styles.uploadButtonText}>Gallery</Text>
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ) : (
+              // Images grid
+              <View style={styles.imagesGrid}>
+                {images.map((image, index) => (
+                  <View key={index} style={styles.imagePreviewContainer}>
+                    <Image source={{ uri: image.uri }} style={styles.imagePreview} />
+                    <TouchableOpacity
+                      style={styles.removeImageButton}
+                      onPress={() => removeImage(index)}
+                    >
+                      <MaterialIcons name="close" size={18} color="#fff" />
+                    </TouchableOpacity>
+                    <View style={styles.imageNumberBadge}>
+                      <Text style={styles.imageNumberText}>{index + 1}</Text>
+                    </View>
                   </View>
                 ))}
+
+                {/* Add More Button */}
+                {images.length < 5 && (
+                  <TouchableOpacity
+                    style={styles.addMoreButton}
+                    onPress={pickImages}
+                  >
+                    <MaterialIcons name="add" size={32} color="#4CAF79" />
+                    <Text style={styles.addMoreText}>Add More</Text>
+                    <Text style={styles.addMoreSubtext}>
+                      {5 - images.length} left
+                    </Text>
+                  </TouchableOpacity>
+                )}
               </View>
             )}
           </View>
         </View>
-      )}
 
-      {/* Upload Images Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Upload Fix Photos</Text>
-        <Text style={styles.sectionSubtitle}>
-          Add photos showing the completed work (up to 5 images)
-        </Text>
-
-        <View style={styles.imageUploadContainer}>
-          {images.length === 0 ? (
-            // Empty state
-            <View style={styles.uploadPlaceholder}>
-              <MaterialIcons
-                name="add-photo-alternate"
-                size={48}
-                color="#ccc"
-                style={{ marginBottom: 16 }}
-              />
-              <Text style={styles.uploadPlaceholderText}>
-                Add photos of the completed fix
-              </Text>
-
-              <View style={styles.uploadButtonsRow}>
-                <TouchableOpacity
-                  onPress={takePhoto}
-                  style={styles.uploadButton}
-                >
-                  <MaterialIcons name="photo-camera" size={24} color="#4CAF79" />
-                  <Text style={styles.uploadButtonText}>Camera</Text>
-                </TouchableOpacity>
-
-                <TouchableOpacity
-                  onPress={pickImages}
-                  style={styles.uploadButton}
-                >
-                  <MaterialIcons name="photo-library" size={24} color="#4CAF79" />
-                  <Text style={styles.uploadButtonText}>Gallery</Text>
-                </TouchableOpacity>
-              </View>
-            </View>
-          ) : (
-            // Images grid
-            <View style={styles.imagesGrid}>
-              {images.map((image, index) => (
-                <View key={index} style={styles.imagePreviewContainer}>
-                  <Image source={{ uri: image.uri }} style={styles.imagePreview} />
-                  <TouchableOpacity
-                    style={styles.removeImageButton}
-                    onPress={() => removeImage(index)}
-                  >
-                    <MaterialIcons name="close" size={18} color="#fff" />
-                  </TouchableOpacity>
-                  <View style={styles.imageNumberBadge}>
-                    <Text style={styles.imageNumberText}>{index + 1}</Text>
-                  </View>
-                </View>
-              ))}
-
-              {/* Add More Button */}
-              {images.length < 5 && (
-                <TouchableOpacity
-                  style={styles.addMoreButton}
-                  onPress={pickImages}
-                >
-                  <MaterialIcons name="add" size={32} color="#4CAF79" />
-                  <Text style={styles.addMoreText}>Add More</Text>
-                  <Text style={styles.addMoreSubtext}>
-                    {5 - images.length} left
-                  </Text>
-                </TouchableOpacity>
-              )}
-            </View>
-          )}
+        {/* Description Section */}
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Description (Optional)</Text>
+          <Text style={styles.sectionSubtitle}>
+            Add details about the fix you completed
+          </Text>
+          <TextInput
+            style={styles.textArea}
+            placeholder="E.g., Filled the pothole with asphalt, replaced broken streetlight bulb..."
+            placeholderTextColor="#999"
+            value={description}
+            onChangeText={setDescription}
+            multiline
+            numberOfLines={4}
+            textAlignVertical="top"
+          />
         </View>
-      </View>
 
-      {/* Description Section */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Description (Optional)</Text>
-        <Text style={styles.sectionSubtitle}>
-          Add details about the fix you completed
-        </Text>
-        <TextInput
-          style={styles.textArea}
-          placeholder="E.g., Filled the pothole with asphalt, replaced broken streetlight bulb..."
-          placeholderTextColor="#999"
-          value={description}
-          onChangeText={setDescription}
-          multiline
-          numberOfLines={4}
-          textAlignVertical="top"
-        />
-      </View>
+        {/* Submit Button */}
+        <TouchableOpacity
+          style={[
+            styles.submitButton,
+            images.length > 0 && !uploading && styles.submitButtonActive,
+          ]}
+          onPress={handleSubmit}
+          disabled={uploading || images.length === 0}
+        >
+          {uploading ? (
+            <ActivityIndicator color="#fff" />
+          ) : (
+            <>
+              <MaterialIcons
+                name="check-circle"
+                size={20}
+                color={images.length > 0 ? "#fff" : "#999"}
+              />
+              <Text
+                style={[
+                  styles.submitButtonText,
+                  images.length > 0 && styles.submitButtonTextActive,
+                ]}
+              >
+                Submit Fix ({images.length} {images.length === 1 ? "photo" : "photos"})
+              </Text>
+            </>
+          )}
+        </TouchableOpacity>
 
-      {/* Submit Button */}
-      <TouchableOpacity
-        style={[
-          styles.submitButton,
-          images.length > 0 && !uploading && styles.submitButtonActive,
-        ]}
-        onPress={handleSubmit}
-        disabled={uploading || images.length === 0}
-      >
-        {uploading ? (
-          <ActivityIndicator color="#fff" />
-        ) : (
-          <>
-            <MaterialIcons
-              name="check-circle"
-              size={20}
-              color={images.length > 0 ? "#fff" : "#999"}
-            />
-            <Text
-              style={[
-                styles.submitButtonText,
-                images.length > 0 && styles.submitButtonTextActive,
-              ]}
-            >
-              Submit Fix ({images.length} {images.length === 1 ? "photo" : "photos"})
-            </Text>
-          </>
-        )}
-      </TouchableOpacity>
+        <View style={styles.bottomPadding} />
+      </KeyboardAwareScrollView>
 
-      <View style={styles.bottomPadding} />
-    </KeyboardAwareScrollView>
+      {/* Progress Modal */}
+      <UploadProgressModal
+        visible={uploading}
+        steps={uploadSteps}
+        currentStep={currentStep}
+      />
+
+      {/* Result Modal */}
+      <FixResultModal
+        visible={showResultModal}
+        onClose={handleCloseResultModal}
+        result={uploadResult}
+      />
+    </>
   );
 };
 

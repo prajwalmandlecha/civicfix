@@ -17,12 +17,17 @@ import { getIssueTypesWithNames } from "../utils/issueTypeMapping";
 import { useImagePicker } from "../hooks/useImagePicker";
 import { useLocation } from "../hooks/useLocation";
 import { useUpload } from "../hooks/useUpload";
-import { showSuccess } from "../utils/notify";
+import { showSuccess, showInfo } from "../utils/notify";
+import UploadProgressModal from "../components/UploadProgressModal";
+import IssueResultModal from "../components/IssueResultModal";
 
 const IssueUploadScreen = ({ navigation }) => {
   const [description, setDescription] = useState("");
   const [isAnonymous, setIsAnonymous] = useState(false);
   const [issueTypes, setIssueTypes] = useState([]);
+  const [currentStep, setCurrentStep] = useState(0);
+  const [showResultModal, setShowResultModal] = useState(false);
+  const [uploadResult, setUploadResult] = useState(null);
 
   // Use custom hooks
   const { image, setImage, pickFromCamera, pickFromLibrary } = useImagePicker();
@@ -58,299 +63,344 @@ const IssueUploadScreen = ({ navigation }) => {
     }
   };
 
+  const uploadSteps = [
+    "Preparing upload...",
+    "Uploading image...",
+    "Identifying issues...",
+    "Finalizing...",
+  ];
+
   const handleSubmit = async () => {
     const result = await uploadIssue({
       image,
       description,
-      address,
+      // Pass flat coords as expected by useUpload
+      location: location?.coords
+        ? { latitude: location.coords.latitude, longitude: location.coords.longitude }
+        : null,
       issueTypes,
       isAnonymous,
+      onStepChange: setCurrentStep,
     });
 
-    if (result.success && !result.noIssuesFound) {
-      // Non-intrusive success feedback
-      showSuccess("Issue reported successfully!");
-      // Reset form and navigate back immediately
-      setImage(null);
-      setDescription("");
-      setAddress("");
-      setLocation(null);
-      setIssueTypes([]);
-      setIsAnonymous(false);
-      navigation.goBack();
+    if (result.success) {
+      if (result.noIssuesFound) {
+        showInfo("No issues were detected in the uploaded image.");
+        // Reset form and navigate back
+        setImage(null);
+        setDescription("");
+        setAddress("");
+        setLocation(null);
+        setIssueTypes([]);
+        setIsAnonymous(false);
+        navigation.goBack();
+      } else {
+        // Show result modal with identified issues
+        setUploadResult(result.data);
+        setShowResultModal(true);
+      }
     }
   };
 
+  const handleCloseResultModal = () => {
+    setShowResultModal(false);
+    setUploadResult(null);
+    // Reset form and navigate back
+    setImage(null);
+    setDescription("");
+    setAddress("");
+    setLocation(null);
+    setIssueTypes([]);
+    setIsAnonymous(false);
+    navigation.goBack();
+  };
+
   return (
-    <KeyboardAwareScrollView
-      style={styles.container}
-      bottomOffset={250}
-      showsVerticalScrollIndicator={false}
-      keyboardShouldPersistTaps="handled"
-    >
-      <View style={styles.formContainer}>
-        {/* Image Upload Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Upload Photo</Text>
-          <Text style={styles.sectionSubtitle}>
-            Add a clear photo showing the issue
-          </Text>
+    <>
+      <KeyboardAwareScrollView
+        style={styles.container}
+        bottomOffset={250}
+        showsVerticalScrollIndicator={false}
+        keyboardShouldPersistTaps="handled"
+      >
+        <View style={styles.formContainer}>
+          {/* Image Upload Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Upload Photo</Text>
+            <Text style={styles.sectionSubtitle}>
+              Add a clear photo showing the issue
+            </Text>
 
-          <View style={styles.imageUploadContainer}>
-            {image ? (
-              <View style={styles.imagePreviewWrapper}>
-                <Image source={{ uri: image }} style={styles.uploadedImage} />
-                <TouchableOpacity
-                  style={styles.removeImageButton}
-                  onPress={() => setImage(null)}
-                >
-                  <MaterialIcons name="close" size={20} color="#fff" />
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <View style={styles.uploadPlaceholder}>
-                <MaterialIcons
-                  name="add-photo-alternate"
-                  size={48}
-                  color="#ccc"
-                  style={{ marginBottom: 16 }}
-                />
-                <Text style={styles.uploadPlaceholderText}>
-                  Add a photo of the issue
-                </Text>
-
-                <View style={styles.uploadButtonsRow}>
+            <View style={styles.imageUploadContainer}>
+              {image ? (
+                <View style={styles.imagePreviewWrapper}>
+                  <Image source={{ uri: image }} style={styles.uploadedImage} />
                   <TouchableOpacity
-                    onPress={pickFromCamera}
-                    style={styles.uploadButton}
-                    accessibilityLabel="Take photo"
-                    accessibilityRole="button"
+                    style={styles.removeImageButton}
+                    onPress={() => setImage(null)}
                   >
-                    <MaterialIcons name="photo-camera" size={24} color="#4285f4" />
-                    <Text style={styles.uploadButtonText}>Camera</Text>
-                  </TouchableOpacity>
-
-                  <TouchableOpacity
-                    onPress={pickFromLibrary}
-                    style={styles.uploadButton}
-                    accessibilityLabel="Upload photo from library"
-                    accessibilityRole="button"
-                  >
-                    <MaterialIcons name="photo-library" size={24} color="#4285f4" />
-                    <Text style={styles.uploadButtonText}>Gallery</Text>
+                    <MaterialIcons name="close" size={20} color="#fff" />
                   </TouchableOpacity>
                 </View>
+              ) : (
+                <View style={styles.uploadPlaceholder}>
+                  <MaterialIcons
+                    name="add-photo-alternate"
+                    size={48}
+                    color="#ccc"
+                    style={{ marginBottom: 16 }}
+                  />
+                  <Text style={styles.uploadPlaceholderText}>
+                    Add a photo of the issue
+                  </Text>
+
+                  <View style={styles.uploadButtonsRow}>
+                    <TouchableOpacity
+                      onPress={pickFromCamera}
+                      style={styles.uploadButton}
+                      accessibilityLabel="Take photo"
+                      accessibilityRole="button"
+                    >
+                      <MaterialIcons name="photo-camera" size={24} color="#4285f4" />
+                      <Text style={styles.uploadButtonText}>Camera</Text>
+                    </TouchableOpacity>
+
+                    <TouchableOpacity
+                      onPress={pickFromLibrary}
+                      style={styles.uploadButton}
+                      accessibilityLabel="Upload photo from library"
+                      accessibilityRole="button"
+                    >
+                      <MaterialIcons name="photo-library" size={24} color="#4285f4" />
+                      <Text style={styles.uploadButtonText}>Gallery</Text>
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              )}
+            </View>
+          </View>
+
+          {/* Description Section */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Description</Text>
+            <Text style={styles.sectionSubtitle}>
+              Describe what you see and why it's an issue
+            </Text>
+            <TextInput
+              style={styles.textArea}
+              placeholder="E.g., Large pothole on main road causing traffic issues..."
+              placeholderTextColor="#999"
+              value={description}
+              onChangeText={setDescription}
+              multiline
+              numberOfLines={4}
+              textAlignVertical="top"
+            />
+          </View>
+
+          {/* Location Section */}
+          <View style={styles.section}>
+            <View style={styles.sectionHeader}>
+              <View>
+                <Text style={styles.sectionTitle}>Location</Text>
+                <Text style={styles.sectionSubtitle}>
+                  Where is this issue located?
+                </Text>
+              </View>
+              <TouchableOpacity
+                onPress={handleGetLocation}
+                disabled={loadingLocation}
+                style={styles.locationButton}
+              >
+                {loadingLocation ? (
+                  <ActivityIndicator size="small" color="#4285f4" />
+                ) : (
+                  <>
+                    <MaterialIcons name="my-location" size={16} color="#4285f4" />
+                    <Text style={styles.locationButtonText}>Use Current</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+
+            <GooglePlacesTextInput
+              apiKey={gmapskey}
+              placeHolderText="Search for a location"
+              value={address}
+              fetchDetails={true}
+              detailsFields={[
+                "formattedAddress",
+                "location",
+                "displayName",
+                "id",
+              ]}
+              onPlaceSelect={(place) => {
+                if (place.details) {
+                  setAddress(place.details.formattedAddress);
+                  setLocation({
+                    coords: {
+                      latitude: place.details.location.latitude,
+                      longitude: place.details.location.longitude,
+                    },
+                  });
+                }
+              }}
+              onTextChange={(text) => {
+                setAddress(text);
+                if (!text) setLocation(null);
+              }}
+              languageCode="en"
+              debounceDelay={300}
+              minCharsToFetch={2}
+              listViewDisplayed="auto"
+              enablePoweredByContainer={false}
+              keyboardShouldPersistTaps="handled"
+              style={{
+                input: styles.textInput,
+                container: { marginBottom: 8, zIndex: 1 },
+                listView: styles.listView,
+              }}
+            />
+
+            {location && (
+              <View style={styles.coordinatesChip}>
+                <MaterialIcons name="location-on" size={14} color="#4285f4" />
+                <Text style={styles.coordinatesText}>
+                  {location?.coords?.latitude?.toFixed(4)}, {location?.coords?.longitude?.toFixed(4)}
+                </Text>
               </View>
             )}
           </View>
-        </View>
 
-        {/* Description Section */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Description</Text>
-          <Text style={styles.sectionSubtitle}>
-            Describe what you see and why it's an issue
-          </Text>
-          <TextInput
-            style={styles.textArea}
-            placeholder="E.g., Large pothole on main road causing traffic issues..."
-            placeholderTextColor="#999"
-            value={description}
-            onChangeText={setDescription}
-            multiline
-            numberOfLines={4}
-            textAlignVertical="top"
-          />
-        </View>
+          {/* Issue Types Section (Optional) */}
+          <View style={styles.section}>
+            <Text style={styles.sectionTitle}>Issue Types (Optional)</Text>
+            <Text style={styles.sectionSubtitle}>
+              Select categories - AI will suggest more
+            </Text>
+            <Dropdown
+              style={styles.dropdown}
+              placeholderStyle={styles.placeholderStyle}
+              selectedTextStyle={styles.selectedTextStyle}
+              inputSearchStyle={styles.inputSearchStyle}
+              iconStyle={styles.iconStyle}
+              data={dropdownData}
+              search
+              maxHeight={300}
+              labelField="label"
+              valueField="value"
+              placeholder="Select issue types"
+              searchPlaceholder="Search..."
+              value={issueTypes[0] || null}
+              onChange={(item) => {
+                if (issueTypes.includes(item.value)) {
+                  setIssueTypes(issueTypes.filter((type) => type !== item.value));
+                } else {
+                  setIssueTypes([...issueTypes, item.value]);
+                }
+              }}
+              renderLeftIcon={() => null}
+              flatListProps={{ nestedScrollEnabled: true }}
+              containerStyle={styles.dropdownContainer}
+            />
+            {issueTypes.length > 0 && (
+              <View style={styles.selectedTypesContainer}>
+                {issueTypes.map((type) => (
+                  <View key={type} style={styles.selectedTypeChip}>
+                    <Text style={styles.selectedTypeText}>
+                      {issueTypesData[type]}
+                    </Text>
+                    <TouchableOpacity
+                      onPress={() => {
+                        setIssueTypes(issueTypes.filter((t) => t !== type));
+                      }}
+                      hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+                    >
+                      <Text style={styles.removeTypeText}>✕</Text>
+                    </TouchableOpacity>
+                  </View>
+                ))}
+              </View>
+            )}
+          </View>
 
-        {/* Location Section */}
-        <View style={styles.section}>
-          <View style={styles.sectionHeader}>
-            <View>
-              <Text style={styles.sectionTitle}>Location</Text>
-              <Text style={styles.sectionSubtitle}>
-                Where is this issue located?
-              </Text>
-            </View>
+          {/* Options Section */}
+          <View style={styles.section}>
             <TouchableOpacity
-              onPress={handleGetLocation}
-              disabled={loadingLocation}
-              style={styles.locationButton}
+              style={styles.optionRow}
+              onPress={() => setIsAnonymous(!isAnonymous)}
+              activeOpacity={0.7}
             >
-              {loadingLocation ? (
-                <ActivityIndicator size="small" color="#4285f4" />
-              ) : (
-                <>
-                  <MaterialIcons name="my-location" size={16} color="#4285f4" />
-                  <Text style={styles.locationButtonText}>Use Current</Text>
-                </>
-              )}
+              <View style={styles.optionLeft}>
+                <MaterialIcons
+                  name="visibility-off"
+                  size={20}
+                  color="#666"
+                  style={{ marginRight: 12 }}
+                />
+                <View>
+                  <Text style={styles.optionTitle}>Post Anonymously</Text>
+                  <Text style={styles.optionSubtitle}>
+                    Hide your name from this report
+                  </Text>
+                </View>
+              </View>
+              <View style={[styles.checkbox, isAnonymous && styles.checkboxActive]}>
+                {isAnonymous && (
+                  <MaterialIcons name="check" size={16} color="#fff" />
+                )}
+              </View>
             </TouchableOpacity>
           </View>
 
-          <GooglePlacesTextInput
-            apiKey={gmapskey}
-            placeHolderText="Search for a location"
-            value={address}
-            fetchDetails={true}
-            detailsFields={[
-              "formattedAddress",
-              "location",
-              "displayName",
-              "id",
-            ]}
-            onPlaceSelect={(place) => {
-              if (place.details) {
-                setAddress(place.details.formattedAddress);
-                setLocation({
-                  coords: {
-                    latitude: place.details.location.latitude,
-                    longitude: place.details.location.longitude,
-                  },
-                });
-              }
-            }}
-            onTextChange={(text) => {
-              setAddress(text);
-              if (!text) setLocation(null);
-            }}
-            languageCode="en"
-            debounceDelay={300}
-            minCharsToFetch={2}
-            listViewDisplayed="auto"
-            enablePoweredByContainer={false}
-            keyboardShouldPersistTaps="handled"
-            style={{
-              input: styles.textInput,
-              container: { marginBottom: 8, zIndex: 1 },
-              listView: styles.listView,
-            }}
-          />
-
-          {location && (
-            <View style={styles.coordinatesChip}>
-              <MaterialIcons name="location-on" size={14} color="#4285f4" />
-              <Text style={styles.coordinatesText}>
-                {location?.coords?.latitude?.toFixed(4)}, {location?.coords?.longitude?.toFixed(4)}
-              </Text>
-            </View>
-          )}
-        </View>
-
-        {/* Issue Types Section (Optional) */}
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Issue Types (Optional)</Text>
-          <Text style={styles.sectionSubtitle}>
-            Select categories - AI will suggest more
-          </Text>
-          <Dropdown
-            style={styles.dropdown}
-            placeholderStyle={styles.placeholderStyle}
-            selectedTextStyle={styles.selectedTextStyle}
-            inputSearchStyle={styles.inputSearchStyle}
-            iconStyle={styles.iconStyle}
-            data={dropdownData}
-            search
-            maxHeight={300}
-            labelField="label"
-            valueField="value"
-            placeholder="Select issue types"
-            searchPlaceholder="Search..."
-            value={issueTypes[0] || null}
-            onChange={(item) => {
-              if (issueTypes.includes(item.value)) {
-                setIssueTypes(issueTypes.filter((type) => type !== item.value));
-              } else {
-                setIssueTypes([...issueTypes, item.value]);
-              }
-            }}
-            renderLeftIcon={() => null}
-            flatListProps={{ nestedScrollEnabled: true }}
-            containerStyle={styles.dropdownContainer}
-          />
-          {issueTypes.length > 0 && (
-            <View style={styles.selectedTypesContainer}>
-              {issueTypes.map((type) => (
-                <View key={type} style={styles.selectedTypeChip}>
-                  <Text style={styles.selectedTypeText}>
-                    {issueTypesData[type]}
-                  </Text>
-                  <TouchableOpacity
-                    onPress={() => {
-                      setIssueTypes(issueTypes.filter((t) => t !== type));
-                    }}
-                    hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
-                  >
-                    <Text style={styles.removeTypeText}>✕</Text>
-                  </TouchableOpacity>
-                </View>
-              ))}
-            </View>
-          )}
-        </View>
-
-        {/* Options Section */}
-        <View style={styles.section}>
+          {/* Submit Button */}
           <TouchableOpacity
-            style={styles.optionRow}
-            onPress={() => setIsAnonymous(!isAnonymous)}
-            activeOpacity={0.7}
+            style={[
+              styles.submitButton,
+              image && description && location?.coords && !uploading && styles.submitButtonActive,
+            ]}
+            onPress={handleSubmit}
+            disabled={uploading || !image || !description || !location?.coords}
           >
-            <View style={styles.optionLeft}>
-              <MaterialIcons
-                name="visibility-off"
-                size={20}
-                color="#666"
-                style={{ marginRight: 12 }}
-              />
-              <View>
-                <Text style={styles.optionTitle}>Post Anonymously</Text>
-                <Text style={styles.optionSubtitle}>
-                  Hide your name from this report
+            {uploading ? (
+              <ActivityIndicator color="#fff" />
+            ) : (
+              <>
+                <MaterialIcons
+                  name="send"
+                  size={20}
+                  color={image && description && location?.coords ? "#fff" : "#999"}
+                />
+                <Text
+                  style={[
+                    styles.submitButtonText,
+                    image && description && location?.coords && styles.submitButtonTextActive,
+                  ]}
+                >
+                  Submit Issue Report
                 </Text>
-              </View>
-            </View>
-            <View style={[styles.checkbox, isAnonymous && styles.checkboxActive]}>
-              {isAnonymous && (
-                <MaterialIcons name="check" size={16} color="#fff" />
-              )}
-            </View>
+              </>
+            )}
           </TouchableOpacity>
+
+          <View style={styles.bottomPadding} />
         </View>
+      </KeyboardAwareScrollView>
 
-        {/* Submit Button */}
-        <TouchableOpacity
-          style={[
-            styles.submitButton,
-            image && description && address && !uploading && styles.submitButtonActive,
-          ]}
-          onPress={handleSubmit}
-          disabled={uploading || !image || !description || !address}
-        >
-          {uploading ? (
-            <ActivityIndicator color="#fff" />
-          ) : (
-            <>
-              <MaterialIcons
-                name="send"
-                size={20}
-                color={image && description && address ? "#fff" : "#999"}
-              />
-              <Text
-                style={[
-                  styles.submitButtonText,
-                  image && description && address && styles.submitButtonTextActive,
-                ]}
-              >
-                Submit Issue Report
-              </Text>
-            </>
-          )}
-        </TouchableOpacity>
+      {/* Progress Modal */}
+      <UploadProgressModal
+        visible={uploading}
+        steps={uploadSteps}
+        currentStep={currentStep}
+      />
 
-        <View style={styles.bottomPadding} />
-      </View>
-    </KeyboardAwareScrollView>
+      {/* Result Modal */}
+      <IssueResultModal
+        visible={showResultModal}
+        onClose={handleCloseResultModal}
+        result={uploadResult?.analysis}
+      />
+    </>
   );
 };
 

@@ -28,8 +28,10 @@ async def upload_file_to_gcs(file: UploadFile, folder: str = "issues") -> Option
         return None
 
     try:
-        # Initialize GCS client
-        storage_client = storage.Client()
+        # Initialize GCS client with credentials
+        storage_client = storage.Client.from_service_account_json(
+            settings.GCS_CREDENTIALS_PATH
+        )
         
         # Get bucket (handle bucket/folder structure in name)
         bucket_parts = settings.GCS_BUCKET_NAME.split("/", 1)
@@ -50,12 +52,19 @@ async def upload_file_to_gcs(file: UploadFile, folder: str = "issues") -> Option
         
         blob = bucket.blob(blob_name)
         
-        # Upload file
-        contents = await file.read()
-        blob.upload_from_string(contents, content_type=file.content_type or "image/jpeg")
+        # Set cache control metadata
+        blob.cache_control = "public, max-age=31536000"
         
-        # Make blob publicly accessible
-        blob.make_public()
+        # Upload file with public access
+        contents = await file.read()
+        blob.upload_from_string(
+            contents, 
+            content_type=file.content_type or "image/jpeg"
+        )
+        
+        # For uniform bucket-level access, the blob is already public
+        # if the bucket has allUsers:objectViewer permission
+        # No need to call blob.make_public()
         
         public_url = blob.public_url
         logger.info(f"File uploaded successfully to GCS: {public_url}")
