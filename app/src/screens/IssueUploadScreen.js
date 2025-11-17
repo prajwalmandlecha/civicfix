@@ -104,15 +104,24 @@ const IssueUploadScreen = ({ navigation }) => {
 
   const handleCloseResultModal = () => {
     setShowResultModal(false);
+    const uploadedIssueId = uploadResult?.issue_id;
     setUploadResult(null);
-    // Reset form and navigate back
+    // Reset form
     setImage(null);
     setDescription("");
     setAddress("");
     setLocation(null);
     setIssueTypes([]);
     setIsAnonymous(false);
-    navigation.goBack();
+
+    // Navigate back to Home with uploadedIssueId so it can be marked as "uploadedByMe"
+    if (uploadedIssueId) {
+      navigation.navigate("Home", {
+        uploadedIssueId: uploadedIssueId,
+      });
+    } else {
+      navigation.goBack();
+    }
   };
 
   return (

@@ -219,7 +219,11 @@ const FixUploadScreen = ({ route, navigation }) => {
     setDescription("");
     setUploading(false);
     setCurrentStep(0);
-    navigation.goBack();
+    
+    // Navigate back to Home with fixedIssueId so it can be marked as "fixedByMe"
+    navigation.navigate("Home", {
+      fixedIssueId: issueId,
+    });
   };
 
   return (

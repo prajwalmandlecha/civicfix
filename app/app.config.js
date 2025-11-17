@@ -35,7 +35,7 @@ export default {
     package: IS_DEV ? "com.prajwal32.CivicFix.dev" : "com.prajwal32.CivicFix",
     config: {
       googleMaps: {
-        apiKey: "AIzaSyArWfe-AqvplAJwvwmZC-QonAr4kmlTRjk",
+        apiKey: process.env.EXPO_PUBLIC_GOOGLE_MAPS_API_KEY,
       },
     },
   },

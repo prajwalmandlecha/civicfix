@@ -52,7 +52,23 @@ const IssueDetailModal = ({
             `/api/issues/${issueData.detailedData.issue_id}/fix-details`
           );
           if (response.data.has_fix) {
-            setFixDetails(response.data);
+            // Normalize backend fields to what the UI expects
+            const data = response.data || {};
+            const normalized = {
+              ...data,
+              // unify image urls
+              image_urls:
+                data.image_urls || data.photo_urls || data.after_image_urls || [],
+              // unify created/submitted timestamp
+              created_at: data.created_at || data.submitted_at || null,
+              // unify fixed_by information
+              fixed_by:
+                data.fixed_by ||
+                (data.ngo_name || data.ngo_logo
+                  ? { name: data.ngo_name, logo: data.ngo_logo }
+                  : undefined),
+            };
+            setFixDetails(normalized);
           }
         } catch (error) {
           console.error("Error fetching fix details:", error);
@@ -375,9 +391,10 @@ const IssueDetailModal = ({
                           <View style={styles.fixImageGallery}>
                             <Image
                               source={{
-                                uri: fixDetails.image_urls[
+                                uri:
+                                  fixDetails.image_urls[
                                   currentFixImageIndex
-                                ],
+                                  ] || null,
                               }}
                               style={styles.fixMainImage}
                             />
@@ -402,8 +419,7 @@ const IssueDetailModal = ({
                                   </TouchableOpacity>
                                   <View style={styles.fixImageCounterContainer}>
                                     <Text style={styles.fixImageCounter}>
-                                      {currentFixImageIndex + 1} /{" "}
-                                      {fixDetails.image_urls.length}
+                                      {currentFixImageIndex + 1} / {fixDetails.image_urls.length}
                                     </Text>
                                   </View>
                                   <TouchableOpacity
@@ -443,15 +459,27 @@ const IssueDetailModal = ({
                       )}
 
                     {/* Fixed By Information */}
-                    {fixDetails.fixed_by && (
+                    {(fixDetails.fixed_by || fixDetails.ngo_name || issueData?.detailedData?.closed_by_name) && (
                       <View style={styles.fixedBySection}>
                         <Text style={styles.fixSubtitle}>Fixed By</Text>
                         <View style={styles.fixedByCard}>
                           <View style={styles.fixedByHeader}>
-                            <Ionicons name="business" size={40} color="#4CAF79" />
+                            {fixDetails.fixed_by?.logo || fixDetails.ngo_logo ? (
+                              <Image
+                                source={{
+                                  uri: fixDetails.fixed_by?.logo || fixDetails.ngo_logo,
+                                }}
+                                style={{ width: 40, height: 40, borderRadius: 20 }}
+                              />
+                            ) : (
+                              <Ionicons name="business" size={40} color="#4CAF79" />
+                            )}
                             <View style={styles.fixedByInfo}>
                               <Text style={styles.fixedByName}>
-                                {fixDetails.fixed_by.name}
+                                {fixDetails.fixed_by?.name ||
+                                  fixDetails.ngo_name ||
+                                  issueData?.detailedData?.closed_by_name ||
+                                  "NGO"}
                               </Text>
                               <View style={styles.ngoBadge}>
                                 <Ionicons
@@ -480,12 +508,14 @@ const IssueDetailModal = ({
                     )}
 
                     {/* Fix Date */}
-                    {fixDetails.created_at && (
+                    {(fixDetails.created_at || fixDetails.submitted_at) && (
                       <View style={styles.fixDateSection}>
                         <Ionicons name="calendar" size={14} color="#666" />
                         <Text style={styles.fixDateText}>
                           Fixed on{" "}
-                          {new Date(fixDetails.created_at).toLocaleString()}
+                          {new Date(
+                            fixDetails.created_at || fixDetails.submitted_at
+                          ).toLocaleString()}
                         </Text>
                       </View>
                     )}

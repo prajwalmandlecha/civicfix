@@ -418,6 +418,7 @@ async def get_issues_with_user_status(
         upvote_status = {}
         report_status = {}
         firestore_issues_data = {} # To store fresh data from Firestore
+        ngo_names = {} # To store NGO names for closed_by UIDs
 
         if issue_ids:
             try:
@@ -448,6 +449,28 @@ async def get_issues_with_user_status(
                 for doc in issue_docs:
                     if doc.exists:
                         firestore_issues_data[doc.id] = doc.to_dict()
+                
+                # Fetch NGO names for closed issues
+                closed_by_uids = set()
+                for issue in issues:
+                    closed_by = issue.get("closed_by")
+                    if closed_by and issue.get("status", "").lower() == "closed":
+                        closed_by_uids.add(closed_by)
+                
+                if closed_by_uids:
+                    ngo_refs = [db.collection("users").document(uid) for uid in closed_by_uids]
+                    ngo_docs = db.get_all(ngo_refs)
+                    for doc in ngo_docs:
+                        if doc.exists:
+                            ngo_data = doc.to_dict()
+                            ngo_names[doc.id] = (
+                                ngo_data.get("organization_name") or 
+                                ngo_data.get("organizationName") or 
+                                ngo_data.get("displayName") or 
+                                ngo_data.get("name") or 
+                                ngo_data.get("email", "").split("@")[0] or 
+                                "Unknown NGO"
+                            )
                     
             except Exception as e:
                 logger.error(f"Error fetching user status or issue data from Firestore: {e}")
@@ -466,6 +489,11 @@ async def get_issues_with_user_status(
                 # Overwrite stale ES data with fresh Firestore data
                 issue["upvotes"] = firestore_data.get("upvotes", {"open": 0, "closed": 0})
                 issue["status"] = firestore_data.get("status", issue["status"])
+
+            # Add NGO name if this is a closed issue
+            closed_by = issue.get("closed_by")
+            if closed_by and closed_by in ngo_names:
+                issue["closed_by_name"] = ngo_names[closed_by]
 
             user_status = {
                 "hasUpvoted": upvote_status.get(iid, False),

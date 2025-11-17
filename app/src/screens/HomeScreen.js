@@ -10,6 +10,7 @@ import {
   Alert,
 } from "react-native";
 import { Ionicons } from "@expo/vector-icons";
+import { useFocusEffect } from "@react-navigation/native";
 import SocialPost from "../components/SocialPost";
 import IssueDetailModal from "../components/IssueDetailModal";
 import FilterModal from "../components/FilterModal";
@@ -19,7 +20,7 @@ import * as Location from "expo-location";
 import { getCurrentLocation } from "../services/getLocation";
 import { showSuccess, showError, showInfo } from "../utils/notify";
 
-const HomeScreen = ({ navigation }) => {
+const HomeScreen = ({ navigation, route }) => {
   const [refreshing, setRefreshing] = useState(false);
   const [posts, setPosts] = useState([]);
   const [selectedIssue, setSelectedIssue] = useState(null);
@@ -55,6 +56,7 @@ const HomeScreen = ({ navigation }) => {
     updateLastLocation,
     loading: contextLoading,
     profile,
+    user, // Add user to get uid
   } = useUserContext();
 
   // Debug: Log userType changes
@@ -66,6 +68,53 @@ const HomeScreen = ({ navigation }) => {
       loading: contextLoading,
     });
   }, [userType, profile, contextLoading]);
+
+  // Handle marking issues as fixedByMe/uploadedByMe when returning from upload screens
+  useFocusEffect(
+    React.useCallback(() => {
+      const fixedIssueId = route.params?.fixedIssueId;
+      const uploadedIssueId = route.params?.uploadedIssueId;
+
+      if (fixedIssueId) {
+        console.log("[HomeScreen] Marking issue as fixedByMe:", fixedIssueId);
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === fixedIssueId
+              ? {
+                ...p,
+                userStatus: {
+                  ...(p.userStatus || {}),
+                  fixedByMe: true,
+                },
+              }
+              : p
+          )
+        );
+        // Clear param
+        navigation.setParams({ fixedIssueId: undefined });
+      }
+
+      if (uploadedIssueId) {
+        console.log("[HomeScreen] Marking issue as uploadedByMe:", uploadedIssueId);
+        setPosts((prev) =>
+          prev.map((p) =>
+            p.id === uploadedIssueId
+              ? {
+                ...p,
+                userStatus: {
+                  ...(p.userStatus || {}),
+                  hasReported: true,
+                  uploadedByMe: true,
+                },
+              }
+              : p
+          )
+        );
+        // Clear param
+        navigation.setParams({ uploadedIssueId: undefined });
+      }
+    }, [route.params?.fixedIssueId, route.params?.uploadedIssueId, navigation])
+  );
 
   // Fallback once flag to avoid repeated navigation
   const hasAppliedLocationFallback = React.useRef(false);
@@ -108,30 +157,63 @@ const HomeScreen = ({ navigation }) => {
   const getFilteredPosts = () => {
     let result = [...posts];
 
+    const currentUid = user?.uid; // Get uid from user object
+
+    console.log("[getFilteredPosts] START", {
+      totalPosts: posts.length,
+      myIssuesFilter: filters.myIssues,
+      currentUid: currentUid,
+      hasUser: !!user,
+      hasProfile: !!profile,
+    });
+
+    // Exclude anonymous posts globally
+    const beforeAnon = result.length;
+    result = result.filter(
+      (post) => post?.detailedData?.reported_by && post.detailedData.reported_by !== "anonymous"
+    );
+    if (beforeAnon !== result.length) {
+      console.log("[Filter Debug] Excluded anonymous posts:", beforeAnon - result.length);
+    }
+
     // Filter by My Issues (uploaded/fixed by current user)
-    if (filters.myIssues !== "all" && profile?.uid) {
-      console.log("[Filter Debug] Filtering by myIssues:", filters.myIssues);
-      console.log("[Filter Debug] Profile UID:", profile.uid);
-
-      // Debug: Log first post's full data to see field names
-      if (result.length > 0) {
-        console.log("[Filter Debug] First post data:", JSON.stringify(result[0].detailedData, null, 2));
-      }
-
+    if (filters.myIssues !== "all" && currentUid) {
+      console.log("[getFilteredPosts] Entering myIssues filter branch");
       result = result.filter((post) => {
+        const reporterId = post.detailedData?.reported_by;
+        const closedBy = post.detailedData?.closed_by;
+        const userStatus = post.userStatus || {};
+
+        console.log("[MyIssues Filter] Post debug", {
+          postId: post.id,
+          filter: filters.myIssues,
+          currentUid: currentUid,
+          reported_by: reporterId,
+          closed_by: closedBy,
+          userStatus,
+        });
+
         if (filters.myIssues === "uploaded") {
-          // Prefer ES field if present, else fallback to computed userStatus
-          const reporterId = post.detailedData?.reported_by;
-          const hasReported = post.userStatus?.hasReported === true;
-          const match = (reporterId && reporterId === profile.uid) || hasReported;
-          console.log(`[Filter] Post ${post.id}: reported_by=${reporterId}, hasReported=${hasReported}, match=${match}`);
+          // Uploaded by me: ES field or userStatus flag
+          const hasReported = userStatus.hasReported === true;
+          const match = (reporterId && reporterId === currentUid) || hasReported;
+          console.log("[MyIssues Filter] Uploaded check", {
+            postId: post.id,
+            reporterId,
+            hasReported,
+            match,
+          });
           return match;
         } else if (filters.myIssues === "fixed") {
-          // Prefer ES field if present; fallback if API provides a hasFixed flag
-          const closedBy = post.detailedData?.closed_by;
-          const hasFixed = post.userStatus?.hasFixed === true || post.userStatus?.fixedByMe === true;
-          const match = (closedBy && closedBy === profile.uid) || hasFixed;
-          console.log(`[Filter] Post ${post.id}: closed_by=${closedBy}, hasFixed=${hasFixed}, match=${match}`);
+          // Fixed by me: match closed_by to NGO uid OR fixedByMe flag
+          const hasFixed = userStatus.hasFixed === true || userStatus.fixedByMe === true;
+          const match = (closedBy && closedBy === currentUid) || hasFixed;
+          console.log("[MyIssues Filter] Fixed check", {
+            postId: post.id,
+            closedBy,
+            hasFixed,
+            match,
+          });
           return match;
         }
         return true;
@@ -276,36 +358,55 @@ const HomeScreen = ({ navigation }) => {
         );
 
         if (newIssues.length === 0) {
-          // No more issues with current parameters - try expanding
-          console.log("No new issues found, attempting to expand search parameters...");
-
-          // Expand search parameters progressively
-          const newExpandedParams = { ...expandedParams };
-          let expanded = false;
-
-          // Priority: radius > days > limit
-          if (expandedParams.radiusKm < 50) {
-            newExpandedParams.radiusKm = Math.min(expandedParams.radiusKm + 5, 50);
-            expanded = true;
-            console.log(`Expanding radius to ${newExpandedParams.radiusKm}km`);
-          } else if (expandedParams.days < 180) {
-            newExpandedParams.days = Math.min(expandedParams.days + 30, 180);
-            expanded = true;
-            console.log(`Expanding days to ${newExpandedParams.days} days`);
-          } else if (expandedParams.limit < 100) {
-            newExpandedParams.limit = Math.min(expandedParams.limit + 20, 100);
-            expanded = true;
-            console.log(`Expanding limit to ${newExpandedParams.limit}`);
-          }
-
-          if (expanded) {
-            setExpandedParams(newExpandedParams);
-            setHasMore(true); // Re-enable loading more
-            showInfo(`Expanding search to ${newExpandedParams.radiusKm}km radius`);
-          } else {
-            // Reached maximum expansion
+          // No more issues with current parameters
+          if (filters.myIssues === "fixed") {
+            // Do not expand when filtering by 'Fixed by Me'
+            console.log(
+              "No new issues found and 'Fixed by Me' active — not expanding search."
+            );
             setHasMore(false);
-            console.log("Reached maximum search parameters");
+          } else {
+            console.log(
+              "No new issues found, attempting to expand search parameters..."
+            );
+
+            // Expand search parameters progressively
+            const newExpandedParams = { ...expandedParams };
+            let expanded = false;
+
+            // Priority: radius > days > limit
+            if (expandedParams.radiusKm < 50) {
+              newExpandedParams.radiusKm = Math.min(
+                expandedParams.radiusKm + 5,
+                50
+              );
+              expanded = true;
+              console.log(`Expanding radius to ${newExpandedParams.radiusKm}km`);
+            } else if (expandedParams.days < 180) {
+              newExpandedParams.days = Math.min(
+                expandedParams.days + 30,
+                180
+              );
+              expanded = true;
+              console.log(`Expanding days to ${newExpandedParams.days} days`);
+            } else if (expandedParams.limit < 100) {
+              newExpandedParams.limit = Math.min(
+                expandedParams.limit + 20,
+                100
+              );
+              expanded = true;
+              console.log(`Expanding limit to ${newExpandedParams.limit}`);
+            }
+
+            if (expanded) {
+              setExpandedParams(newExpandedParams);
+              setHasMore(true); // Re-enable loading more
+              showInfo(`Expanding search to ${newExpandedParams.radiusKm}km radius`);
+            } else {
+              // Reached maximum expansion
+              setHasMore(false);
+              console.log("Reached maximum search parameters");
+            }
           }
         } else {
           // Filter out duplicates
@@ -735,10 +836,17 @@ const HomeScreen = ({ navigation }) => {
           }
           ListEmptyComponent={
             !refreshing && !contextLoading && !loadingMore && (
-              <View style={{ paddingVertical: 40, alignItems: "center" }}>
-                <Ionicons name="search-outline" size={28} color="#999" />
-                <Text style={{ marginTop: 8, color: "#666" }}>
-                  No issues found for the current filters.
+              <View style={{ paddingVertical: 40, alignItems: "center", paddingHorizontal: 40 }}>
+                <Ionicons name="search-outline" size={48} color="#999" />
+                <Text style={{ marginTop: 16, color: "#333", fontSize: 16, fontWeight: "600", textAlign: "center" }}>
+                  No issues found
+                </Text>
+                <Text style={{ marginTop: 8, color: "#666", textAlign: "center", lineHeight: 20 }}>
+                  {filters.myIssues === "fixed"
+                    ? "You haven't fixed any issues yet. Upload a fix for an open issue to see it here."
+                    : filters.myIssues === "uploaded"
+                      ? "You haven't uploaded any issues yet. Report a new issue to see it here."
+                      : "Try adjusting your filters or expanding the search area."}
                 </Text>
               </View>
             )
