@@ -184,13 +184,8 @@ async def get_fix_details(
                 user_data = user_doc.to_dict()
                 # Try multiple fields in order of preference
                 ngo_name = (
-                    user_data.get("organization_name") or 
-                    user_data.get("organizationName") or 
                     user_data.get("displayName") or 
-                    user_data.get("name") or 
-                    user_data.get("email", "").split("@")[0] or 
-                    "Unknown NGO"
-                )
+                    user_data.get("name")                )
                 ngo_logo = user_data.get("logoUrl") or user_data.get("photoURL")
                 logger.info(f"Fetched NGO details for {closed_by}: {ngo_name}")
             else:
