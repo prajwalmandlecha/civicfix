@@ -5,28 +5,67 @@ import { onAuthStateChanged, getIdToken } from "firebase/auth";
 import maplibregl from 'maplibre-gl';
 import 'maplibre-gl/dist/maplibre-gl.css';
 
-const API_BASE = 'http://localhost:8000'; // Your Python backend
-const HEATMAP_ZOOM_THRESHOLD = 12; // Zoom level to switch between heatmap and points
+const API_BASE = 'http://localhost:8000';
 
 let map = null;
-let currentFilters = {
-  status: [], issue_type: [], source: [], date_from: null, date_to: null
+let userMarker = null;
+let issueMarkers = [];
+let currentToken = null;
+let userLocation = null;
+let currentUser = null;
+let userProfile = null;
+let filters = {
+  status: 'open',
+  severity: 'all',
+  days: 30,
+  issueTypes: [],
+  radiusKm: 10,
+  limit: 50
 };
-let currentToken = null; 
 
-// Keep colors for point popups if needed, or define heatmap colors later
-const ISSUE_TYPE_COLORS = {
-  'Pothole': '#FF6B6B', 'Streetlight': '#FFD93D', 'Garbage': '#6FCF97',
-  'Graffiti': '#A8E6CF', 'Drain': '#A8E6CF', 'Construction': '#D1D5DB', // Added Drain/Construction
-  'Other': '#9CA3AF' 
-};
+// Load user profile from backend
+async function loadUserProfile() {
+  try {
+    const response = await fetch(`${API_BASE}/api/users/${currentUser.uid}/stats-firebase`, {
+      headers: { 'Authorization': `Bearer ${currentToken}` }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      userProfile = data.stats;
+      console.log('User profile loaded:', userProfile);
+    }
+  } catch (error) {
+    console.error('Error loading user profile:', error);
+  }
+}
 
+// Get marker color based on issue status and severity
+function getMarkerColor(issue) {
+  if (issue.status?.toLowerCase() === 'closed') {
+    return '#4CAF79'; // Green for fixed issues
+  }
+  const severityScore = issue.severity_score || 5;
+  if (severityScore >= 8) return '#991B1B';
+  if (severityScore >= 4) return '#F97316';
+  return '#22C55E';
+}
+
+// Get display value for marker (checkmark for closed, severity for open)
+function getMarkerDisplay(issue) {
+  if (issue.status?.toLowerCase() === 'closed') {
+    return '✓';
+  }
+  return Math.round(issue.severity_score || 5);
+}
+
+// Initialize map
 function initMap() {
-  if (map) return; 
+  if (map) return;
 
   map = new maplibregl.Map({
     container: 'map',
-    style: { // Keep using OpenStreetMap tiles
+    style: {
       version: 8,
       sources: {
         'osm-tiles': {
@@ -36,339 +75,1042 @@ function initMap() {
             'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
             'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
           ],
-          tileSize: 256, attribution: '© OpenStreetMap contributors'
-        },
-        // --- ADD GeoJSON Source for points (will feed both layers) ---
-        'issues-source': {
-            type: 'geojson',
-            data: { type: 'FeatureCollection', features: [] } // Start empty
+          tileSize: 256,
+          attribution: '© OpenStreetMap contributors'
         }
       },
       layers: [
-        { id: 'osm-tiles', type: 'raster', source: 'osm-tiles', minzoom: 0, maxzoom: 19 },
-        // --- ADD Heatmap Layer (initially hidden) ---
-        {
-            id: 'heatmap-layer',
-            type: 'heatmap',
-            source: 'issues-source',
-            maxzoom: HEATMAP_ZOOM_THRESHOLD, // Hide heatmap when zooming IN past threshold
-            paint: {
-                // Increase weight based on severity, default to 1 if missing
-                 'heatmap-weight': [
-                    'interpolate', ['linear'],
-                    ['coalesce', ['get', 'severity_score'], 1], // Use severity_score or default 1
-                    0, 0, // Severity 0 -> weight 0
-                    5, 1, // Severity 5 -> weight 1
-                    10, 2 // Severity 10 -> weight 2 
-                 ],
-                // Adjust intensity based on zoom
-                'heatmap-intensity': [
-                    'interpolate', ['linear'], ['zoom'],
-                    0, 1, // Intensity 1 at zoom 0
-                    HEATMAP_ZOOM_THRESHOLD, 3 // Intensity 3 approaching point view
-                ],
-                // Color ramp: transparent -> blue -> yellow -> red
-                // 'heatmap-color': [
-                //     'interpolate', ['linear'], ['heatmap-density'],
-                //     0, 'rgba(33,102,172,0)',
-                //     0.2, 'rgb(103,169,207)',
-                //     0.4, 'rgb(209,229,240)',
-                //     0.6, 'rgb(253,219,199)',
-                //     0.8, 'rgb(239,138,98)',
-                //     1, 'rgb(178,24,43)'
-                // ],
-                    'heatmap-color': [
-                      'interpolate', ['linear'], ['heatmap-density'],
-                      0, 'rgba(0,0,0,0)',       // Transparent (no density)
-                      0.1, 'rgb(0,255,0)',      // Green (low density)
-                      0.3, 'rgb(255,255,0)',    // Yellow (medium density)
-                      0.6, 'rgb(255,140,0)',    // Orange (higher density)
-                      1, 'rgb(255,0,0)'         // Red (highest density)
-                    ],
-
-                // Adjust radius based on zoom
-                'heatmap-radius': [
-                    'interpolate', ['linear'], ['zoom'],
-                    0, 2, // Radius 2px at zoom 0
-                    HEATMAP_ZOOM_THRESHOLD, 20 // Radius 20px approaching point view
-                ],
-                 // Adjust opacity based on zoom, fade out as points appear
-                'heatmap-opacity': [
-                    'interpolate', ['linear'], ['zoom'],
-                    HEATMAP_ZOOM_THRESHOLD - 1, 0.8, // Fully opaque just before switching
-                    HEATMAP_ZOOM_THRESHOLD, 0 // Fade out completely when points appear
-                 ],
-            },
-            layout: {
-                visibility: 'none' // Start hidden
-            }
-        },
-        // --- ADD Points Layer (initially hidden) ---
-        {
-            id: 'points-layer',
-            type: 'circle',
-            source: 'issues-source',
-            minzoom: HEATMAP_ZOOM_THRESHOLD -1, // Start appearing just before heatmap fades
-            paint: {
-                 // Color by severity score (same as before)
-                'circle-color': ['interpolate', ['linear'], ['coalesce', ['get', 'severity_score'], 5], 0, '#22C55E', 3, '#EAB308', 5, '#F97316', 7, '#EF4444', 10, '#991B1B'],
-                'circle-radius': 8,
-                'circle-stroke-width': 2,
-                'circle-stroke-color': '#ffffff',
-                // Fade points in as heatmap fades out
-                'circle-opacity': [
-                    'interpolate', ['linear'], ['zoom'],
-                    HEATMAP_ZOOM_THRESHOLD - 1, 0, // Fully transparent when heatmap is visible
-                    HEATMAP_ZOOM_THRESHOLD, 1 // Fully opaque when points should be visible
-                ]
-            },
-            layout: {
-                visibility: 'none' // Start hidden
-            }
-        }
+        { id: 'osm-tiles', type: 'raster', source: 'osm-tiles', minzoom: 0, maxzoom: 19 }
       ]
     },
-    center: [73.9017, 18.4549], // Pune center
-    zoom: 10
+    center: [77.5946, 12.9716], // Bangalore center
+    zoom: 13
   });
 
   map.addControl(new maplibregl.NavigationControl(), 'top-right');
 
-  map.on('load', () => {
-    console.log("Map loaded, attempting initial data load.");
-    loadMapData(); // Load data on initial map load
-
-    // --- Add Popup Logic for Points Layer ---
-    map.on('click', 'points-layer', (e) => {
-        if (!e.features || e.features.length === 0) return;
-        const feature = e.features[0];
-        const coordinates = feature.geometry.coordinates.slice();
-        const props = feature.properties;
-        
-        // Ensure properties exist before accessing
-        const status = props.status || 'unknown';
-        const detectedIssues = Array.isArray(props.detected_issues) ? props.detected_issues : [];
-        const issueTypesArray = Array.isArray(props.issue_types) ? props.issue_types : [props.issue_types || 'unknown'];
-
-        const statusText = status === 'closed' ? '✅ Closed' :
-                           status === 'verified' ? '🟡 Verified' :
-                           status === 'spam' ? '🚫 Spam' : '🟠 Open';
-        const statusBadge = `<span class="status-badge">${statusText}</span>`;
-
-        const issueTypesHTML = detectedIssues.length > 0
-          ? detectedIssues.map(issue => {
-              const type = issue.type || 'unknown';
-              const score = issue.severity_score;
-              const color = ISSUE_TYPE_COLORS[type] || ISSUE_TYPE_COLORS.Other;
-              return `<div class="issue-type-badge" style="background: ${color}20; border-left: 3px solid ${color}; padding: 4px 8px; margin: 2px 0; border-radius: 4px; font-size: 12px;">
-                <strong>${type.replace(/_/g, ' ')}</strong> 
-                ${score ? `<span style="color: #666;">(Score: ${score.toFixed(1)})</span>` : ''}
-              </div>`;
-            }).join('')
-          : `<div class="issue-type-badge">Type: ${issueTypesArray.join(', ').replace(/_/g, ' ') || 'N/A'}</div>`;
-        
-        const locationText = props.display_address ? props.display_address : `${coordinates[1].toFixed(5)}, ${coordinates[0].toFixed(5)}`;
-        const openUpvotes = (props.upvotes && props.upvotes.open) || 0;
-        const openReports = (props.reports && props.reports.open) || 0;
-        const severityScore = props.severity_score;
-
-        const popupHTML = `
-          <div class="issue-popup">
-            ${props.photo_url ? `<img src="${props.photo_url}" alt="Issue photo" class="popup-image" onerror="this.style.display='none'">` : ''}
-            <h3>Issue Report ${props.id ? `<span style="font-size: 10px; color: #999;">(${props.id.substring(0,6)})</span>`: ''}</h3>
-            ${statusBadge}
-            <div class="popup-section">
-              <h4 style="font-size: 13px; margin: 8px 0 4px 0; color: #666;">Location:</h4>
-              <p>${locationText}</p>
-            </div>
-            <div class="popup-section">
-              <h4 style="font-size: 13px; margin: 8px 0 4px 0; color: #666;">AI Detected Issues:</h4>
-              ${issueTypesHTML}
-            </div>
-            <div class="popup-section">
-              <p class="popup-description">${props.description || props.auto_caption || 'No description'}</p>
-            </div>
-            <div class="popup-stats">
-              <div class="stat-item"><span class="stat-label">👍 Upvotes:</span><span class="stat-value">${openUpvotes}</span></div>
-              <div class="stat-item"><span class="stat-label">👎 Reports:</span><span class="stat-value">${openReports}</span></div>
-              <div class="stat-item"><span class="stat-label">Severity:</span><span class="stat-value">${severityScore ? severityScore.toFixed(1) : 'N/A'}</span></div>
-            </div>
-            <div class="popup-meta">
-              <div>${props.created_at ? new Date(props.created_at).toLocaleDateString() : 'No Date'}</div>
-              <div>${props.source || 'citizen'}</div>
-            </div>
-          </div>
-        `;
-        new maplibregl.Popup({ maxWidth: '300px' })
-            .setLngLat(coordinates)
-            .setHTML(popupHTML)
-            .addTo(map);
-    });
-    map.on('mouseenter', 'points-layer', () => { map.getCanvas().style.cursor = 'pointer'; });
-    map.on('mouseleave', 'points-layer', () => { map.getCanvas().style.cursor = ''; });
-    // --- End Popup Logic ---
-
+  map.on('load', async () => {
+    console.log("Map loaded successfully");
+    await setUserLocation();
   });
+}
 
-  // --- Update Layers on Move/Zoom End ---
-  map.on('moveend', () => loadMapData()); // Load new data for the area
-  map.on('zoomend', () => loadMapData()); // Load data and potentially toggle layers
-
-} // End initMap
-
-async function loadMapData() {
-  if (!map || !currentToken) {
-     console.log("Map not ready or token unavailable.");
-     return; 
+// Set user location - use profile location first, then browser location as fallback
+async function setUserLocation() {
+  showLoading(true);
+  
+  // First try to use profile location if available
+  if (userProfile && userProfile.location && userProfile.location.latitude && userProfile.location.longitude) {
+    userLocation = {
+      latitude: userProfile.location.latitude,
+      longitude: userProfile.location.longitude
+    };
+    console.log("Using profile location:", userLocation);
+    updateMapLocation();
+    await fetchIssues();
+    showLoading(false);
+    return;
+  }
+  
+  // Fallback to browser geolocation if profile location not available
+  if (!navigator.geolocation) {
+    showToast('Geolocation is not supported by your browser', 'error');
+    showLoading(false);
+    return;
   }
 
-  const zoom = map.getZoom();
-  const bounds = map.getBounds();
-  const boundsObj = {
-    north: bounds.getNorth(), south: bounds.getSouth(),
-    east: bounds.getEast(), west: bounds.getWest()
-  };
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      userLocation = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      };
+      
+      console.log("Browser location retrieved:", userLocation);
+      updateMapLocation();
+      await fetchIssues();
+      showLoading(false);
+    },
+    (error) => {
+      console.error('Error getting location:', error);
+      showToast('Unable to get your location. Please enable location access.', 'error');
+      showLoading(false);
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 }
+  );
+}
 
+// Update map with user location
+function updateMapLocation() {
+  if (!userLocation) return;
+  
+  // Add user location marker
+  if (userMarker) {
+    userMarker.remove();
+  }
+      
+  const el = document.createElement('div');
+  el.className = 'user-marker';
+  el.innerHTML = '<div class="user-marker-pulse"></div>';
+  
+  userMarker = new maplibregl.Marker(el)
+    .setLngLat([userLocation.longitude, userLocation.latitude])
+    .addTo(map);
+  
+  // Center map on user location
+  map.flyTo({
+    center: [userLocation.longitude, userLocation.latitude],
+    zoom: 13,
+    duration: 1000
+  });
+}
+
+// Fetch issues from backend with filters
+async function fetchIssues() {
+  if (!userLocation) {
+    showNoLocationState();
+    return;
+  }
+
+  // Validate location data
+  if (typeof userLocation.latitude !== 'number' || typeof userLocation.longitude !== 'number') {
+    console.log('Invalid location data for fetching issues');
+    showNoLocationState();
+    return;
+  }
+
+  showLoading(true);
+  
   try {
-    const queryParams = new URLSearchParams({
-      zoom: zoom.toString(),
-      bounds: JSON.stringify(boundsObj),
-      filters: JSON.stringify(currentFilters)
+    const params = new URLSearchParams({
+      latitude: userLocation.latitude.toString(),
+      longitude: userLocation.longitude.toString(),
+      radius_km: filters.radiusKm.toString(),
+      limit: filters.limit.toString(),
+      days_back: filters.days.toString()
     });
 
-    const response = await fetch(`${API_BASE}/api/map-data?${queryParams}`, {
-        headers: { 'Authorization': `Bearer ${currentToken}` }
+    if (filters.status && filters.status !== 'all') {
+      params.append('status', filters.status);
+    }
+
+    const response = await fetch(`${API_BASE}/api/issues/with-user-status?${params}`, {
+      headers: {
+        'Authorization': `Bearer ${currentToken}`,
+        'Content-Type': 'application/json'
+      }
     });
 
     if (!response.ok) {
-        let errorMsg = `Error ${response.status}`;
-        try { const errData = await response.json(); errorMsg = errData.detail || errorMsg; } catch (e) {}
-        throw new Error(errorMsg);
+      throw new Error(`HTTP error! status: ${response.status}`);
     }
 
-    const data = await response.json(); // Backend now ALWAYS sends {type: 'points', features: [...]}
-
-    // --- Update the single GeoJSON source ---
-    const source = map.getSource('issues-source');
-    if (source && data.features) {
-         console.log(`Received ${data.features.length} points from backend.`);
-        source.setData({
-            type: 'FeatureCollection',
-            features: data.features 
-        });
-    } else {
-         console.warn("Issues source not found or no features received.");
-          // Clear source if no data
-         if(source) source.setData({ type: 'FeatureCollection', features: [] });
-    }
+    const data = await response.json();
+    const issues = data.issues || [];
     
-    // --- Update layer visibility AFTER data is loaded ---
-    updateLayerVisibility(); 
-
+    displayIssuesOnMap(issues);
+    updateFilterSummary(issues.length);
+    showLoading(false);
   } catch (error) {
-    console.error('Error loading map data:', error);
-    showToast(`⚠️ Error loading map data: ${error.message}`);
-     // Optionally clear the source on error
-     const source = map.getSource('issues-source');
-     if(source) source.setData({ type: 'FeatureCollection', features: [] });
-     updateLayerVisibility(); // Ensure layers are correctly hidden/shown even on error
+    console.error('Error fetching issues:', error);
+    showToast('Failed to load issues. Please try again.', 'error');
+    showLoading(false);
   }
-} // End loadMapData
-
-
-function updateLayerVisibility() {
-    if (!map) return;
-    const zoom = map.getZoom();
-    
-    console.log(`Current Zoom: ${zoom.toFixed(2)}, Threshold: ${HEATMAP_ZOOM_THRESHOLD}`);
-
-    // Check if layers exist before trying to set layout property
-    const heatmapLayerExists = map.getLayer('heatmap-layer');
-    const pointsLayerExists = map.getLayer('points-layer');
-
-    if (zoom < HEATMAP_ZOOM_THRESHOLD) {
-        // Show Heatmap, Hide Points
-        if (heatmapLayerExists) map.setLayoutProperty('heatmap-layer', 'visibility', 'visible');
-        if (pointsLayerExists) map.setLayoutProperty('points-layer', 'visibility', 'none');
-        console.log("Showing heatmap layer, hiding points layer.");
-    } else {
-        // Show Points, Hide Heatmap
-        if (heatmapLayerExists) map.setLayoutProperty('heatmap-layer', 'visibility', 'none');
-        if (pointsLayerExists) map.setLayoutProperty('points-layer', 'visibility', 'visible');
-        console.log("Showing points layer, hiding heatmap layer.");
-    }
-} // End updateLayerVisibility
-
-// --- REMOVED renderClusters and renderPoints functions ---
-// The logic is now handled by updating the source and toggling layer visibility.
-
-function initFilters() {
-  // ... (Your existing initFilters function - no changes needed) ...
-  const statusCheckboxes = document.querySelectorAll('input[name="status-filter"]');
-  const typeCheckboxes = document.querySelectorAll('input[name="type-filter"]');
-  const sourceCheckboxes = document.querySelectorAll('input[name="source-filter"]');
-  const dateFromInput = document.getElementById('date-from');
-  const dateToInput = document.getElementById('date-to');
-  const applyFiltersBtn = document.getElementById('apply-filters');
-  const resetFiltersBtn = document.getElementById('reset-filters');
-
-  function updateFilters() {
-    currentFilters.status = Array.from(statusCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
-    currentFilters.issue_type = Array.from(typeCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
-    currentFilters.source = Array.from(sourceCheckboxes).filter(cb => cb.checked).map(cb => cb.value);
-    
-    // Basic date validation/formatting if needed - ensure YYYY-MM-DD for ES range query
-    const formatDate = (dateStr) => {
-        if (!dateStr) return null;
-        // Assuming input is YYYY-MM-DD or parsable by Date
-        try {
-            return new Date(dateStr).toISOString().split('T')[0];
-        } catch { return null; }
-    };
-    currentFilters.date_from = formatDate(dateFromInput?.value); 
-    currentFilters.date_to = formatDate(dateToInput?.value); 
-    
-    loadMapData(); 
-    showToast('✅ Filters applied');
-  }
-
-  function resetFilters() {
-    currentFilters = { status: [], issue_type: [], source: [], date_from: null, date_to: null };
-    statusCheckboxes.forEach(cb => cb.checked = false);
-    typeCheckboxes.forEach(cb => cb.checked = false);
-    sourceCheckboxes.forEach(cb => cb.checked = false);
-    if (dateFromInput) dateFromInput.value = '';
-    if (dateToInput) dateToInput.value = '';
-    loadMapData();
-    showToast('✅ Filters reset');
-  }
-
-  if (applyFiltersBtn) applyFiltersBtn.addEventListener('click', updateFilters);
-  if (resetFiltersBtn) resetFiltersBtn.addEventListener('click', resetFilters);
 }
 
-// --- DOMContentLoaded listener ---
-document.addEventListener('DOMContentLoaded', () => {
-    initializeAuthListener(); // Handles redirects
-    initThemeToggle();
-    initMobileMenu();
-    initFilters(); 
+// Apply client-side filters (for severity and issueTypes)
+function getFilteredIssues(issues) {
+  let filtered = [...issues];
 
-    // Wait for auth state before getting token and initializing map
-    onAuthStateChanged(auth, async (user) => {
-        if (user) {
-            try {
-                currentToken = await getIdToken(user); 
-                console.log("Map page: Token retrieved, initializing map.");
-                initMap(); // Init map AFTER token is available
-            } catch (error) {
-                console.error("Error getting user token:", error);
-                showToast("❌ Error verifying user session.");
-                window.location.replace('/login.html'); 
-            }
-        } else {
-            console.log("Map page: No user found, redirecting.");
-            window.location.replace('/login.html');
-        }
+  // Filter by severity
+  if (filters.severity !== 'all') {
+    filtered = filtered.filter(issue => {
+      const severity = issue.severity_score || 0;
+      switch (filters.severity) {
+        case 'high': return severity >= 8;
+        case 'medium': return severity >= 4 && severity < 8;
+        case 'low': return severity < 4;
+        default: return true;
+      }
     });
+  }
+
+  // Filter by issue types
+  if (filters.issueTypes && filters.issueTypes.length > 0) {
+    const selectedSet = new Set(filters.issueTypes.map(t => String(t).toUpperCase()));
+    filtered = filtered.filter(issue => {
+      const source = issue.issue_types || issue.detected_issues || [];
+      const types = source.map(t => 
+        typeof t === 'string' ? t.toUpperCase() : String(t?.type || t?.name || t).toUpperCase()
+      );
+      return types.some(t => selectedSet.has(t));
+    });
+  }
+
+  return filtered;
+}
+
+// Display issues on map
+function displayIssuesOnMap(issues) {
+  // Clear existing markers
+  issueMarkers.forEach(marker => marker.remove());
+  issueMarkers = [];
+
+  // Apply client-side filters
+  const filteredIssues = getFilteredIssues(issues);
+
+  if (filteredIssues.length === 0) {
+    showEmptyState();
+    return;
+  }
+
+  // Hide empty state
+  const emptyState = document.getElementById('empty-state');
+  if (emptyState) emptyState.style.display = 'none';
+
+  // Create markers for each issue
+  filteredIssues.forEach(issue => {
+    const el = document.createElement('div');
+    el.className = 'custom-marker';
+    
+    const color = getMarkerColor(issue);
+    const displayValue = getMarkerDisplay(issue);
+    
+    el.innerHTML = `
+      <div class="marker-inner" style="background-color: ${color};">
+        <span class="marker-text">${displayValue}</span>
+      </div>
+      <div class="marker-arrow" style="border-top-color: ${color};"></div>
+    `;
+
+    const marker = new maplibregl.Marker({ element: el })
+      .setLngLat([issue.location.lon, issue.location.lat])
+      .addTo(map);
+
+    // Add click event to show issue detail
+    el.addEventListener('click', () => openIssueModal(issue));
+
+    issueMarkers.push(marker);
+  });
+}
+
+// Open issue detail modal
+function openIssueModal(issue) {
+  const modal = document.getElementById('issue-modal');
+  const modalImage = document.getElementById('modal-issue-image');
+  const modalTitle = document.getElementById('modal-issue-title');
+  const modalStatus = document.getElementById('modal-issue-status');
+  const modalSeverity = document.getElementById('modal-issue-severity');
+  const modalUpvotes = document.getElementById('modal-issue-upvotes');
+  const modalReports = document.getElementById('modal-issue-reports');
+  const modalDescription = document.getElementById('modal-issue-description');
+  const modalDate = document.getElementById('modal-issue-date');
+  const modalIssueTypes = document.getElementById('modal-issue-types');
+  const upvoteBtn = document.getElementById('modal-upvote-btn');
+  const reportBtn = document.getElementById('modal-report-btn');
+
+  // Set modal content
+  if (issue.image_url) {
+    modalImage.src = issue.image_url;
+    modalImage.style.display = 'block';
+  } else {
+    modalImage.style.display = 'none';
+  }
+
+  modalTitle.textContent = issue.title || 'Civic Issue';
+  modalStatus.textContent = issue.status || 'open';
+  modalSeverity.textContent = issue.severity_score || 0;
+  modalUpvotes.textContent = issue.upvotes || 0;
+  modalReports.textContent = issue.reports || 0;
+  modalDescription.textContent = issue.description || 'No description available';
+  
+  const date = new Date(issue.created_at);
+  modalDate.textContent = date.toLocaleDateString();
+
+  // Display issue types
+  const issueTypes = issue.issue_types || issue.detected_issues || [];
+  modalIssueTypes.innerHTML = issueTypes.map(type => {
+    const typeName = typeof type === 'string' ? type : type.type || type.name || 'Unknown';
+    return `<span class="issue-type-tag">${typeName}</span>`;
+  }).join('');
+
+  // Set button states based on user interaction
+  const userStatus = issue.userStatus || {};
+  upvoteBtn.classList.toggle('active', userStatus.hasUpvoted);
+  reportBtn.classList.toggle('active', userStatus.hasReported);
+
+  // Add event listeners
+  upvoteBtn.onclick = () => handleVoteAction(issue.id, 'upvote', upvoteBtn);
+  reportBtn.onclick = () => handleVoteAction(issue.id, 'report', reportBtn);
+
+  modal.style.display = 'flex';
+}
+
+// Handle vote/report action
+async function handleVoteAction(issueId, action, button) {
+  if (!currentToken) {
+    showToast('Please sign in to perform this action', 'error');
+    return;
+  }
+
+  const wasActive = button.classList.contains('active');
+  button.disabled = true;
+
+  try {
+    const response = await fetch(`${API_BASE}/api/issues/${issueId}/${action}`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${currentToken}`,
+        'Content-Type': 'application/json'
+      }
+    });
+
+    if (!response.ok) {
+      throw new Error(`HTTP error! status: ${response.status}`);
+    }
+
+    const data = await response.json();
+    const updatedIssue = data.updated_issue;
+
+    // Update UI
+    if (action === 'upvote') {
+      button.classList.toggle('active');
+      document.getElementById('modal-issue-upvotes').textContent = updatedIssue.upvotes || 0;
+      showToast(wasActive ? 'Upvote removed' : 'Upvoted successfully', 'success');
+    } else {
+      button.classList.toggle('active');
+      document.getElementById('modal-issue-reports').textContent = updatedIssue.reports || 0;
+      showToast(wasActive ? 'Report removed' : 'Reported successfully', 'success');
+    }
+
+  } catch (error) {
+    console.error(`Error ${action}:`, error);
+    showToast(`Failed to ${action}. Please try again.`, 'error');
+  } finally {
+    button.disabled = false;
+  }
+}
+
+// Close modal
+function closeModal() {
+  const modal = document.getElementById('issue-modal');
+  modal.style.display = 'none';
+}
+
+// Refresh map
+function refreshMap() {
+  if (userLocation) {
+    fetchIssues();
+    showToast('Refreshing map...', 'success');
+  } else {
+    getUserLocation();
+  }
+}
+
+// Open filter modal (rewritten to match mobile app and feed.js)
+function openFilterModal() {
+    console.log('🔧 Opening filter modal...');
+    
+    // Add CSS styles if not already present
+    addFilterModalStyles();
+    
+    // Remove existing modal if any
+    const existingModal = document.getElementById('filter-modal');
+    if (existingModal) {
+        existingModal.remove();
+    }
+    
+    // Create modal HTML matching mobile app structure
+    const modalHTML = `
+        <div id="filter-modal" class="filter-modal-overlay">
+            <div class="filter-modal-container">
+                <!-- Header -->
+                <div class="filter-header">
+                    <h2 class="filter-title">Filters</h2>
+                    <button class="filter-close-btn" type="button" onclick="closeFilterModal()">
+                        <span>&times;</span>
+                    </button>
+                </div>
+
+                <!-- Content -->
+                <div class="filter-content">
+                    <!-- Issue Types -->
+                    <div class="filter-section">
+                        <label class="filter-section-title">Issue Types</label>
+                        <div class="filter-dropdown-container">
+                            <div class="filter-multiselect" id="issue-types-selector">
+                                <div class="multiselect-display" onclick="toggleIssueTypes()">
+                                    <span id="issue-types-text">Select issue types...</span>
+                                    <span class="dropdown-arrow">▼</span>
+                                </div>
+                                <div class="multiselect-dropdown" id="issue-types-dropdown" style="display: none;">
+                                    <div class="multiselect-search">
+                                        <input type="text" placeholder="Search..." id="issue-types-search" onkeyup="filterIssueTypes()">
+                                    </div>
+                                    <div class="multiselect-options" id="issue-types-options">
+                                        <label class="multiselect-option">
+                                            <input type="checkbox" value="pothole"> Pothole
+                                        </label>
+                                        <label class="multiselect-option">
+                                            <input type="checkbox" value="streetlight"> Street Light
+                                        </label>
+                                        <label class="multiselect-option">
+                                            <input type="checkbox" value="drainage"> Drainage
+                                        </label>
+                                        <label class="multiselect-option">
+                                            <input type="checkbox" value="garbage"> Garbage
+                                        </label>
+                                        <label class="multiselect-option">
+                                            <input type="checkbox" value="water_supply"> Water Supply
+                                        </label>
+                                        <label class="multiselect-option">
+                                            <input type="checkbox" value="road_damage"> Road Damage
+                                        </label>
+                                        <label class="multiselect-option">
+                                            <input type="checkbox" value="other"> Other
+                                        </label>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Status -->
+                    <div class="filter-section">
+                        <label class="filter-section-title">Status</label>
+                        <div class="filter-options">
+                            <button type="button" class="filter-option active" data-filter="status" data-value="all">All</button>
+                            <button type="button" class="filter-option" data-filter="status" data-value="open">Open</button>
+                            <button type="button" class="filter-option" data-filter="status" data-value="closed">Closed</button>
+                        </div>
+                    </div>
+
+                    <!-- My Contributions -->
+                    <div class="filter-section">
+                        <label class="filter-section-title">My Contributions</label>
+                        <div class="filter-options">
+                            <button type="button" class="filter-option active" data-filter="myIssues" data-value="all">All Issues</button>
+                            <button type="button" class="filter-option" data-filter="myIssues" data-value="uploaded">Uploaded by Me</button>
+                        </div>
+                    </div>
+
+                    <!-- Severity -->
+                    <div class="filter-section">
+                        <label class="filter-section-title">Severity</label>
+                        <div class="filter-options">
+                            <button type="button" class="filter-option active" data-filter="severity" data-value="all">All</button>
+                            <button type="button" class="filter-option" data-filter="severity" data-value="high">High</button>
+                            <button type="button" class="filter-option" data-filter="severity" data-value="medium">Medium</button>
+                            <button type="button" class="filter-option" data-filter="severity" data-value="low">Low</button>
+                        </div>
+                    </div>
+
+                    <!-- Time Range -->
+                    <div class="filter-section">
+                        <label class="filter-section-title">Time Range</label>
+                        <div class="filter-options">
+                            <button type="button" class="filter-option" data-filter="days" data-value="7">7d</button>
+                            <button type="button" class="filter-option active" data-filter="days" data-value="30">30d</button>
+                            <button type="button" class="filter-option" data-filter="days" data-value="90">90d</button>
+                            <button type="button" class="filter-option" data-filter="days" data-value="365">365d</button>
+                        </div>
+                    </div>
+
+                    <!-- Distance -->
+                    <div class="filter-section">
+                        <label class="filter-section-title">Distance</label>
+                        <div class="filter-options">
+                            <button type="button" class="filter-option" data-filter="radiusKm" data-value="2">2 km</button>
+                            <button type="button" class="filter-option active" data-filter="radiusKm" data-value="5">5 km</button>
+                            <button type="button" class="filter-option" data-filter="radiusKm" data-value="10">10 km</button>
+                            <button type="button" class="filter-option" data-filter="radiusKm" data-value="25">25 km</button>
+                        </div>
+                    </div>
+
+                    <!-- Number of Issues -->
+                    <div class="filter-section">
+                        <label class="filter-section-title">Number of Issues</label>
+                        <div class="filter-options">
+                            <button type="button" class="filter-option" data-filter="limit" data-value="10">10</button>
+                            <button type="button" class="filter-option active" data-filter="limit" data-value="20">20</button>
+                            <button type="button" class="filter-option" data-filter="limit" data-value="50">50</button>
+                            <button type="button" class="filter-option" data-filter="limit" data-value="100">100</button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Footer -->
+                <div class="filter-footer">
+                    <button type="button" class="filter-reset-btn" onclick="resetMapFilters()">Reset</button>
+                    <button type="button" class="filter-apply-btn" onclick="applyMapFilters()">Apply Filters</button>
+                </div>
+            </div>
+        </div>
+    `;
+
+    // Add modal to page
+    document.body.insertAdjacentHTML('beforeend', modalHTML);
+    console.log('✅ Modal HTML added to page');
+    
+    // Set up event listeners for filter options
+    setupMapFilterEventListeners();
+    
+    // Set current filter values
+    updateMapFilterDisplay();
+    
+    // Show modal with animation
+    setTimeout(() => {
+        const modal = document.getElementById('filter-modal');
+        if (modal) {
+            modal.classList.add('show');
+            console.log('✅ Modal displayed');
+        }
+    }, 10);
+}
+
+// Add CSS styles for filter modal (if not already added by feed.js)
+function addFilterModalStyles() {
+    if (document.getElementById('filter-modal-styles')) return; // Already added
+    
+    const styles = `
+    <style id="filter-modal-styles">
+    .filter-modal-overlay {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        background: rgba(0, 0, 0, 0.5);
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        z-index: 10000;
+        opacity: 0;
+        transition: opacity 0.3s ease;
+    }
+    
+    .filter-modal-overlay.show {
+        opacity: 1;
+    }
+    
+    .filter-modal-container {
+        background: white;
+        width: 90%;
+        max-width: 500px;
+        max-height: 90vh;
+        border-radius: 12px;
+        overflow: hidden;
+        transform: translateY(20px);
+        transition: transform 0.3s ease;
+        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
+    }
+    
+    .filter-modal-overlay.show .filter-modal-container {
+        transform: translateY(0);
+    }
+    
+    .filter-header {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 20px;
+        border-bottom: 1px solid #e0e0e0;
+        background: #f8f9fa;
+    }
+    
+    .filter-title {
+        margin: 0;
+        font-size: 1.4rem;
+        font-weight: 600;
+        color: #333;
+    }
+    
+    .filter-close-btn {
+        background: none;
+        border: none;
+        font-size: 1.8rem;
+        color: #666;
+        cursor: pointer;
+        padding: 5px;
+        border-radius: 50%;
+        transition: background-color 0.2s;
+    }
+    
+    .filter-close-btn:hover {
+        background-color: #e0e0e0;
+    }
+    
+    .filter-content {
+        padding: 20px;
+        max-height: calc(90vh - 160px);
+        overflow-y: auto;
+    }
+    
+    .filter-section {
+        margin-bottom: 24px;
+    }
+    
+    .filter-section-title {
+        display: block;
+        font-weight: 600;
+        color: #333;
+        margin-bottom: 12px;
+        font-size: 1rem;
+    }
+    
+    .filter-options {
+        display: flex;
+        flex-wrap: wrap;
+        gap: 8px;
+    }
+    
+    .filter-option {
+        padding: 10px 16px;
+        border: 2px solid #e0e0e0;
+        background: white;
+        border-radius: 8px;
+        cursor: pointer;
+        font-size: 0.9rem;
+        transition: all 0.2s;
+    }
+    
+    .filter-option:hover {
+        border-color: #007bff;
+        background-color: #f8f9fa;
+    }
+    
+    .filter-option.active {
+        background-color: #007bff;
+        border-color: #007bff;
+        color: white;
+    }
+    
+    .filter-dropdown-container {
+        position: relative;
+    }
+    
+    .filter-multiselect {
+        position: relative;
+        width: 100%;
+    }
+    
+    .multiselect-display {
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 12px 16px;
+        border: 2px solid #e0e0e0;
+        border-radius: 8px;
+        background: white;
+        cursor: pointer;
+        transition: border-color 0.2s;
+    }
+    
+    .multiselect-display:hover {
+        border-color: #007bff;
+    }
+    
+    .dropdown-arrow {
+        color: #666;
+        transition: transform 0.2s;
+    }
+    
+    .multiselect-dropdown {
+        position: absolute;
+        top: 100%;
+        left: 0;
+        right: 0;
+        background: white;
+        border: 2px solid #e0e0e0;
+        border-top: none;
+        border-radius: 0 0 8px 8px;
+        z-index: 1000;
+        max-height: 200px;
+        overflow-y: auto;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+    }
+    
+    .multiselect-search input {
+        width: 100%;
+        padding: 12px;
+        border: none;
+        border-bottom: 1px solid #e0e0e0;
+        outline: none;
+        font-size: 0.9rem;
+    }
+    
+    .multiselect-options {
+        max-height: 150px;
+        overflow-y: auto;
+    }
+    
+    .multiselect-option {
+        display: flex;
+        align-items: center;
+        padding: 12px;
+        cursor: pointer;
+        transition: background-color 0.2s;
+    }
+    
+    .multiselect-option:hover {
+        background-color: #f8f9fa;
+    }
+    
+    .multiselect-option input {
+        margin-right: 10px;
+    }
+    
+    .filter-footer {
+        display: flex;
+        gap: 12px;
+        padding: 20px;
+        border-top: 1px solid #e0e0e0;
+        background: #f8f9fa;
+    }
+    
+    .filter-reset-btn, .filter-apply-btn {
+        flex: 1;
+        padding: 12px 24px;
+        border: none;
+        border-radius: 8px;
+        font-size: 1rem;
+        font-weight: 600;
+        cursor: pointer;
+        transition: all 0.2s;
+    }
+    
+    .filter-reset-btn {
+        background: #6c757d;
+        color: white;
+    }
+    
+    .filter-reset-btn:hover {
+        background: #5a6268;
+    }
+    
+    .filter-apply-btn {
+        background: #007bff;
+        color: white;
+    }
+    
+    .filter-apply-btn:hover {
+        background: #0056b3;
+    }
+    
+    @media (max-width: 768px) {
+        .filter-modal-container {
+            width: 95%;
+            margin: 10px;
+        }
+        
+        .filter-content {
+            padding: 16px;
+        }
+        
+        .filter-header {
+            padding: 16px;
+        }
+        
+        .filter-footer {
+            padding: 16px;
+        }
+    }
+    </style>
+    `;
+    
+    document.head.insertAdjacentHTML('beforeend', styles);
+}
+
+// Setup event listeners for filter options
+function setupMapFilterEventListeners() {
+    const filterOptions = document.querySelectorAll('.filter-option');
+    filterOptions.forEach(option => {
+        option.addEventListener('click', (e) => {
+            const filterType = e.target.dataset.filter;
+            const value = e.target.dataset.value;
+            
+            // Remove active from siblings
+            const siblings = e.target.parentElement.querySelectorAll('.filter-option');
+            siblings.forEach(s => s.classList.remove('active'));
+            
+            // Add active to clicked option
+            e.target.classList.add('active');
+            
+            console.log(`Filter changed: ${filterType} = ${value}`);
+        });
+    });
+}
+
+// Update filter display with current values
+function updateMapFilterDisplay() {
+    // Set status
+    const statusBtn = document.querySelector(`[data-filter="status"][data-value="${filters.status}"]`);
+    if (statusBtn) {
+        statusBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
+        statusBtn.classList.add('active');
+    }
+    
+    // Set severity
+    const severityBtn = document.querySelector(`[data-filter="severity"][data-value="${filters.severity}"]`);
+    if (severityBtn) {
+        severityBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
+        severityBtn.classList.add('active');
+    }
+    
+    // Set days
+    const daysBtn = document.querySelector(`[data-filter="days"][data-value="${filters.days}"]`);
+    if (daysBtn) {
+        daysBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
+        daysBtn.classList.add('active');
+    }
+    
+    // Set radius
+    const radiusBtn = document.querySelector(`[data-filter="radiusKm"][data-value="${filters.radiusKm}"]`);
+    if (radiusBtn) {
+        radiusBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
+        radiusBtn.classList.add('active');
+    }
+    
+    // Set limit
+    const limitBtn = document.querySelector(`[data-filter="limit"][data-value="${filters.limit}"]`);
+    if (limitBtn) {
+        limitBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
+        limitBtn.classList.add('active');
+    }
+    
+    // Set myIssues if it exists in filters
+    if (filters.myIssues !== undefined) {
+        const myIssuesBtn = document.querySelector(`[data-filter="myIssues"][data-value="${filters.myIssues}"]`);
+        if (myIssuesBtn) {
+            myIssuesBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
+            myIssuesBtn.classList.add('active');
+        }
+    }
+    
+    // Set issue types checkboxes
+    if (filters.issueTypes && Array.isArray(filters.issueTypes)) {
+        filters.issueTypes.forEach(type => {
+            const checkbox = document.querySelector(`input[value="${type}"]`);
+            if (checkbox) checkbox.checked = true;
+        });
+    }
+    
+    updateIssueTypesDisplayMap();
+}
+
+// Toggle issue types dropdown
+function toggleIssueTypes() {
+    const dropdown = document.getElementById('issue-types-dropdown');
+    if (dropdown) {
+        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+    }
+}
+
+// Filter issue types based on search
+function filterIssueTypes() {
+    const search = document.getElementById('issue-types-search').value.toLowerCase();
+    const options = document.querySelectorAll('#issue-types-options .multiselect-option');
+    
+    options.forEach(option => {
+        const text = option.textContent.toLowerCase();
+        option.style.display = text.includes(search) ? 'block' : 'none';
+    });
+}
+
+// Update issue types display text
+function updateIssueTypesDisplayMap() {
+    const checkboxes = document.querySelectorAll('#issue-types-options input[type="checkbox"]:checked');
+    const display = document.getElementById('issue-types-text');
+    
+    if (display) {
+        if (checkboxes.length === 0) {
+            display.textContent = 'Select issue types...';
+        } else {
+            const types = Array.from(checkboxes).map(cb => cb.parentElement.textContent.trim());
+            display.textContent = `${types.length} type${types.length > 1 ? 's' : ''} selected`;
+        }
+    }
+}
+
+// Listen for issue type changes
+document.addEventListener('change', (e) => {
+    if (e.target.matches('#issue-types-options input[type="checkbox"]')) {
+        updateIssueTypesDisplayMap();
+    }
+});
+
+// Close filter modal
+function closeFilterModal() {
+    const modal = document.getElementById('filter-modal');
+    if (modal) {
+        modal.classList.remove('show');
+        setTimeout(() => modal.remove(), 300);
+    }
+    console.log('✅ Filter modal closed');
+}
+
+// Reset filters to default
+function resetMapFilters() {
+    // Initialize with default values
+    filters.status = 'all';
+    filters.severity = 'all';
+    filters.days = 30;
+    filters.radiusKm = 5;
+    filters.limit = 20;
+    filters.issueTypes = [];
+    if (filters.myIssues !== undefined) {
+        filters.myIssues = 'all';
+    }
+    
+    updateMapFilterDisplay();
+    console.log('✅ Filters reset to default');
+}
+
+// Apply selected filters
+function applyMapFilters() {
+    // Get all selected filter values
+    const statusBtn = document.querySelector('.filter-option[data-filter="status"].active');
+    if (statusBtn) filters.status = statusBtn.dataset.value;
+    
+    const severityBtn = document.querySelector('.filter-option[data-filter="severity"].active');
+    if (severityBtn) filters.severity = severityBtn.dataset.value;
+    
+    const daysBtn = document.querySelector('.filter-option[data-filter="days"].active');
+    if (daysBtn) filters.days = parseInt(daysBtn.dataset.value);
+    
+    const radiusBtn = document.querySelector('.filter-option[data-filter="radiusKm"].active');
+    if (radiusBtn) filters.radiusKm = parseInt(radiusBtn.dataset.value);
+    
+    const limitBtn = document.querySelector('.filter-option[data-filter="limit"].active');
+    if (limitBtn) filters.limit = parseInt(limitBtn.dataset.value);
+    
+    const myIssuesBtn = document.querySelector('.filter-option[data-filter="myIssues"].active');
+    if (myIssuesBtn) filters.myIssues = myIssuesBtn.dataset.value;
+
+    // Get selected issue types
+    const selectedTypes = Array.from(document.querySelectorAll('#issue-types-options input[type="checkbox"]:checked'))
+        .map(cb => cb.value);
+    filters.issueTypes = selectedTypes;
+
+    console.log('🎯 Applied filters:', filters);
+    
+    // Close modal and fetch issues with new filters
+    closeFilterModal();
+    
+    // Fetch new issues with filters
+    fetchIssues();
+    
+    // Update filter summary
+    updateFilterSummary();
+    
+    showToast('✅ Filters applied successfully!', 'success');
+}
+
+// Make functions global for onclick handlers
+window.closeFilterModal = closeFilterModal;
+window.resetMapFilters = resetMapFilters;
+window.applyMapFilters = applyMapFilters;
+window.toggleIssueTypes = toggleIssueTypes;
+window.filterIssueTypes = filterIssueTypes;
+
+// Update filter summary
+function updateFilterSummary(count) {
+  const summary = document.getElementById('filter-summary');
+  if (summary) {
+    summary.textContent = `${count} issues found`;
+  }
+}
+
+// Show loading state
+function showLoading(show) {
+  const loadingEl = document.getElementById('loading-state');
+  if (loadingEl) {
+    loadingEl.style.display = show ? 'flex' : 'none';
+  }
+}
+
+// Show no location state
+function showNoLocationState() {
+  const container = document.getElementById('map');
+  const noLocationEl = document.getElementById('no-location-state');
+  if (noLocationEl) {
+    noLocationEl.style.display = 'flex';
+  }
+}
+
+// Show empty state
+function showEmptyState() {
+  const emptyState = document.getElementById('empty-state');
+  if (emptyState) {
+    emptyState.style.display = 'flex';
+  }
+}
+
+// Initialize page
+document.addEventListener('DOMContentLoaded', () => {
+  console.log("Map page loaded");
+  
+  initThemeToggle();
+  initMobileMenu();
+
+  // Initialize auth listener
+  initializeAuthListener();
+
+  // Wait for authentication
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      console.log("No user, redirecting to login");
+      window.location.href = '/login.html';
+      return;
+    }
+
+    try {
+      currentUser = user;
+      currentToken = await getIdToken(user);
+      console.log("User authenticated, loading profile and initializing map");
+      
+      // Load user profile first
+      await loadUserProfile();
+      
+      // Initialize map
+      initMap();
+
+      // Add event listeners
+      const refreshBtn = document.getElementById('refresh-btn');
+      const filterBtn = document.getElementById('filter-btn');
+      const myLocationBtn = document.getElementById('my-location-btn');
+      const closeModalBtn = document.getElementById('close-modal');
+      const closeFilterBtn = document.getElementById('close-filter-modal');
+      const applyFilterBtn = document.getElementById('apply-filters');
+      const retryLocationBtn = document.getElementById('retry-location-btn');
+
+      if (refreshBtn) refreshBtn.addEventListener('click', refreshMap);
+      if (filterBtn) filterBtn.addEventListener('click', openFilterModal);
+      if (myLocationBtn) myLocationBtn.addEventListener('click', getUserLocation);
+      if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
+      if (closeFilterBtn) closeFilterBtn.addEventListener('click', closeFilterModal);
+      if (applyFilterBtn) applyFilterBtn.addEventListener('click', applyFilters);
+      if (retryLocationBtn) retryLocationBtn.addEventListener('click', getUserLocation);
+
+      // Close modals on background click
+      const issueModal = document.getElementById('issue-modal');
+      const filterModal = document.getElementById('filter-modal');
+      
+      if (issueModal) {
+        issueModal.addEventListener('click', (e) => {
+          if (e.target === issueModal) closeModal();
+        });
+      }
+      
+      if (filterModal) {
+        filterModal.addEventListener('click', (e) => {
+          if (e.target === filterModal) closeFilterModal();
+        });
+      }
+
+    } catch (error) {
+      console.error("Error during initialization:", error);
+      showToast('Failed to initialize. Please refresh the page.', 'error');
+    }
+  });
 });

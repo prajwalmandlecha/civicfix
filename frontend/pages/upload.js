@@ -1,189 +1,363 @@
-// frontend/pages/upload.js
 import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
 import { initializeAuthListener } from './auth.js';
+import { auth } from '../firebaseConfig.js';
+import { onAuthStateChanged, getIdToken } from "firebase/auth";
 
-// --- Reverted to single file variable ---
-let uploadedFile = null;
+const API_BASE = 'http://localhost:8000';
 
-function initUploadArea() {
-    const uploadArea = document.getElementById('upload-area');
-    const fileInput = document.getElementById('file-input');
-    const previewContainer = document.getElementById('preview-container');
-    const submitBtn = document.getElementById('submit-btn');
-    const locationInput = document.getElementById('location-input');
-    const uploadPlaceholder = document.querySelector('.upload-placeholder');
+let currentToken = null;
+let uploadedImage = null;
+let userLocation = null;
+let detectedIssues = [];
 
-    if (!uploadArea || !fileInput || !previewContainer || !submitBtn || !locationInput || !uploadPlaceholder) {
-        console.error("One or more essential upload elements not found!");
-        if (submitBtn) submitBtn.disabled = true;
-        return;
-    }
+// Issue types mapping
+const ISSUE_TYPES = {
+  'ROAD_POTHOLE': 'Pothole',
+  'WASTE_BULKY_DUMP': 'Garbage/Waste',
+  'STREETLIGHT_OUTAGE': 'Streetlight Outage',
+  'DRAIN_BLOCKAGE': 'Drain Blockage',
+  'ILLEGAL_CONSTRUCTION_DEBRIS': 'Construction Debris'
+};
 
-    // --- UPDATED: Check state for single file ---
-    const checkSubmitButtonState = () => {
-        const hasFile = uploadedFile != null; // Check single file
-        const hasLocationText = locationInput.value.trim().length > 2;
-        submitBtn.disabled = !(hasFile && hasLocationText);
-    };
+// Handle image selection
+function handleImageSelect(event) {
+  const file = event.target.files[0];
+  if (!file) return;
 
-    // Add listeners
-    locationInput.addEventListener('input', checkSubmitButtonState);
-    // --- UPDATED: Handle single file change ---
-    fileInput.addEventListener('change', (e) => handleFile(e.target.files[0])); // Get first file only
+  if (!file.type.startsWith('image/')) {
+    showToast('Please select an image file', 'error');
+    return;
+  }
 
-    // --- Upload Area Listeners (Drop updated) ---
-    uploadArea.addEventListener('click', () => fileInput.click());
-    uploadArea.addEventListener('dragover', (e) => { e.preventDefault(); uploadArea.classList.add('dragging'); });
-    uploadArea.addEventListener('dragleave', () => uploadArea.classList.remove('dragging'));
-    uploadArea.addEventListener('drop', (e) => {
-        e.preventDefault();
-        uploadArea.classList.remove('dragging');
-        // --- UPDATED: Handle single dropped file ---
-        handleFile(e.dataTransfer.files[0]); // Get first file only
-    });
-
-    // --- UPDATED: Render preview for single file ---
-    function renderPreview() {
-        previewContainer.innerHTML = ''; // Clear previous
-        uploadPlaceholder.style.display = uploadedFile ? 'none' : 'block';
-
-        if (uploadedFile && uploadedFile.type.startsWith('image/')) {
-            const reader = new FileReader();
-            reader.onload = (e) => {
-                const preview = document.createElement('div');
-                preview.className = 'preview-item';
-                preview.innerHTML = `
-                    <img src="${e.target.result}" alt="Preview">
-                    <button class="preview-remove" data-index="0">&times;</button>
-                `; // Keep data-index="0" for consistency
-                previewContainer.appendChild(preview);
-            };
-            reader.readAsDataURL(uploadedFile);
-        } else if (uploadedFile) {
-             console.log(`Skipping non-image file: ${uploadedFile.name}`);
-             uploadedFile = null; // Discard non-image file
-             showToast('⚠️ Only image files are allowed.');
-        }
-        checkSubmitButtonState(); // Update submit button
-    }
-
-    // --- UPDATED: Handle single file ---
-    function handleFile(file) {
-        if (!file) { // Handle clearing the file
-             uploadedFile = null;
-        } else if (file.type.startsWith('image/')) {
-            uploadedFile = file; // Store the single valid file
-        } else {
-            uploadedFile = null; // Reset if invalid type
-            showToast('⚠️ Only image files are allowed.');
-            fileInput.value = ''; // Clear the input field
-        }
-        renderPreview(); // Render the single preview (or clear it)
-    }
-
-    // --- UPDATED: Handle preview removal for single file ---
-    previewContainer.addEventListener('click', (e) => {
-        if (e.target.classList.contains('preview-remove')) {
-            uploadedFile = null; // Clear the single file variable
-            fileInput.value = ''; // Clear the actual file input
-            renderPreview(); // Re-render (will clear preview)
-        }
-    });
-
-    // --- UPDATED: Submit Logic for single file ---
-    submitBtn.addEventListener('click', async () => {
-        const isAnonymous = document.getElementById('anonymous-toggle')?.checked || false;
-        const descriptionInput = document.getElementById('description-input');
-        const description = descriptionInput ? descriptionInput.value.trim() : ''; // Trim description
-        const locationText = locationInput.value.trim();
-
-        // Auth Check
-        const idToken = localStorage.getItem('firebaseIdToken');
-        if (!idToken) {
-            showToast('⚠️ Please log in to submit an issue.');
-            localStorage.setItem('redirectAfterLogin', window.location.pathname);
-            window.location.href = '/login.html';
-            return;
-        }
-
-        // --- UPDATED: Check single file ---
-        if (!uploadedFile) { showToast('⚠️ Please select an image file.'); return; }
-        if (!locationText) { showToast('⚠️ Please enter the location.'); locationInput.focus(); return; }
-
-        submitBtn.disabled = true;
-        submitBtn.textContent = 'Submitting...';
-        showToast(`⏳ Uploading image & finding coordinates...`); // Updated message
-
-        const formData = new FormData();
-        // --- UPDATED: Append SINGLE file under 'file' key ---
-        formData.append('file', uploadedFile, uploadedFile.name); // Key MUST match /submit-issue backend
-        formData.append('description', description);
-        // --- UPDATED: Key name to match /submit-issue backend ---
-        formData.append('locationstr', locationText); // Use 'locationstr'
-        formData.append('is_anonymous', isAnonymous);
-
-        try {
-            // --- Point to the SINGLE-FILE backend endpoint ---
-            const response = await fetch('http://localhost:8000/submit-issue', { // Changed URL
-                method: 'POST',
-                headers: {
-                    'Authorization': `Bearer ${idToken}`
-                    // NO 'Content-Type' for FormData
-                },
-                body: formData,
-            });
-
-            if (!response.ok) {
-                let errorDetail = `Error ${response.status}`;
-                 try {
-                     const errorData = await response.json();
-                     errorDetail = errorData.detail || errorDetail;
-                 } catch (e) { /* Ignore if response is not JSON */ }
-
-                if (response.status === 401 || response.status === 403) {
-                     errorDetail = "Authentication failed. Please log in again.";
-                     // Optionally clear local storage and redirect here too
-                } else if (response.status === 400 && errorDetail.includes("Cannot find coords")) {
-                    showToast(`❌ Location Error: ${errorDetail}`); // Show specific error for geocoding
-                } else {
-                    showToast(`❌ Submission failed: ${errorDetail}`);
-                }
-                throw new Error(errorDetail); // Throw after showing toast
-            }
-
-            const result = await response.json();
-            console.log("Submit successful, analysis result:", result);
-            // Use backend message or default (consider adding first post karma message here later if needed)
-            const message = result.message || (isAnonymous ? '✅ Submitted! Analysis running...' : '✅ Submitted! Analysis running...'); // Simplified message
-            showToast(message);
-
-            // Clear form on success
-            uploadedFile = null;
-            renderPreview(); // Clear preview
-            if(descriptionInput) descriptionInput.value = '';
-            locationInput.value = '';
-            fileInput.value = ''; // Clear file input
-            checkSubmitButtonState(); // Disable button
-
-            setTimeout(() => { window.location.href = '/feed.html'; }, 1500);
-
-        } catch (error) {
-            console.error('Submission failed:', error);
-            // Avoid showing redundant toast if already shown in the !response.ok block
-            if (!(response && !response.ok)) {
-                showToast(`❌ Submission failed: ${error.message}`);
-            }
-            submitBtn.disabled = false; // Re-enable button on error
-            submitBtn.textContent = 'Submit Issue';
-        }
-    });
+  uploadedImage = file;
+  displayImagePreview(file);
+  checkFormValidity();
 }
 
-// initVoiceRecording remains commented out
+// Display image preview
+function displayImagePreview(file) {
+  const previewContainer = document.getElementById('image-preview-container');
+  const uploadPlaceholder = document.getElementById('upload-placeholder');
 
+  const reader = new FileReader();
+  reader.onload = (e) => {
+    previewContainer.innerHTML = `
+      <div class="image-preview">
+        <img src="${e.target.result}" alt="Preview" class="preview-image">
+        <button class="remove-image-btn" id="remove-image-btn">✕</button>
+      </div>
+    `;
+    
+    uploadPlaceholder.style.display = 'none';
+    previewContainer.style.display = 'block';
+
+    // Add remove button listener
+    document.getElementById('remove-image-btn').addEventListener('click', removeImage);
+  };
+  reader.readAsDataURL(file);
+}
+
+// Remove image
+function removeImage() {
+  uploadedImage = null;
+  const previewContainer = document.getElementById('image-preview-container');
+  const uploadPlaceholder = document.getElementById('upload-placeholder');
+  const fileInput = document.getElementById('file-input');
+
+  previewContainer.innerHTML = '';
+  previewContainer.style.display = 'none';
+  uploadPlaceholder.style.display = 'block';
+  fileInput.value = '';
+  
+  checkFormValidity();
+}
+
+// Get current location
+async function getUserLocation() {
+  const locationBtn = document.getElementById('get-location-btn');
+  const locationText = document.getElementById('location-text');
+
+  if (locationBtn) locationBtn.disabled = true;
+  if (locationText) locationText.textContent = 'Getting location...';
+
+  if (!navigator.geolocation) {
+    showToast('Geolocation is not supported by your browser', 'error');
+    if (locationBtn) locationBtn.disabled = false;
+    if (locationText) locationText.textContent = 'Location not set';
+    return;
+  }
+
+  navigator.geolocation.getCurrentPosition(
+    async (position) => {
+      userLocation = {
+        latitude: position.coords.latitude,
+        longitude: position.coords.longitude
+      };
+
+      // Reverse geocode to get address
+      try {
+        const response = await fetch(
+          `https://nominatim.openstreetmap.org/reverse?lat=${userLocation.latitude}&lon=${userLocation.longitude}&format=json`
+        );
+        const data = await response.json();
+        userLocation.address = data.display_name || `${userLocation.latitude.toFixed(4)}, ${userLocation.longitude.toFixed(4)}`;
+      } catch (error) {
+        console.error('Error geocoding:', error);
+        userLocation.address = `${userLocation.latitude.toFixed(4)}, ${userLocation.longitude.toFixed(4)}`;
+      }
+
+      if (locationText) {
+        locationText.textContent = userLocation.address;
+      }
+
+      showToast('Location captured successfully', 'success');
+      if (locationBtn) locationBtn.disabled = false;
+      checkFormValidity();
+    },
+    (error) => {
+      console.error('Error getting location:', error);
+      showToast('Unable to get location. Please enable location services.', 'error');
+      if (locationBtn) locationBtn.disabled = false;
+      if (locationText) locationText.textContent = 'Location not set - Click to retry';
+    },
+    { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+  );
+}
+
+// Check form validity
+function checkFormValidity() {
+  const submitBtn = document.getElementById('submit-btn');
+  const hasImage = uploadedImage !== null;
+  const hasLocation = userLocation !== null;
+
+  if (submitBtn) {
+    submitBtn.disabled = !(hasImage && hasLocation);
+  }
+}
+
+// Upload issue
+async function handleSubmit() {
+  if (!uploadedImage || !userLocation) {
+    showToast('Please add an image and location', 'error');
+    return;
+  }
+
+  const descriptionInput = document.getElementById('description-input');
+  const anonymousCheckbox = document.getElementById('anonymous-toggle');
+  const issueTypeSelect = document.getElementById('issue-type-select');
+
+  const description = descriptionInput ? descriptionInput.value.trim() : '';
+  const isAnonymous = anonymousCheckbox ? anonymousCheckbox.checked : false;
+  const selectedIssueTypes = issueTypeSelect ? Array.from(issueTypeSelect.selectedOptions).map(o => o.value) : [];
+
+  showUploadProgress();
+
+  try {
+    // Step 1: Upload image
+    updateUploadStep(0, 'Uploading image...');
+    const formData = new FormData();
+    formData.append('file', uploadedImage);
+    formData.append('description', description);
+    formData.append('locationstr', userLocation.address);
+    formData.append('is_anonymous', isAnonymous);
+
+    // Add selected issue types
+    selectedIssueTypes.forEach(type => {
+      formData.append('issue_types', type);
+    });
+
+    const response = await fetch(`${API_BASE}/submit-issue`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${currentToken}`
+      },
+      body: formData
+    });
+
+    if (!response.ok) {
+      throw new Error(`Upload failed: ${response.status}`);
+    }
+
+    // Step 2: Identifying issues
+    updateUploadStep(1, 'Identifying issues...');
+    const result = await response.json();
+    console.log('Upload result:', result);
+
+    // Step 3: Finalizing
+    updateUploadStep(2, 'Finalizing...');
+    
+    // Check if issues were detected
+    if (result.detected_issues && result.detected_issues.length > 0) {
+      detectedIssues = result.detected_issues;
+      showResultModal(result);
+    } else {
+      showToast('Issue uploaded successfully! No specific issues detected by AI.', 'success');
+      setTimeout(() => {
+        window.location.href = '/feed.html';
+      }, 1500);
+    }
+
+    hideUploadProgress();
+  } catch (error) {
+    console.error('Error uploading issue:', error);
+    showToast(`Upload failed: ${error.message}`, 'error');
+    hideUploadProgress();
+  }
+}
+
+// Show upload progress modal
+function showUploadProgress() {
+  const modal = document.getElementById('upload-progress-modal');
+  if (modal) modal.style.display = 'flex';
+}
+
+// Hide upload progress modal
+function hideUploadProgress() {
+  const modal = document.getElementById('upload-progress-modal');
+  if (modal) modal.style.display = 'none';
+}
+
+// Update upload step
+function updateUploadStep(stepIndex, text) {
+  const steps = document.querySelectorAll('.progress-step');
+  steps.forEach((step, index) => {
+    if (index <= stepIndex) {
+      step.classList.add('active');
+    } else {
+      step.classList.remove('active');
+    }
+  });
+
+  const statusText = document.getElementById('upload-status-text');
+  if (statusText) statusText.textContent = text;
+}
+
+// Show result modal
+function showResultModal(result) {
+  const modal = document.getElementById('result-modal');
+  const detectedIssuesContainer = document.getElementById('detected-issues-container');
+
+  if (detectedIssuesContainer) {
+    detectedIssuesContainer.innerHTML = result.detected_issues.map(issue => `
+      <div class="detected-issue-item">
+        <strong>${issue.type || issue.name || 'Unknown'}</strong>
+        <p>Confidence: ${Math.round((issue.confidence || 0) * 100)}%</p>
+        ${issue.description ? `<p class="issue-desc">${issue.description}</p>` : ''}
+      </div>
+    `).join('');
+  }
+
+  if (modal) modal.style.display = 'flex';
+}
+
+// Close result modal and navigate to feed
+function closeResultModal() {
+  const modal = document.getElementById('result-modal');
+  if (modal) modal.style.display = 'none';
+  
+  // Reset form
+  uploadedImage = null;
+  userLocation = null;
+  detectedIssues = [];
+  
+  const fileInput = document.getElementById('file-input');
+  const descriptionInput = document.getElementById('description-input');
+  const anonymousCheckbox = document.getElementById('anonymous-toggle');
+  
+  if (fileInput) fileInput.value = '';
+  if (descriptionInput) descriptionInput.value = '';
+  if (anonymousCheckbox) anonymousCheckbox.checked = false;
+  
+  removeImage();
+  
+  // Navigate to feed
+  window.location.href = '/feed.html';
+}
+
+// Initialize page
 document.addEventListener('DOMContentLoaded', () => {
-    initializeAuthListener();
-    initThemeToggle();
-    initMobileMenu();
-    initUploadArea();
+  console.log("Upload page loaded");
+
+  initThemeToggle();
+  initMobileMenu();
+  initializeAuthListener();
+
+  // Wait for authentication
+  onAuthStateChanged(auth, async (user) => {
+    if (!user) {
+      console.log("No user, redirecting to login");
+      window.location.href = '/login.html';
+      return;
+    }
+
+    try {
+      currentToken = await getIdToken(user);
+      console.log("User authenticated");
+
+      // Add event listeners
+      const fileInput = document.getElementById('file-input');
+      const uploadArea = document.getElementById('upload-area');
+      const getLocationBtn = document.getElementById('get-location-btn');
+      const submitBtn = document.getElementById('submit-btn');
+      const closeResultBtn = document.getElementById('close-result-modal');
+      const viewIssuesBtn = document.getElementById('view-issues-btn');
+
+      if (fileInput) {
+        fileInput.addEventListener('change', handleImageSelect);
+      }
+
+      if (uploadArea) {
+        uploadArea.addEventListener('click', () => fileInput?.click());
+        
+        // Drag and drop
+        uploadArea.addEventListener('dragover', (e) => {
+          e.preventDefault();
+          uploadArea.classList.add('dragging');
+        });
+        
+        uploadArea.addEventListener('dragleave', () => {
+          uploadArea.classList.remove('dragging');
+        });
+        
+        uploadArea.addEventListener('drop', (e) => {
+          e.preventDefault();
+          uploadArea.classList.remove('dragging');
+          
+          const file = e.dataTransfer.files[0];
+          if (file && file.type.startsWith('image/')) {
+            uploadedImage = file;
+            displayImagePreview(file);
+            checkFormValidity();
+          } else {
+            showToast('Please drop an image file', 'error');
+          }
+        });
+      }
+
+      if (getLocationBtn) {
+        getLocationBtn.addEventListener('click', getUserLocation);
+      }
+
+      if (submitBtn) {
+        submitBtn.addEventListener('click', handleSubmit);
+      }
+
+      if (closeResultBtn) {
+        closeResultBtn.addEventListener('click', closeResultModal);
+      }
+
+      if (viewIssuesBtn) {
+        viewIssuesBtn.addEventListener('click', () => {
+          window.location.href = '/feed.html';
+        });
+      }
+
+      // Initialize form state
+      checkFormValidity();
+
+    } catch (error) {
+      console.error("Error during initialization:", error);
+      showToast('Failed to initialize. Please refresh the page.', 'error');
+    }
+  });
 });

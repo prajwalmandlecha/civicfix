@@ -46,90 +46,95 @@
 
   <section class="page-content street-you">
     <div class="container">
-      <h1 class="page-title">Your Profile</h1>
-      <p class="page-subtitle">Your Impact Dashboard</p>
-
-      <div id="loading-indicator" style="text-align: center; padding: 40px;">
-        <div class="loading-spinner"></div>
-        <p style="margin-top: 10px; color: var(--grey-text);">Loading profile...</p>
+      <div class="profile-header">
+        <h1 class="page-title">👤 Your Profile</h1>
+        <button id="refresh-profile-btn" class="icon-button" title="Refresh">🔄</button>
       </div>
 
-      <div id="profile-content" style="display: none;">
+      <div id="loading-state" class="loading-state" style="display: none;">
+        <div class="spinner"></div>
+        <p>Loading profile...</p>
+      </div>
 
-        <div class="profile-header-card">
-          <div class="profile-avatar-large">
-            <span id="avatar-initial">?</span>
+      <div id="profile-content">
+        <!-- Profile Card -->
+        <div class="profile-card">
+          <div class="profile-avatar">
+            <span id="profile-avatar">?</span>
           </div>
           <h2 id="profile-username" class="profile-username">Loading...</h2>
-          <p id="profile-email" class="profile-email">Loading...</p>
-          <div class="profile-type-badge">
-            <span id="profile-user-type">User</span>
+          <p id="profile-email" class="profile-email">loading@example.com</p>
+          <div class="user-type-badge">
+            <span id="profile-usertype">Citizen</span>
           </div>
-          <div class="profile-header-stats">
-            <div class="profile-header-stat">
-              <span id="profile-karma-value" class="stat-value">0</span>
-              <span class="stat-name">Total Karma</span>
+          <div class="profile-stats-inline">
+            <div class="stat-inline">
+              <span id="profile-karma" class="stat-value">0</span>
+              <span class="stat-label">Total Karma</span>
             </div>
-            <div class="profile-header-divider"></div>
-            <div class="profile-header-stat">
-              <span id="profile-rank-value" class="stat-value">...</span>
-              <!-- ***CHANGE***: Updated the label from "Rank" to "Total Users" -->
-              <span class="stat-name">Rank</span>
+            <div class="stat-divider"></div>
+            <div class="stat-inline">
+              <span id="profile-rank" class="stat-value">#?</span>
+              <span class="stat-label">Rank</span>
             </div>
           </div>
         </div>
 
-        <div class="profile-card-section">
-          <h3 class="section-heading">Location</h3>
-          <div class="profile-data-card">
-            <p id="profile-location-address" class="card-text">Loading location...</p>
-            <button id="update-location-btn" class="card-button primary">Update Location</button>
-            <span id="location-loading" style="margin-left: 10px; display: none;">Updating...</span>
-          </div>
-        </div>
-
-        <div id="organization-section" class="profile-card-section" style="display: none;">
-          <h3 class="section-heading">Organization</h3>
-          <div class="profile-data-card">
-            <p id="organization-text" class="card-text">Loading...</p>
-            <div id="organization-edit-view" style="display: none;">
-              <input type="text" id="organization-input" class="form-input" placeholder="Organization Name">
-              <div class="button-row">
-                <button id="cancel-org-btn" class="card-button secondary">Cancel</button>
-                <button id="save-org-btn" class="card-button primary">Save</button>
+        <!-- Stats Cards -->
+        <div class="stats-section">
+          <h3 class="section-title">📊 Your Impact</h3>
+          <div class="stats-grid">
+            <div class="stat-card">
+              <div class="stat-icon">📤</div>
+              <div class="stat-content">
+                <span id="stat-issues-uploaded" class="stat-number">0</span>
+                <span class="stat-text">Issues Reported</span>
               </div>
             </div>
-            <button id="edit-org-btn" class="card-button secondary">Update Organization</button>
-          </div>
-        </div>
-
-        <div class="profile-card-section">
-          <h3 class="section-heading">Your Impact</h3>
-          <div class="stats-grid">
-            <div id="stat-issues-reported" class="stat-item" style="display: none;">
-              <span class="stat-value">0</span><span class="stat-name">Issues Reported</span>
+            <div class="stat-card">
+              <div class="stat-icon">✅</div>
+              <div class="stat-content">
+                <span id="stat-issues-resolved" class="stat-number">0</span>
+                <span class="stat-text">Issues Resolved</span>
+              </div>
             </div>
-            <div id="stat-issues-resolved" class="stat-item" style="display: none;">
-              <span class="stat-value">0</span><span class="stat-name">Reported Issues Resolved</span>
+            <div class="stat-card">
+              <div class="stat-icon">🌱</div>
+              <div class="stat-content">
+                <span id="stat-co2-saved" class="stat-number">0 kg</span>
+                <span class="stat-text">CO₂ Saved</span>
+              </div>
             </div>
-            <div id="stat-issues-fixed" class="stat-item" style="display: none;">
-              <span class="stat-value">0</span><span class="stat-name">Issues Fixed</span>
-            </div>
-            <div id="stat-co2-saved" class="stat-item">
-              <span class="stat-value">0 kg</span><span class="stat-name">CO₂ Saved</span>
-            </div>
-          </div>
-        </div>
-
-        <div class="profile-card-section">
-          <h3 class="section-heading">Badges & Achievements</h3>
-          <div class="profile-data-card">
-            <div id="badge-grid" class="badge-grid">
-              <p style="color: var(--grey-text);">No badges earned yet.</p>
+            <div class="stat-card" id="stat-fixed-card" style="display: none;">
+              <div class="stat-icon">🔧</div>
+              <div class="stat-content">
+                <span id="stat-issues-fixed" class="stat-number">0</span>
+                <span class="stat-text">Issues Fixed</span>
+              </div>
             </div>
           </div>
         </div>
 
+        <!-- Location Section -->
+        <div class="location-section">
+          <h3 class="section-title">📍 Location</h3>
+          <div class="location-card">
+            <p id="location-text" class="location-text">Location not set</p>
+            <button id="update-location-btn" class="btn btn-primary">📍 Update Location</button>
+          </div>
+        </div>
+
+        <!-- My Issues Section -->
+        <div class="issues-section">
+          <h3 class="section-title">📋 My Issues</h3>
+          <div id="user-issues-container" class="user-issues-container">
+            <div class="empty-state">
+              <div class="empty-icon">📋</div>
+              <h3>No Issues Yet</h3>
+              <p>Loading your issues...</p>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </section>

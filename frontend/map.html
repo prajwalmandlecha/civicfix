@@ -42,93 +42,128 @@
     <!-- StreetHeat Section -->
     <section class="page-content street-heat">
       <div class="container-fluid">
-        <h1 class="page-title">🗺️ StreetHeat</h1>
-        <p class="page-subtitle">Real-time Issue Density Map with Elasticsearch Integration</p>
+        <div class="map-header">
+          <h1 class="page-title">🗺️ StreetHeat</h1>
+          <div class="map-actions">
+            <span id="filter-summary" class="filter-summary">0 issues found</span>
+            <button id="refresh-btn" class="icon-button" title="Refresh">🔄</button>
+            <button id="filter-btn" class="icon-button" title="Filters">⚙️</button>
+            <button id="my-location-btn" class="icon-button" title="My Location">📍</button>
+          </div>
+        </div>
 
-        <div class="map-layout">
-          <aside class="map-sidebar left">
-            <h3>Filters</h3>
-
-            <div class="filter-group">
-              <label>📊 Status</label>
-              <div class="checkbox-group">
-                <label><input type="checkbox" name="status-filter" value="open"> Open</label>
-                <!-- <label><input type="checkbox" name="status-filter" value="verified"> Verified</label> -->
-                <label><input type="checkbox" name="status-filter" value="closed"> Closed</label>
-              </div>
-            </div>
-
-            <div class="filter-group">
-              <label>🔖 Issue Type</label>
-              <div class="checkbox-group">
-                <label><input type="checkbox" name="type-filter" value="ROAD_POTHOLE"> Pothole</label>
-                <label><input type="checkbox" name="type-filter" value="WASTE_BULKY_DUMP"> Garbage</label>
-                <label><input type="checkbox" name="type-filter" value="STREETLIGHT_OUTAGE"> Streetlight</label>
-                <label><input type="checkbox" name="type-filter" value="DRAIN_BLOCKAGE"> Drain</label>
-                <label><input type="checkbox" name="type-filter" value="ILLEGAL_CONSTRUCTION_DEBRIS"> Construction</label>
-              </div>
-            </div>
-
-            <div class="filter-group">
-              <label>📡 Source</label>
-              <div class="checkbox-group">
-                <label><input type="checkbox" name="source-filter" value="citizen"> Citizen</label>
-                <!-- <label><input type="checkbox" name="source-filter" value="ngo"> NGO</label> -->
-                <label><input type="checkbox" name="source-filter" value="anonymous"> Anonymous</label>
-              </div>
-            </div>
-
-            <div class="filter-group">
-              <label>📅 Date From</label>
-              <input type="date" id="date-from" class="form-input">
-            </div>
-
-            <div class="filter-group">
-              <label>📅 Date To</label>
-              <input type="date" id="date-to" class="form-input">
-            </div>
-
-            <div class="filter-actions">
-              <button id="apply-filters" class="filter-btn primary">Apply Filters</button>
-              <button id="reset-filters" class="filter-btn secondary">Reset</button>
-            </div>
-          </aside>
-
-          <div class="map-container-main">
-            <div id="map" class="map-view"></div>
+        <div class="map-container-main">
+          <div id="loading-state" class="loading-state" style="display: none;">
+            <div class="spinner"></div>
+            <p>Loading map...</p>
           </div>
 
-          <aside class="map-sidebar right">
-            <h3>Legend &amp; Stats</h3>
-            <div class="stats-panel">
-              <div class="density-legend">
-                <h4>Issue Types</h4>
-                <div class="legend-grid">
-                  <div class="legend-item"><span class="legend-color" style="background: #FF6B6B;"></span> Pothole</div>
-                  <div class="legend-item"><span class="legend-color" style="background: #FFD93D;"></span> Streetlight</div>
-                  <div class="legend-item"><span class="legend-color" style="background: #6FCF97;"></span> Garbage</div>
-                  <div class="legend-item"><span class="legend-color" style="background: #A8E6CF;"></span> Drain</div>
-                  <div class="legend-item"><span class="legend-color" style="background: #9CA3AF;"></span> Construction</div>
-                </div>
-              </div>
-              <div class="map-info">
-                <h4>About Clustering</h4>
-                <p class="info-text"><strong>Zoom &lt; 12:</strong> Issues are grouped into clusters showing aggregate counts.</p>
-                <p class="info-text"><strong>Zoom ≥ 12:</strong> Individual issue pins are displayed with full details.</p>
-              </div>
-              <div class="map-info">
-                <h4>Interaction</h4>
-                <ul class="info-list">
-                  <li>Click clusters to see breakdown</li>
-                  <li>Click pins for issue details</li>
-                  <li>Zoom in/out to toggle views</li>
-                </ul>
-              </div>
-            </div>
-          </aside>
+          <div id="no-location-state" class="no-location-state" style="display: none;">
+            <div class="location-icon">�</div>
+            <h3>Location Required</h3>
+            <p>Please enable location services to view nearby issues</p>
+            <button id="retry-location-btn" class="btn btn-primary">Enable Location</button>
+            <p class="help-text">We use your location to show relevant civic issues in your area</p>
+          </div>
+
+          <div id="empty-state" class="empty-state" style="display: none;">
+            <div class="empty-icon">🔍</div>
+            <h3>No Issues Found</h3>
+            <p>There are no civic issues in your area matching the current filters</p>
+          </div>
+
+          <div id="map" class="map-view"></div>
         </div>
       </div>
     </section>
+
+    <!-- Issue Detail Modal -->
+    <div id="issue-modal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <button id="close-modal" class="modal-close">×</button>
+        <img id="modal-issue-image" class="modal-image" src="" alt="Issue" style="display: none;">
+        
+        <h2 id="modal-issue-title" class="modal-title">Issue Title</h2>
+        
+        <div class="modal-meta">
+          <span>Status: <strong id="modal-issue-status">open</strong></span>
+          <span>Severity: <strong id="modal-issue-severity">0</strong></span>
+          <span>Date: <strong id="modal-issue-date">-</strong></span>
+        </div>
+
+        <div class="modal-stats">
+          <div class="stat-item">
+            <strong>Upvotes</strong>
+            <span id="modal-issue-upvotes">0</span>
+          </div>
+          <div class="stat-item">
+            <strong>Reports</strong>
+            <span id="modal-issue-reports">0</span>
+          </div>
+        </div>
+
+        <p id="modal-issue-description" class="modal-description">Description goes here</p>
+
+        <div id="modal-issue-types" class="modal-issue-types"></div>
+
+        <div class="modal-actions">
+          <button id="modal-upvote-btn" class="vote-button">👍 Upvote</button>
+          <button id="modal-report-btn" class="vote-button">🚩 Report</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Filter Modal -->
+    <div id="filter-modal" class="modal" style="display: none;">
+      <div class="modal-content">
+        <button id="close-filter-modal" class="modal-close">×</button>
+        <h2 class="modal-title">Filter Issues</h2>
+
+        <div class="filter-group">
+          <label>Status</label>
+          <select id="filter-status" class="form-input">
+            <option value="all">All</option>
+            <option value="open" selected>Open</option>
+            <option value="closed">Closed</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label>Severity</label>
+          <select id="filter-severity" class="form-input">
+            <option value="all" selected>All</option>
+            <option value="high">High (8+)</option>
+            <option value="medium">Medium (4-7)</option>
+            <option value="low">Low (0-3)</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label>Days Back</label>
+          <select id="filter-days" class="form-input">
+            <option value="7">Last 7 days</option>
+            <option value="30" selected>Last 30 days</option>
+            <option value="90">Last 90 days</option>
+            <option value="365">Last year</option>
+          </select>
+        </div>
+
+        <div class="filter-group">
+          <label>Radius (km)</label>
+          <select id="filter-radius" class="form-input">
+            <option value="1">1 km</option>
+            <option value="5">5 km</option>
+            <option value="10" selected>10 km</option>
+            <option value="20">20 km</option>
+            <option value="50">50 km</option>
+          </select>
+        </div>
+
+        <div class="modal-actions">
+          <button id="apply-filters" class="btn btn-primary">Apply Filters</button>
+        </div>
+      </div>
+    </div>
 
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>

@@ -36,7 +36,10 @@ function renderLeaderboardList(leaderboard, containerId) {
      return;
   }
 
-  leaderboard.forEach(leader => {
+  // Render only non-podium users (rank > 3)
+  const nonPodiumUsers = leaderboard.filter(leader => leader.rank > 3);
+  
+  nonPodiumUsers.forEach(leader => {
     const item = document.createElement('div');
     item.className = 'leaderboard-item';
     // Use 'co2' field as it's named in the backend (we'll use karma for this)
@@ -55,6 +58,51 @@ function renderLeaderboardList(leaderboard, containerId) {
       </div>
     `;
     container.appendChild(item);
+  });
+}
+
+// Render podium (top 3) dynamically
+function renderPodium(leaderboard, podiumId) {
+  const podium = document.getElementById(podiumId);
+  if (!podium) {
+    console.error(`Podium container #${podiumId} not found.`);
+    return;
+  }
+  
+  podium.innerHTML = ''; // Clear existing podium
+  
+  if (!leaderboard || leaderboard.length === 0) {
+    podium.innerHTML = '<p style="text-align: center; color: var(--grey-text);">No leaders yet.</p>';
+    return;
+  }
+  
+  // Get top 3 users
+  const topThree = leaderboard.slice(0, 3);
+  
+  // Create podium structure: 2nd, 1st, 3rd (left to right)
+  const podiumOrder = [
+    topThree[1], // 2nd place (left)
+    topThree[0], // 1st place (center)
+    topThree[2]  // 3rd place (right)
+  ];
+  
+  podiumOrder.forEach((leader, index) => {
+    if (!leader) return; // Skip if position doesn't exist
+    
+    const podiumItem = document.createElement('div');
+    const actualRank = leader.rank;
+    const medals = ['🥈', '🥇', '🥉'];
+    const rankClasses = ['rank-2', 'rank-1', 'rank-3'];
+    
+    podiumItem.className = `podium-item ${rankClasses[index]}`;
+    podiumItem.innerHTML = `
+      <div class="podium-avatar">${medals[index]}</div>
+      <div class="podium-name">${leader.name || 'Anonymous'}</div>
+      <div class="podium-co2">${(leader.co2 || 0).toLocaleString()} Karma</div>
+      <div class="podium-stand">${actualRank}</div>
+    `;
+    
+    podium.appendChild(podiumItem);
   });
 }
 
@@ -78,7 +126,9 @@ async function loadLeaderboards() {
         const citizenData = await citizenResponse.json();
         const ngoData = await ngoResponse.json();
 
-        // Render using the data from the API
+        // Render podiums and lists using the data from the API
+        renderPodium(citizenData.leaderboard, 'citizen-podium');
+        renderPodium(ngoData.leaderboard, 'ngo-podium');
         renderLeaderboardList(citizenData.leaderboard, 'citizen-list');
         renderLeaderboardList(ngoData.leaderboard, 'ngo-list');
 

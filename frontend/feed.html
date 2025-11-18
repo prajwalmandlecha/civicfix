@@ -57,13 +57,22 @@
         <h1 class="page-title">📰 StreetFeed</h1>
         <p class="page-subtitle">Trending Issues in Your Community</p>
 
-        <div class="filter-pills">
-          <button class="filter-pill active" data-filter="all">
-            All Issues
-          </button>
-          <button class="filter-pill" data-filter="open">Open</button>
-          <!-- <button class="filter-pill" data-filter="verified">Verified</button> -->
-          <button class="filter-pill" data-filter="closed">Closed</button>
+        <!-- Filter Bar -->
+        <div class="filter-bar">
+          <div class="filter-pills">
+            <button class="filter-pill active" data-filter="all">All Issues</button>
+            <button class="filter-pill" data-filter="open">Open</button>
+            <button class="filter-pill" data-filter="closed">Closed</button>
+          </div>
+          <div class="filter-actions">
+            <span id="filter-summary" class="filter-summary">0 issues</span>
+            <button id="refresh-btn" class="icon-button" title="Refresh">
+              🔄
+            </button>
+            <button id="advanced-filter-btn" class="icon-button" title="Advanced Filters">
+              ⚙️
+            </button>
+          </div>
         </div>
 
         <div class="issues-grid" id="issues-grid"></div>

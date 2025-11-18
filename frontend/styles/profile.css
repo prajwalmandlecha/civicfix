@@ -722,3 +722,284 @@ html {
     padding: 14px 20px !important;
   }
 }
+
+/* ========== NEW STYLES FOR UPDATED PROFILE ========== */
+
+.profile-header {
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  margin-bottom: 24px !important;
+}
+
+.profile-card {
+  background: white !important;
+  border-radius: 16px !important;
+  padding: 32px !important;
+  text-align: center !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+  margin-bottom: 32px !important;
+}
+
+.profile-avatar {
+  width: 100px !important;
+  height: 100px !important;
+  border-radius: 50% !important;
+  background: linear-gradient(135deg, #667eea 0%, #764ba2 100%) !important;
+  color: white !important;
+  display: flex !important;
+  align-items: center !important;
+  justify-content: center !important;
+  font-size: 2.5rem !important;
+  font-weight: bold !important;
+  margin: 0 auto 16px !important;
+}
+
+.profile-username {
+  font-size: 1.5rem !important;
+  margin-bottom: 8px !important;
+  color: #333 !important;
+}
+
+.profile-email {
+  color: #666 !important;
+  margin-bottom: 16px !important;
+}
+
+.user-type-badge {
+  display: inline-block !important;
+  padding: 6px 16px !important;
+  background: #e0f2e9 !important;
+  border-radius: 20px !important;
+  color: #2d6a4f !important;
+  font-weight: 600 !important;
+  font-size: 0.9rem !important;
+  margin-bottom: 20px !important;
+}
+
+.profile-stats-inline {
+  display: flex !important;
+  justify-content: center !important;
+  align-items: center !important;
+  gap: 24px !important;
+  padding-top: 20px !important;
+  border-top: 1px solid #eee !important;
+}
+
+.stat-inline {
+  display: flex !important;
+  flex-direction: column !important;
+  align-items: center !important;
+}
+
+.stat-inline .stat-value {
+  font-size: 1.5rem !important;
+  font-weight: bold !important;
+  color: #6FCF97 !important;
+  margin-bottom: 4px !important;
+}
+
+.stat-inline .stat-label {
+  font-size: 0.85rem !important;
+  color: #666 !important;
+}
+
+.stat-divider {
+  width: 1px !important;
+  height: 40px !important;
+  background: #ddd !important;
+}
+
+.stats-section, .location-section, .issues-section {
+  margin-bottom: 32px !important;
+}
+
+.section-title {
+  font-size: 1.2rem !important;
+  margin-bottom: 16px !important;
+  color: #333 !important;
+  font-weight: 600 !important;
+}
+
+.stats-grid {
+  display: grid !important;
+  grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)) !important;
+  gap: 16px !important;
+}
+
+.stat-card {
+  background: white !important;
+  border-radius: 12px !important;
+  padding: 20px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+  display: flex !important;
+  align-items: center !important;
+  gap: 16px !important;
+  transition: transform 0.2s ease !important;
+}
+
+.stat-card:hover {
+  transform: translateY(-2px) !important;
+}
+
+.stat-icon {
+  font-size: 2rem !important;
+}
+
+.stat-content {
+  display: flex !important;
+  flex-direction: column !important;
+}
+
+.stat-number {
+  font-size: 1.5rem !important;
+  font-weight: bold !important;
+  color: #333 !important;
+}
+
+.stat-text {
+  font-size: 0.85rem !important;
+  color: #666 !important;
+}
+
+.location-card {
+  background: white !important;
+  border-radius: 12px !important;
+  padding: 20px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+  display: flex !important;
+  justify-content: space-between !important;
+  align-items: center !important;
+  gap: 16px !important;
+}
+
+.location-text {
+  flex: 1 !important;
+  color: #333 !important;
+  font-weight: 500 !important;
+}
+
+.user-issues-container {
+  background: white !important;
+  border-radius: 12px !important;
+  padding: 20px !important;
+  box-shadow: 0 2px 8px rgba(0,0,0,0.08) !important;
+}
+
+.issues-tabs {
+  display: flex !important;
+  gap: 8px !important;
+  margin-bottom: 20px !important;
+  border-bottom: 2px solid #eee !important;
+}
+
+.tab-btn {
+  padding: 12px 24px !important;
+  background: none !important;
+  border: none !important;
+  border-bottom: 2px solid transparent !important;
+  cursor: pointer !important;
+  font-weight: 600 !important;
+  color: #666 !important;
+  transition: all 0.2s ease !important;
+  margin-bottom: -2px !important;
+}
+
+.tab-btn.active {
+  color: #6FCF97 !important;
+  border-bottom-color: #6FCF97 !important;
+}
+
+.tab-content {
+  display: none !important;
+}
+
+.tab-content.active {
+  display: block !important;
+}
+
+.user-issue-card {
+  background: #f8f9fa !important;
+  border-radius: 12px !important;
+  overflow: hidden !important;
+  margin-bottom: 16px !important;
+  box-shadow: 0 2px 4px rgba(0,0,0,0.06) !important;
+  transition: transform 0.2s ease !important;
+}
+
+.user-issue-card:hover {
+  transform: translateY(-2px) !important;
+}
+
+.issue-card-image {
+  width: 100% !important;
+  height: 200px !important;
+  object-fit: cover !important;
+}
+
+.issue-card-content {
+  padding: 16px !important;
+}
+
+.issue-card-content h4 {
+  font-size: 1.1rem !important;
+  margin-bottom: 8px !important;
+  color: #333 !important;
+}
+
+.issue-description {
+  color: #666 !important;
+  margin-bottom: 12px !important;
+  font-size: 0.9rem !important;
+}
+
+.issue-meta {
+  display: flex !important;
+  flex-wrap: wrap !important;
+  gap: 12px !important;
+  font-size: 0.85rem !important;
+  margin-bottom: 8px !important;
+}
+
+.issue-status {
+  padding: 4px 12px !important;
+  border-radius: 12px !important;
+  font-weight: 600 !important;
+}
+
+.status-open {
+  background: #fef3c7 !important;
+  color: #92400e !important;
+}
+
+.status-closed {
+  background: #d1fae5 !important;
+  color: #065f46 !important;
+}
+
+.issue-types {
+  font-size: 0.85rem !important;
+  color: #666 !important;
+  margin-top: 8px !important;
+}
+
+@media (max-width: 768px) {
+  .stats-grid {
+    grid-template-columns: 1fr !important;
+  }
+  
+  .location-card {
+    flex-direction: column !important;
+    align-items: stretch !important;
+  }
+  
+  .profile-stats-inline {
+    flex-direction: column !important;
+    gap: 16px !important;
+  }
+  
+  .stat-divider {
+    width: 100% !important;
+    height: 1px !important;
+  }
+}
