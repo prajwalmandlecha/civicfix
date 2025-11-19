@@ -65,84 +65,136 @@ async def submit_fix(
     if not photo_urls:
         raise HTTPException(500, "Failed to upload fix images")
 
-    # Call verifier service (optional - can be async)
-    verification_result = None
-    if issue_data.get("photo_url"):
-        verification_result = verify_fix(
-            before_image_url=issue_data["photo_url"],
-            after_image_urls=photo_urls,
-            issue_description=issue_data.get("description", ""),
-            fix_description=description or "",
-        )
+    # Call verifier service - it will handle ES updates and return results
+    verification_result = verify_fix(
+        issue_id=issue_id,
+        after_image_urls=photo_urls,
+        fix_description=description or "",
+        ngo_id=user_id
+    )
 
-    # Calculate CO2 saved (simplified)
-    co2_saved = issue_data.get("fate_risk_co2", 0) * 0.8  # 80% of predicted risk
-
-    # Determine new status based on verification
-    new_status = "closed"
+    # If verifier service is down or returns None, proceed with basic fix submission
     if verification_result:
+        logger.info(f"Fix verification completed: {verification_result}")
+        
+        # Extract data from verification response
         overall_outcome = verification_result.get("overall_outcome", "closed")
+        suggested_success_rate = verification_result.get("suggested_success_rate", 0.8)
+        fix_id = verification_result.get("fix_id")
+        co2_saved = issue_data.get("fate_risk_co2", 0) * suggested_success_rate
+        
+        # Map overall_outcome to issue status
+        # Don't throw exception for rejected fixes - let frontend handle display
         if overall_outcome == "rejected":
-            raise HTTPException(400, "Fix verification failed")
+            new_status = "open"  # Keep issue open if fix is rejected
         elif overall_outcome == "partially_closed":
             new_status = "partially_closed"
-
-    # Update issue in Elasticsearch
-    try:
-        from datetime import datetime
-        now = datetime.utcnow().isoformat() + "Z"
+        else:
+            new_status = "closed"
         
-        await es_client.update(
-            index="issues",
-            id=issue_id,
-            body={
-                "doc": {
+        # Verifier already updated Elasticsearch, but we update Firestore and always update fix_photo_urls for consistency
+        # Only update status/closed_by/closed_at if fix is not rejected, but always update fix_photo_urls
+        try:
+            # Update Firestore (only if not rejected)
+            if overall_outcome != "rejected":
+                issue_ref = db.collection("issues").document(issue_id)
+                issue_ref.set({
                     "status": new_status,
                     "closed_by": user_id,
-                    "closed_at": now,
-                    "fix_photo_urls": photo_urls,
-                    "fix_title": title or "Fix Applied",
-                    "fix_description": description or "",
-                    "co2_kg_saved": co2_saved,
-                    "verification_status": verification_result.get("status") if verification_result else "pending",
+                    "closed_at": verification_result.get("created_at"),
+                }, merge=True)
+                # Update user stats
+                await increment_fix_count(user_id, co2_saved)
+                # Award karma to reporter if issue is fully closed
+                if new_status == "closed":
+                    reporter_id = issue_data.get("reported_by")
+                    if reporter_id and reporter_id != "anonymous":
+                        await award_karma_for_fix(reporter_id)
+            # Always update fix_photo_urls in Elasticsearch
+            es_update_body = {
+                "doc": {
+                    "fix_photo_urls": photo_urls
                 }
-            },
-            refresh="wait_for",
-        )
-
-        # Mirror essential status fields in Firestore `issues/{id}` for consistency
+            }
+            await es_client.update(
+                index="issues",
+                id=issue_id,
+                body=es_update_body,
+                refresh="wait_for",
+            )
+        except Exception as fb_err:
+            logger.warning(f"Failed to update fix_photo_urls or mirror status to Firestore for issue {issue_id}: {fb_err}")
+        
+        logger.info(f"Fix submitted successfully for issue {issue_id} by user {user_id}")
+        
+        return {
+            "success": True,
+            "message": f"Fix submitted and verified successfully!",
+            "issue_id": issue_id,
+            "fix_id": fix_id,
+            "photo_urls": photo_urls,
+            "co2_saved": co2_saved,
+            "overall_outcome": overall_outcome,
+            "success_rate": suggested_success_rate,
+            "per_issue_results": verification_result.get("per_issue_results", []),
+        }
+    else:
+        # Fallback: Verifier service unavailable, proceed with basic submission
+        logger.warning(f"Verifier service unavailable, proceeding with basic fix submission for issue {issue_id}")
+        
+        from datetime import datetime
+        now = datetime.utcnow().isoformat() + "Z"
+        co2_saved = issue_data.get("fate_risk_co2", 0) * 0.8
+        
+        # Update issue in Elasticsearch
         try:
+            await es_client.update(
+                index="issues",
+                id=issue_id,
+                body={
+                    "doc": {
+                        "status": "closed",
+                        "closed_by": user_id,
+                        "closed_at": now,
+                        "fix_photo_urls": photo_urls,
+                        "fix_title": title or "Fix Applied",
+                        "fix_description": description or "",
+                        "co2_kg_saved": co2_saved,
+                        "verification_status": "pending",
+                    }
+                },
+                refresh="wait_for",
+            )
+            
+            # Mirror to Firestore
             issue_ref = db.collection("issues").document(issue_id)
             issue_ref.set({
-                "status": new_status,
+                "status": "closed",
                 "closed_by": user_id,
                 "closed_at": now,
             }, merge=True)
-        except Exception as fb_err:
-            logger.warning(f"Failed to mirror status to Firestore for issue {issue_id}: {fb_err}")
-    except Exception as e:
-        logger.exception(f"Failed to update issue {issue_id}")
-        raise HTTPException(500, "Failed to update issue status")
-
-    # Update user stats
-    await increment_fix_count(user_id, co2_saved)
-
-    # Award karma to reporter if issue is fully closed
-    if new_status == "closed":
+        except Exception as e:
+            logger.exception(f"Failed to update issue {issue_id}")
+            raise HTTPException(500, "Failed to update issue status")
+        
+        # Update user stats
+        await increment_fix_count(user_id, co2_saved)
+        
+        # Award karma to reporter
         reporter_id = issue_data.get("reported_by")
         if reporter_id and reporter_id != "anonymous":
             await award_karma_for_fix(reporter_id)
-
-    logger.info(f"Fix submitted successfully for issue {issue_id} by user {user_id}")
-
-    return {
-        "success": True,
-        "message": f"Fix submitted successfully with {len(photo_urls)} images!",
-        "issue_id": issue_id,
-        "photo_urls": photo_urls,
-        "co2_saved": co2_saved,
-        "verification": verification_result,
-    }
+        
+        logger.info(f"Fix submitted (without verification) for issue {issue_id} by user {user_id}")
+        
+        return {
+            "success": True,
+            "message": f"Fix submitted successfully (verification pending)!",
+            "issue_id": issue_id,
+            "photo_urls": photo_urls,
+            "co2_saved": co2_saved,
+            "verification_status": "pending",
+        }
 
 
 @router.get("/issues/{issue_id}/fix-details")
@@ -193,6 +245,35 @@ async def get_fix_details(
         except Exception as e:
             logger.error(f"Failed to fetch NGO details for {closed_by}: {e}")
 
+    # Try to fetch detailed fix data from fixes index
+    fix_outcomes = None
+    overall_outcome = None
+    success_rate = None
+    
+    # Check if there are evidence_ids (fix documents)
+    evidence_ids = issue_data.get("evidence_ids", [])
+    if evidence_ids:
+        try:
+            # Get the latest fix document
+            fix_id = evidence_ids[-1]  # Most recent fix
+            fix_resp = await es_client.get(index="fixes", id=fix_id)
+            fix_data = fix_resp["_source"]
+            
+            fix_outcomes = fix_data.get("fix_outcomes", [])
+            success_rate = fix_data.get("success_rate")
+            
+            # Determine overall outcome from fix document or issue status
+            if fix_data.get("overall_outcome"):
+                overall_outcome = fix_data.get("overall_outcome")
+            elif issue_data.get("status") == "partially_closed":
+                overall_outcome = "partially_closed"
+            else:
+                overall_outcome = "closed"
+                
+            logger.info(f"Fetched fix details from fixes index for {fix_id}")
+        except Exception as e:
+            logger.warning(f"Could not fetch fix details from fixes index: {e}")
+
     return {
         "has_fix": True,
         "issue_id": issue_id,
@@ -205,5 +286,8 @@ async def get_fix_details(
         "submitted_at": issue_data.get("closed_at"),
         "co2_saved": issue_data.get("co2_kg_saved", 0),
         "verification_status": issue_data.get("verification_status"),
+        "fix_outcomes": fix_outcomes,
+        "overall_outcome": overall_outcome,
+        "success_rate": success_rate,
     }
 

@@ -53,7 +53,6 @@ export function initializeAuthListener() {
                 addNavLinks([
                     { href: '/feed.html', text: '📰 StreetFeed' },
                     { href: '/map.html', text: '🗺️ StreetHeat' },
-                    { href: '/ngo_upload.html', text: '🔧 Upload Fix' }, // NGO Link
                     { href: '/leaderboard.html', text: '🏆 Leaderboard' },
                     { href: '/profile.html', text: '👤 Profile' },
                     { href: '#', text: '🚪 Logout', id: 'logout-button' }

@@ -8,6 +8,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="style.css" />
     <link rel="stylesheet" href="styles/upload.css" />
     <link rel="stylesheet" href="styles/dark-mode.css" />
   </head>
@@ -51,21 +52,19 @@
             <h3 class="section-title">Upload Photo</h3>
             <p class="section-subtitle">Add a clear photo showing the issue</p>
             
-            <div class="upload-area" id="upload-area">
-              <input type="file" id="file-input" accept="image/*" hidden>
-              <div class="upload-placeholder" id="upload-placeholder">
-                <div class="upload-icon">�</div>
-                <p class="upload-text">Add a photo of the issue</p>
-                <div class="upload-buttons">
-                  <button type="button" class="upload-btn camera-btn">
-                    📷 Camera
-                  </button>
-                  <button type="button" class="upload-btn gallery-btn">
-                    🖼️ Gallery
-                  </button>
-                </div>
-              </div>
-              <div id="image-preview-container" class="preview-container" style="display: none;"></div>
+            <input type="file" id="file-input" accept="image/*" style="position:absolute;left:-9999px;width:1px;height:1px;opacity:0;">
+            <label for="file-input" id="file-input-label" style="position:absolute;left:-9999px;">Upload image</label>
+            
+            <div id="upload-placeholder" class="upload-placeholder"></div>
+            
+            <div id="image-preview-container" class="preview-container" style="display: none;"></div>
+            <div class="upload-buttons" style="margin-top:12px;display:flex;gap:12px;justify-content:center;">
+              <button type="button" class="upload-btn camera-btn">
+                📷 Upload from Camera
+              </button>
+              <button type="button" class="upload-btn gallery-btn">
+                🖼️ Upload from Files
+              </button>
             </div>
           </div>
 
@@ -98,11 +97,26 @@
             <h3 class="section-title">Issue Type (Optional)</h3>
             <p class="section-subtitle">Select relevant issue types</p>
             <select id="issue-type-select" class="form-select" multiple>
-              <option value="ROAD_POTHOLE">Pothole</option>
-              <option value="WASTE_BULKY_DUMP">Garbage/Waste</option>
-              <option value="STREETLIGHT_OUTAGE">Streetlight Outage</option>
               <option value="DRAIN_BLOCKAGE">Drain Blockage</option>
-              <option value="ILLEGAL_CONSTRUCTION_DEBRIS">Construction Debris</option>
+              <option value="FALLEN_TREE">Fallen Tree</option>
+              <option value="FLOODING_SURFACE">Surface Flooding</option>
+              <option value="GRAFFITI_VANDALISM">Graffiti Vandalism</option>
+              <option value="GREENSPACE_MAINTENANCE">Greenspace Maintenance</option>
+              <option value="ILLEGAL_CONSTRUCTION_DEBRIS">Illegal Construction Debris</option>
+              <option value="MANHOLE_MISSING_OR_DAMAGED">Manhole Missing/Damaged</option>
+              <option value="POWER_POLE_LINE_DAMAGE">Power Pole/Line Damage</option>
+              <option value="PUBLIC_INFRASTRUCTURE_DAMAGED">Public Infrastructure Damaged</option>
+              <option value="PUBLIC_TOILET_UNSANITARY">Public Toilet Unsanitary</option>
+              <option value="ROAD_POTHOLE">Road Pothole</option>
+              <option value="SIDEWALK_DAMAGE">Sidewalk Damage</option>
+              <option value="SMALL_FIRE_HAZARD">Small Fire Hazard</option>
+              <option value="STRAY_ANIMALS">Stray Animals</option>
+              <option value="STREETLIGHT_OUTAGE">Streetlight Outage</option>
+              <option value="TRAFFIC_OBSTRUCTION">Traffic Obstruction</option>
+              <option value="TRAFFIC_SIGN_DAMAGE">Traffic Sign Damage</option>
+              <option value="WASTE_BULKY_DUMP">Waste Bulky Dump</option>
+              <option value="WASTE_LITTER_SMALL">Waste Litter Small</option>
+              <option value="WATER_LEAK_SURFACE">Water Leak Surface</option>
             </select>
             <p class="help-text">Hold Ctrl (Cmd on Mac) to select multiple</p>
           </div>
@@ -112,6 +126,7 @@
             <div class="anonymous-toggle">
               <label>
                 <input type="checkbox" id="anonymous-toggle">
+                <span class="toggle-slider"></span>
                 <span class="toggle-label">🎭 Submit Anonymously</span>
               </label>
             </div>
@@ -128,24 +143,13 @@
     <!-- Upload Progress Modal -->
     <div id="upload-progress-modal" class="modal" style="display: none;">
       <div class="modal-content progress-modal">
-        <h2>Uploading Issue</h2>
-        <div class="progress-steps">
-          <div class="progress-step">
-            <div class="step-indicator">1</div>
-            <span>Uploading image</span>
-          </div>
-          <div class="progress-step">
-            <div class="step-indicator">2</div>
-            <span>Identifying issues</span>
-          </div>
-          <div class="progress-step">
-            <div class="step-indicator">3</div>
-            <span>Finalizing</span>
-          </div>
-        </div>
-        <p id="upload-status-text" class="status-text">Preparing upload...</p>
-        <div class="progress-bar">
-          <div class="progress-fill"></div>
+        <div class="progress-icon">🤖</div>
+        <h2>Analyzing Image</h2>
+        <p id="upload-status-text" class="status-text">AI is identifying issues in your image...</p>
+        <div class="loader">
+          <div class="loader-dot"></div>
+          <div class="loader-dot"></div>
+          <div class="loader-dot"></div>
         </div>
       </div>
     </div>
@@ -153,14 +157,18 @@
     <!-- Result Modal -->
     <div id="result-modal" class="modal" style="display: none;">
       <div class="modal-content result-modal">
-        <h2>✅ Issue Uploaded Successfully!</h2>
+        <button class="modal-close" id="close-result-modal-x">✕</button>
+        <div class="result-header">
+          <div class="success-icon">✅</div>
+          <h2>Issue Uploaded Successfully!</h2>
+          <p class="result-subtitle">AI has analyzed your image and detected the following issues:</p>
+        </div>
         <div class="result-section">
-          <h3>Detected Issues:</h3>
           <div id="detected-issues-container" class="detected-issues"></div>
         </div>
         <div class="modal-actions">
-          <button id="close-result-modal" class="btn btn-secondary">Close</button>
-          <button id="view-issues-btn" class="btn btn-primary">View All Issues</button>
+          <button id="upload-another-btn" class="btn btn-secondary">📸 Upload Another</button>
+          <button id="view-in-feed-btn" class="btn btn-primary">🗺️ View in Feed</button>
         </div>
       </div>
     </div>

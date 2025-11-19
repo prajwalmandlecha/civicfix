@@ -1,11 +1,13 @@
 import { initThemeToggle, initMobileMenu, showToast } from './shared.js';
 import { initializeAuthListener } from './auth.js'; 
 import { auth } from '../firebaseConfig.js'; 
-import { onAuthStateChanged, getIdToken } from "firebase/auth"; 
-import maplibregl from 'maplibre-gl';
-import 'maplibre-gl/dist/maplibre-gl.css';
+import { onAuthStateChanged, getIdToken } from "firebase/auth";
 
 const API_BASE = 'http://localhost:8000';
+
+// Cache configuration
+const CACHE_DURATION = 24 * 60 * 60 * 1000; // 24 hours in milliseconds
+const CACHE_KEY_PREFIX = 'civicfix_issues_';
 
 let map = null;
 let userMarker = null;
@@ -14,88 +16,91 @@ let currentToken = null;
 let userLocation = null;
 let currentUser = null;
 let userProfile = null;
+let cachedIssues = [];
+let lastFetchRegion = null;
 let filters = {
   status: 'open',
   severity: 'all',
   days: 30,
   issueTypes: [],
-  radiusKm: 10,
   limit: 50
 };
 
-// Load user profile from backend
-async function loadUserProfile() {
-  try {
-    const response = await fetch(`${API_BASE}/api/users/${currentUser.uid}/stats-firebase`, {
-      headers: { 'Authorization': `Bearer ${currentToken}` }
-    });
-    
-    if (response.ok) {
-      const data = await response.json();
-      userProfile = data.stats;
-      console.log('User profile loaded:', userProfile);
-    }
-  } catch (error) {
-    console.error('Error loading user profile:', error);
-  }
-}
-
-// Get marker color based on issue status and severity
-function getMarkerColor(issue) {
-  if (issue.status?.toLowerCase() === 'closed') {
-    return '#4CAF79'; // Green for fixed issues
-  }
-  const severityScore = issue.severity_score || 5;
-  if (severityScore >= 8) return '#991B1B';
-  if (severityScore >= 4) return '#F97316';
-  return '#22C55E';
-}
-
-// Get display value for marker (checkmark for closed, severity for open)
-function getMarkerDisplay(issue) {
-  if (issue.status?.toLowerCase() === 'closed') {
-    return '✓';
-  }
-  return Math.round(issue.severity_score || 5);
-}
-
-// Initialize map
+// Initialize Google Maps
 function initMap() {
   if (map) return;
 
-  map = new maplibregl.Map({
-    container: 'map',
-    style: {
-      version: 8,
-      sources: {
-        'osm-tiles': {
-          type: 'raster',
-          tiles: [
-            'https://a.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            'https://b.tile.openstreetmap.org/{z}/{x}/{y}.png',
-            'https://c.tile.openstreetmap.org/{z}/{x}/{y}.png'
-          ],
-          tileSize: 256,
-          attribution: '© OpenStreetMap contributors'
+  // Default to Bangalore if no location
+  const defaultLocation = { lat: 12.9716, lng: 77.5946 };
+
+  map = new google.maps.Map(document.getElementById('map'), {
+    zoom: 13,
+    center: defaultLocation,
+    mapTypeId: google.maps.MapTypeId.ROADMAP,
+    styles: [
+      {
+        featureType: 'poi',
+        elementType: 'labels',
+        stylers: [{ visibility: 'off' }]
+      }
+    ],
+    disableDefaultUI: false,
+    zoomControl: true,
+    streetViewControl: false,
+    fullscreenControl: false
+  });
+
+  // Add event listener for map region changes (like mobile app's onRegionChangeComplete)
+  let moveTimeout = null;
+
+  const debouncedFetchOnMove = () => {
+    if (moveTimeout) {
+      clearTimeout(moveTimeout);
+    }
+    
+    moveTimeout = setTimeout(async () => {
+      const center = map.getCenter();
+      const bounds = map.getBounds();
+      
+      if (!bounds) return;
+      
+      const region = {
+        latitude: center.lat(),
+        longitude: center.lng(),
+        latitudeDelta: bounds.getNorthEast().lat() - bounds.getSouthWest().lat(),
+        longitudeDelta: bounds.getNorthEast().lng() - bounds.getSouthWest().lng()
+      };
+      
+      // Check if we moved significantly (like mobile app)
+      if (lastFetchRegion) {
+        const latDiff = Math.abs(region.latitude - lastFetchRegion.latitude);
+        const lngDiff = Math.abs(region.longitude - lastFetchRegion.longitude);
+        
+        // Don't fetch if movement is too small
+        if (latDiff < 0.001 && lngDiff < 0.001) {
+          return;
         }
-      },
-      layers: [
-        { id: 'osm-tiles', type: 'raster', source: 'osm-tiles', minzoom: 0, maxzoom: 19 }
-      ]
-    },
-    center: [77.5946, 12.9716], // Bangalore center
-    zoom: 13
-  });
+      }
+      
+      lastFetchRegion = region;
+      
+      console.log(`🗺️ Map moved to: ${region.latitude.toFixed(4)}, ${region.longitude.toFixed(4)}`);
+      
+      // Fetch issues for new region
+      await fetchIssuesInRegion(region);
+    }, 500); // 500ms debounce
+  };
 
-  map.addControl(new maplibregl.NavigationControl(), 'top-right');
+  // Listen for map movements (like mobile app's onRegionChangeComplete)
+  map.addListener('dragend', debouncedFetchOnMove);
+  map.addListener('zoom_changed', debouncedFetchOnMove);
+  map.addListener('bounds_changed', debouncedFetchOnMove);
 
-  map.on('load', async () => {
-    console.log("Map loaded successfully");
-    await setUserLocation();
-  });
+  // Initialize location
+  setUserLocation();
 }
 
-// Set user location - use profile location first, then browser location as fallback
+// Set user location like mobile app
 async function setUserLocation() {
   showLoading(true);
   
@@ -107,12 +112,17 @@ async function setUserLocation() {
     };
     console.log("Using profile location:", userLocation);
     updateMapLocation();
-    await fetchIssues();
+    await fetchIssuesInRegion({
+      latitude: userLocation.latitude,
+      longitude: userLocation.longitude,
+      latitudeDelta: 0.01, // ~1km
+      longitudeDelta: 0.01
+    });
     showLoading(false);
     return;
   }
   
-  // Fallback to browser geolocation if profile location not available
+  // Fallback to browser geolocation
   if (!navigator.geolocation) {
     showToast('Geolocation is not supported by your browser', 'error');
     showLoading(false);
@@ -128,7 +138,13 @@ async function setUserLocation() {
       
       console.log("Browser location retrieved:", userLocation);
       updateMapLocation();
-      await fetchIssues();
+      
+      await fetchIssuesInRegion({
+        latitude: userLocation.latitude,
+        longitude: userLocation.longitude,
+        latitudeDelta: 0.01,
+        longitudeDelta: 0.01
+      });
       showLoading(false);
     },
     (error) => {
@@ -142,50 +158,134 @@ async function setUserLocation() {
 
 // Update map with user location
 function updateMapLocation() {
-  if (!userLocation) return;
+  if (!userLocation || !map) return;
   
-  // Add user location marker
+  // Remove existing user marker
   if (userMarker) {
-    userMarker.remove();
+    userMarker.setMap(null);
   }
       
-  const el = document.createElement('div');
-  el.className = 'user-marker';
-  el.innerHTML = '<div class="user-marker-pulse"></div>';
-  
-  userMarker = new maplibregl.Marker(el)
-    .setLngLat([userLocation.longitude, userLocation.latitude])
-    .addTo(map);
+  // Create user location marker (blue dot like mobile app)
+  userMarker = new google.maps.Marker({
+    position: { lat: userLocation.latitude, lng: userLocation.longitude },
+    map: map,
+    icon: {
+      path: google.maps.SymbolPath.CIRCLE,
+      scale: 8,
+      fillColor: '#4285F4',
+      fillOpacity: 1,
+      strokeColor: '#ffffff',
+      strokeWeight: 2
+    },
+    title: 'Your Location'
+  });
   
   // Center map on user location
-  map.flyTo({
-    center: [userLocation.longitude, userLocation.latitude],
-    zoom: 13,
-    duration: 1000
-  });
+  map.panTo({ lat: userLocation.latitude, lng: userLocation.longitude });
+  map.setZoom(13);
 }
 
-// Fetch issues from backend with filters
-async function fetchIssues() {
-  if (!userLocation) {
+// Cache helper functions (updated for region-based caching)
+function getRegionCacheKey(region, filters) {
+  const regionKey = `${region.latitude.toFixed(3)}_${region.longitude.toFixed(3)}_${region.latitudeDelta.toFixed(3)}_${region.longitudeDelta.toFixed(3)}`;
+  const filterKey = `${filters.status}_${filters.days}_${filters.limit}`;
+  return `${CACHE_KEY_PREFIX}${regionKey}_${filterKey}`;
+}
+
+function getCachedIssues(region, filters) {
+  try {
+    const cacheKey = getRegionCacheKey(region, filters);
+    const cached = localStorage.getItem(cacheKey);
+    if (!cached) return null;
+    
+    const data = JSON.parse(cached);
+    const now = Date.now();
+    
+    if (now - data.timestamp > CACHE_DURATION) {
+      localStorage.removeItem(cacheKey);
+      return null;
+    }
+    
+    console.log(`📦 Using cached issues (${data.issues.length} items, ${Math.round((now - data.timestamp) / (1000 * 60))} minutes old)`);
+    return data.issues;
+  } catch (error) {
+    console.error('Error reading cache:', error);
+    return null;
+  }
+}
+
+function setCachedIssues(region, filters, issues) {
+  try {
+    const cacheKey = getRegionCacheKey(region, filters);
+    const data = {
+      timestamp: Date.now(),
+      issues: issues,
+      region: region,
+      filters: { ...filters }
+    };
+    localStorage.setItem(cacheKey, JSON.stringify(data));
+    console.log(`💾 Cached ${issues.length} issues for region ${region.latitude.toFixed(3)}, ${region.longitude.toFixed(3)}`);
+  } catch (error) {
+    console.error('Error saving to cache:', error);
+  }
+}
+
+function clearOldCache() {
+  try {
+    const keysToRemove = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(CACHE_KEY_PREFIX)) {
+        const cached = localStorage.getItem(key);
+        if (cached) {
+          const data = JSON.parse(cached);
+          if (Date.now() - data.timestamp > CACHE_DURATION) {
+            keysToRemove.push(key);
+          }
+        }
+      }
+    }
+    keysToRemove.forEach(key => localStorage.removeItem(key));
+    if (keysToRemove.length > 0) {
+      console.log(`🧹 Cleaned up ${keysToRemove.length} expired cache entries`);
+    }
+  } catch (error) {
+    console.error('Error cleaning cache:', error);
+  }
+}
+
+// Fetch issues in region (like mobile app's LocationScreen)
+async function fetchIssuesInRegion(region, forceRefresh = false) {
+  if (!map) {
     showNoLocationState();
     return;
   }
 
-  // Validate location data
-  if (typeof userLocation.latitude !== 'number' || typeof userLocation.longitude !== 'number') {
-    console.log('Invalid location data for fetching issues');
-    showNoLocationState();
-    return;
+  clearOldCache();
+
+  // Try to get cached issues first (unless force refresh)
+  if (!forceRefresh) {
+    const cached = getCachedIssues(region, filters);
+    if (cached) {
+      cachedIssues = cached;
+      displayIssuesOnMap(cached);
+      return;
+    }
   }
 
   showLoading(true);
   
   try {
+    // Calculate radius from region bounds (like mobile app)
+    const radiusKm = Math.max(
+      region.latitudeDelta * 111, // Convert lat degrees to km
+      region.longitudeDelta * 111 * Math.cos(region.latitude * Math.PI / 180)
+    ) / 2; // Radius from center to edge
+
     const params = new URLSearchParams({
-      latitude: userLocation.latitude.toString(),
-      longitude: userLocation.longitude.toString(),
-      radius_km: filters.radiusKm.toString(),
+      latitude: region.latitude.toString(),
+      longitude: region.longitude.toString(),
+      radius_km: Math.min(radiusKm, 50).toString(), // Cap at 50km
       limit: filters.limit.toString(),
       days_back: filters.days.toString()
     });
@@ -194,7 +294,10 @@ async function fetchIssues() {
       params.append('status', filters.status);
     }
 
-    const response = await fetch(`${API_BASE}/api/issues/with-user-status?${params}`, {
+    const requestUrl = `${API_BASE}/api/issues/with-user-status?${params}`;
+    console.log('[MAP] Fetching issues for region:', requestUrl);
+    
+    const response = await fetch(requestUrl, {
       headers: {
         'Authorization': `Bearer ${currentToken}`,
         'Content-Type': 'application/json'
@@ -208,12 +311,25 @@ async function fetchIssues() {
     const data = await response.json();
     const issues = data.issues || [];
     
+    console.log(`📍 Received ${issues.length} issues in region`);
+    
+    // Cache the issues
+    cachedIssues = issues;
+    setCachedIssues(region, filters, issues);
+    
     displayIssuesOnMap(issues);
-    updateFilterSummary(issues.length);
     showLoading(false);
   } catch (error) {
     console.error('Error fetching issues:', error);
-    showToast('Failed to load issues. Please try again.', 'error');
+    
+    // If there's an error and we have cached data, use it
+    if (cachedIssues.length > 0) {
+      console.log('📦 Using cached issues due to fetch error');
+      displayIssuesOnMap(cachedIssues);
+      showToast('Using cached data. Check your connection.', 'warning');
+    } else {
+      showToast('Failed to load issues. Please try again.', 'error');
+    }
     showLoading(false);
   }
 }
@@ -221,6 +337,20 @@ async function fetchIssues() {
 // Apply client-side filters (for severity and issueTypes)
 function getFilteredIssues(issues) {
   let filtered = [...issues];
+
+  // Filter by status
+  if (filters.status && filters.status !== 'all') {
+    filtered = filtered.filter(issue => (issue.status || 'open').toLowerCase() === filters.status.toLowerCase());
+  }
+
+  // Filter by days back
+  if (filters.days) {
+    const now = Date.now();
+    filtered = filtered.filter(issue => {
+      const created = new Date(issue.created_at || issue.timestamp || issue.date).getTime();
+      return (now - created) <= filters.days * 24 * 60 * 60 * 1000;
+    });
+  }
 
   // Filter by severity
   if (filters.severity !== 'all') {
@@ -250,14 +380,40 @@ function getFilteredIssues(issues) {
   return filtered;
 }
 
-// Display issues on map
+// Get marker color based on issue status and severity (like mobile app)
+function getMarkerColor(issue) {
+  if (issue.status?.toLowerCase() === 'closed') {
+    return '#4CAF50'; // Green for closed issues
+  }
+  
+  const severityScore = issue.severity_score || 5;
+  if (severityScore >= 8) return '#F44336'; // Red for high severity
+  if (severityScore >= 4) return '#FF9800'; // Orange for medium severity
+  return '#4CAF50'; // Green for low severity
+}
+
+// Get display value for marker (like mobile app)
+function getMarkerDisplay(issue) {
+  if (issue.status?.toLowerCase() === 'closed') {
+    return '✓';
+  }
+  return Math.round(issue.severity_score || 5);
+}
+
+// Display issues on map (exactly like mobile app)
 function displayIssuesOnMap(issues) {
-  // Clear existing markers
-  issueMarkers.forEach(marker => marker.remove());
+  // Clear existing issue markers
+  issueMarkers.forEach(marker => marker.setMap(null));
   issueMarkers = [];
 
   // Apply client-side filters
   const filteredIssues = getFilteredIssues(issues);
+
+  // Update filter summary to show filtered count
+  const filterSummary = document.getElementById('filter-summary');
+  if (filterSummary) {
+    filterSummary.textContent = `${filteredIssues.length} issues found`;
+  }
 
   if (filteredIssues.length === 0) {
     showEmptyState();
@@ -268,85 +424,487 @@ function displayIssuesOnMap(issues) {
   const emptyState = document.getElementById('empty-state');
   if (emptyState) emptyState.style.display = 'none';
 
-  // Create markers for each issue
+  // Create markers for each issue (exactly like mobile app's CustomMarker)
   filteredIssues.forEach(issue => {
-    const el = document.createElement('div');
-    el.className = 'custom-marker';
-    
+    const lat = issue.location?.lat || issue.location?.latitude;
+    const lng = issue.location?.lon || issue.location?.longitude;
+
+    if (typeof lat !== 'number' || typeof lng !== 'number') {
+      console.warn('Issue missing valid coordinates:', issue);
+      return;
+    }
+
     const color = getMarkerColor(issue);
     const displayValue = getMarkerDisplay(issue);
-    
-    el.innerHTML = `
-      <div class="marker-inner" style="background-color: ${color};">
-        <span class="marker-text">${displayValue}</span>
-      </div>
-      <div class="marker-arrow" style="border-top-color: ${color};"></div>
-    `;
 
-    const marker = new maplibregl.Marker({ element: el })
-      .setLngLat([issue.location.lon, issue.location.lat])
-      .addTo(map);
+    // Create circular marker exactly like mobile app
+    const marker = new google.maps.Marker({
+      position: { lat, lng },
+      map: map,
+      icon: {
+        path: google.maps.SymbolPath.CIRCLE,
+        scale: 18,
+        fillColor: color,
+        fillOpacity: 1,
+        strokeColor: '#FFFFFF',
+        strokeWeight: 3
+      },
+      label: {
+        text: displayValue.toString(),
+        color: '#FFFFFF',
+        fontWeight: 'bold',
+        fontSize: '12px'
+      },
+      title: issue.title || issue.description?.substring(0, 50) || 'Civic Issue'
+    });
 
-    // Add click event to show issue detail
-    el.addEventListener('click', () => openIssueModal(issue));
+    // Add click event to show issue detail (like mobile app)
+    marker.addListener('click', () => {
+      console.log('Marker clicked for issue:', issue.issue_id || issue.id);
+      openIssueModal(issue);
+    });
 
     issueMarkers.push(marker);
   });
 }
 
-// Open issue detail modal
-function openIssueModal(issue) {
+// Open issue detail modal (exactly like mobile app's IssueDetailModal)
+async function openIssueModal(issue) {
+  console.log('Opening modal for issue:', issue);
+  
   const modal = document.getElementById('issue-modal');
-  const modalImage = document.getElementById('modal-issue-image');
-  const modalTitle = document.getElementById('modal-issue-title');
-  const modalStatus = document.getElementById('modal-issue-status');
-  const modalSeverity = document.getElementById('modal-issue-severity');
-  const modalUpvotes = document.getElementById('modal-issue-upvotes');
-  const modalReports = document.getElementById('modal-issue-reports');
-  const modalDescription = document.getElementById('modal-issue-description');
-  const modalDate = document.getElementById('modal-issue-date');
-  const modalIssueTypes = document.getElementById('modal-issue-types');
-  const upvoteBtn = document.getElementById('modal-upvote-btn');
-  const reportBtn = document.getElementById('modal-report-btn');
-
-  // Set modal content
-  if (issue.image_url) {
-    modalImage.src = issue.image_url;
-    modalImage.style.display = 'block';
-  } else {
-    modalImage.style.display = 'none';
+  if (!modal) {
+    console.error('Modal element not found');
+    return;
   }
 
-  modalTitle.textContent = issue.title || 'Civic Issue';
-  modalStatus.textContent = issue.status || 'open';
-  modalSeverity.textContent = issue.severity_score || 0;
-  modalUpvotes.textContent = issue.upvotes || 0;
-  modalReports.textContent = issue.reports || 0;
-  modalDescription.textContent = issue.description || 'No description available';
+  // --- Reset Modal State ---
+  document.getElementById('open-issue-details').style.display = 'none';
+  document.getElementById('closed-issue-details').style.display = 'none';
+  document.getElementById('fix-details-container').innerHTML = '<div class="loading-spinner" style="display: none;"></div>';
+  document.getElementById('modal-detected-issues-container').innerHTML = '';
+  document.querySelector('.modal-content').style.backgroundColor = '';
+
+  // --- Get Common Elements ---
+  const modalImage = document.getElementById('modal-issue-image');
+  const modalLocation = document.getElementById('modal-issue-location');
+  const modalDate = document.getElementById('modal-issue-date');
+  const modalUploader = document.getElementById('modal-issue-uploader');
+  const modalStatus = document.getElementById('modal-issue-status');
+  const modalSeverity = document.getElementById('modal-issue-severity');
+  const modalCo2Label = document.getElementById('modal-co2-label');
+  const modalCo2 = document.getElementById('modal-issue-co2');
+  const modalDescription = document.getElementById('modal-issue-description');
+  const detectedIssuesContainer = document.getElementById('modal-detected-issues-container');
+  const openDetailsContainer = document.getElementById('open-issue-details');
+  const closedDetailsContainer = document.getElementById('closed-issue-details');
+  const fixDetailsContainer = document.getElementById('fix-details-container');
+
+  // --- Location display with reverse geocoding ---
+  async function setModalLocation(issue) {
+    if (!modalLocation) return;
+    if (issue.address) {
+      modalLocation.textContent = issue.address;
+      return;
+    }
+    const lat = issue.location?.lat || issue.location?.latitude;
+    const lng = issue.location?.lon || issue.location?.longitude;
+    if (typeof lat === 'number' && typeof lng === 'number') {
+      try {
+        const response = await fetch(`https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json`);
+        const data = await response.json();
+        modalLocation.textContent = data.display_name || `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      } catch (error) {
+        modalLocation.textContent = `${lat.toFixed(4)}, ${lng.toFixed(4)}`;
+      }
+    } else {
+      modalLocation.textContent = 'Location not available';
+    }
+  }
+
+  // --- Populate Common Fields ---
+  const imageUrl = issue.photo_url || issue.image_url || '';
+  console.log('🖼️ Issue data:', { photo_url: issue.photo_url, image_url: issue.image_url, final: imageUrl });
   
-  const date = new Date(issue.created_at);
-  modalDate.textContent = date.toLocaleDateString();
+  const mediaContainer = modalImage?.parentElement;
+  if (mediaContainer) {
+    console.log('📦 Modal media container found');
+  }
+  
+  if (imageUrl && modalImage) {
+    console.log('✅ Setting image source:', imageUrl);
+    modalImage.src = imageUrl;
+    modalImage.style.display = 'block';
+    if (mediaContainer) mediaContainer.style.display = 'block';
+    
+    modalImage.onload = () => {
+      console.log('✅ Image loaded successfully');
+    };
+    
+    modalImage.onerror = () => {
+      console.error('❌ Failed to load issue image:', imageUrl);
+      modalImage.style.display = 'none';
+      if (mediaContainer) mediaContainer.style.display = 'none';
+    };
+  } else {
+    console.log('⚠️ No image URL found or modalImage element missing');
+    if (modalImage) modalImage.style.display = 'none';
+    if (mediaContainer) mediaContainer.style.display = 'none';
+  }
 
-  // Display issue types
-  const issueTypes = issue.issue_types || issue.detected_issues || [];
-  modalIssueTypes.innerHTML = issueTypes.map(type => {
-    const typeName = typeof type === 'string' ? type : type.type || type.name || 'Unknown';
-    return `<span class="issue-type-tag">${typeName}</span>`;
-  }).join('');
+  await setModalLocation(issue);
+  modalDate.textContent = new Date(issue.created_at).toLocaleString();
+  modalUploader.textContent = issue.uploader_display_name || 'Anonymous';
 
-  // Set button states based on user interaction
-  const userStatus = issue.userStatus || {};
-  upvoteBtn.classList.toggle('active', userStatus.hasUpvoted);
-  reportBtn.classList.toggle('active', userStatus.hasReported);
+  modalStatus.textContent = issue.status || 'N/A';
+  modalStatus.className = `stat-value ${(issue.status || 'open').toLowerCase()}`;
 
-  // Add event listeners
-  upvoteBtn.onclick = () => handleVoteAction(issue.id, 'upvote', upvoteBtn);
-  reportBtn.onclick = () => handleVoteAction(issue.id, 'report', reportBtn);
+  modalSeverity.textContent = `${Math.round(issue.severity_score || 0)}/10`;
 
-  modal.style.display = 'flex';
+  const isClosed = issue.status?.toLowerCase() === 'closed';
+
+  // --- Handle Status-Specific Logic ---
+  if (isClosed) {
+    // --- CLOSED ISSUE LOGIC ---
+    const modalContent = document.querySelector('.modal-content');
+    modalContent.style.backgroundColor = '#d4edda'; // Light green
+    closedDetailsContainer.style.display = 'block';
+    openDetailsContainer.style.display = 'none';
+    
+    modalCo2Label.textContent = 'CO₂ Saved';
+    modalCo2.textContent = `${Math.round(issue.fate_risk_co2 || 0)} kg`; // Initial value
+    
+    // Fetch and display fix details
+    await fetchAndDisplayFixDetails(issue.issue_id, fixDetailsContainer, modalCo2);
+
+  } else {
+    // --- OPEN ISSUE LOGIC ---
+    const modalContent = document.querySelector('.modal-content');
+    const severityScore = issue.severity_score || 0;
+    if (severityScore >= 8) modalContent.style.backgroundColor = '#f8d7da'; // Light red
+    else if (severityScore >= 4) modalContent.style.backgroundColor = '#fff3cd'; // Light yellow
+    else modalContent.style.backgroundColor = '#d1ecf1'; // Light blue
+
+    openDetailsContainer.style.display = 'block';
+    closedDetailsContainer.style.display = 'none';
+
+    modalCo2Label.textContent = 'CO₂ Risk';
+    modalCo2.textContent = `${Math.round(issue.fate_risk_co2 || 0)} kg`;
+    
+    // Handle description - only show for open issues
+    if (issue.description) {
+      modalDescription.textContent = issue.description;
+    } else {
+      modalDescription.textContent = 'No description provided.';
+    }
+
+    // Display detected issues with proper formatting
+    const detectedIssues = issue.detected_issues || [];
+    if (detectedIssues.length > 0) {
+      detectedIssuesContainer.innerHTML = detectedIssues.map(detected => `
+        <div class="detected-issue-card" style="border-left-color: ${getSeverityColor(detected.severity)}">
+          <div class="detected-issue-header">
+            <span class="issue-type-name">${getIssueDisplayName(detected.type)}</span>
+            <span class="issue-severity-badge" style="background-color: ${getSeverityColor(detected.severity)}">${detected.severity.toUpperCase()}</span>
+          </div>
+          <div class="detected-issue-body">
+            <p><strong>Severity Score:</strong> ${detected.severity_score}/10</p>
+            <p><strong>Future Impact:</strong> ${detected.future_impact || 'Not specified'}</p>
+            <p><strong>Predicted Fix:</strong> ${detected.predicted_fix || 'Not specified'}</p>
+          </div>
+        </div>
+      `).join('');
+    } else {
+      detectedIssuesContainer.innerHTML = '<p style="text-align: center; color: #666; font-style: italic; padding: 20px;">No specific issues were automatically detected.</p>';
+    }
+  }
+
+  // --- Handle Actions ---
+  // Add Upload Fix button for NGO users on open issues
+  const modalFooter = document.getElementById('modal-footer');
+  if (modalFooter && userProfile && userProfile.userType === 'ngo' && !isClosed) {
+    modalFooter.style.display = 'flex';
+    modalFooter.style.gap = '12px';
+    modalFooter.style.justifyContent = 'flex-end';
+    modalFooter.innerHTML = `
+      <button class="upload-fix-action-btn" style="padding: 12px 24px; background: linear-gradient(135deg, #4CAF79 0%, #3BA890 100%); color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; display: flex; align-items: center; gap: 8px; transition: all 0.3s ease;">
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"></path>
+        </svg>
+        Upload Fix
+      </button>
+    `;
+    
+    const uploadFixBtn = modalFooter.querySelector('.upload-fix-action-btn');
+    if (uploadFixBtn) {
+      uploadFixBtn.onclick = () => {
+        openFixUploadModal(issue);
+      };
+      
+      uploadFixBtn.onmouseenter = (e) => {
+        e.target.style.transform = 'translateY(-2px)';
+        e.target.style.boxShadow = '0 4px 12px rgba(76, 175, 121, 0.3)';
+      };
+      
+      uploadFixBtn.onmouseleave = (e) => {
+        e.target.style.transform = 'translateY(0)';
+        e.target.style.boxShadow = 'none';
+      };
+    }
+  } else if (modalFooter) {
+    modalFooter.style.display = 'none';
+  }
+
+  // --- Add Close Button Event Listeners ---
+  const closeBtn = modal.querySelector('.modal-close');
+  
+  if (closeBtn) {
+    closeBtn.onclick = closeModal;
+  }
+  
+  // Close on background click
+  modal.onclick = (e) => {
+    if (e.target === modal) {
+      closeModal();
+    }
+  };
+  
+  // Prevent modal content clicks from closing
+  const modalContentEl = modal.querySelector('.modal-content');
+  if (modalContentEl) {
+    modalContentEl.onclick = (e) => {
+      e.stopPropagation();
+    };
+  }
+  
+  // --- Show Modal ---
+  modal.classList.add('open');
+  console.log('Modal displayed successfully');
 }
 
-// Handle vote/report action
+// Fetch and display fix details for a closed issue
+async function fetchAndDisplayFixDetails(issueId, container, co2Element) {
+  const loadingSpinner = container.querySelector('.loading-spinner');
+  if (loadingSpinner) {
+    loadingSpinner.style.display = 'block';
+  }
+  container.innerHTML = '<div class="loading-spinner" style="display: block;"></div>';
+
+  try {
+    const response = await fetch(`${API_BASE}/api/issues/${issueId}/fix-details`, {
+      headers: { 'Authorization': `Bearer ${currentToken}` }
+    });
+
+    if (!response.ok) {
+      throw new Error(`Failed to fetch fix details: ${response.statusText}`);
+    }
+
+    const fixDetails = await response.json();
+
+    if (!fixDetails.has_fix) {
+      container.innerHTML = '<p class="error-text">Fix information not available.</p>';
+      return;
+    }
+
+    // Update CO2 saved if available in fix details
+    if (fixDetails.co2_saved && co2Element) {
+        co2Element.textContent = `${Math.round(fixDetails.co2_saved)} kg`;
+        co2Element.style.color = '#4CAF79';
+    }
+
+    let fixHtml = '';
+
+    // Fix Title with checkmark icon
+    if (fixDetails.title) {
+      fixHtml += `
+        <div class="fix-title-section">
+          <h3>${fixDetails.title}</h3>
+        </div>
+      `;
+    }
+
+    // Fix Description
+    if (fixDetails.description) {
+        fixHtml += `
+            <div class="fix-description-section">
+                <h4>Fix Description</h4>
+                <p>${fixDetails.description}</p>
+            </div>
+        `;
+    }
+
+    // Fix metadata (Fixed By and Fixed On)
+    if (fixDetails.ngo_name || fixDetails.submitted_at) {
+      fixHtml += `<div class="fix-metadata-section" style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin: 16px 0;">`;
+      
+      if (fixDetails.ngo_name) {
+        fixHtml += `
+          <div class="fix-meta-card" style="background: rgba(76, 175, 121, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #4CAF79;">
+            <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #666; font-weight: 600;">Fixed By</h4>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              ${fixDetails.ngo_logo ? `<img src="${fixDetails.ngo_logo}" alt="NGO Logo" style="width: 32px; height: 32px; border-radius: 50%; object-fit: cover;">` : ''}
+              <div>
+                <p style="margin: 0; font-weight: 600; color: #1F2937;">${fixDetails.ngo_name}</p>
+                <span style="background: #4CAF79; color: white; padding: 2px 8px; border-radius: 4px; font-size: 11px; font-weight: 600;">NGO</span>
+              </div>
+            </div>
+          </div>
+        `;
+      }
+      
+      if (fixDetails.submitted_at) {
+        fixHtml += `
+          <div class="fix-meta-card" style="background: rgba(99, 102, 241, 0.1); padding: 12px; border-radius: 8px; border-left: 3px solid #6366F1;">
+            <h4 style="margin: 0 0 8px 0; font-size: 13px; color: #666; font-weight: 600;">Fixed On</h4>
+            <p style="margin: 0; font-weight: 600; color: #1F2937;">${new Date(fixDetails.submitted_at).toLocaleDateString()}</p>
+            <p style="margin: 4px 0 0 0; font-size: 12px; color: #666;">${new Date(fixDetails.submitted_at).toLocaleTimeString()}</p>
+          </div>
+        `;
+      }
+      
+      fixHtml += `</div>`;
+    }
+
+    // Fix Photos Slider
+    if (fixDetails.photo_urls && fixDetails.photo_urls.length > 0) {
+      fixHtml += `
+        <div class="fix-images-section">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <h4 style="margin: 0;">Fix Photos</h4>
+            ${fixDetails.photo_urls.length > 1 ? `
+              <span style="background: rgba(76, 175, 121, 0.1); color: #4CAF79; padding: 4px 12px; border-radius: 12px; font-size: 13px; font-weight: 600;">
+                📷 ${fixDetails.photo_urls.length} photos
+              </span>
+            ` : ''}
+          </div>
+          <div class="fix-image-slider" style="position: relative; border-radius: 12px; overflow: hidden;">
+            <img id="map-fix-slider-image" src="${fixDetails.photo_urls[0]}" alt="Fix Photo" style="width: 100%; height: 400px; object-fit: cover; border-radius: 12px;">
+            ${fixDetails.photo_urls.length > 1 ? `
+              <button class="slider-nav slider-prev" onclick="mapChangeFixImage(-1)" style="position: absolute; left: 12px; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.6); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px;">‹</button>
+              <button class="slider-nav slider-next" onclick="mapChangeFixImage(1)" style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); background: rgba(0,0,0,0.6); color: white; border: none; width: 40px; height: 40px; border-radius: 50%; cursor: pointer; display: flex; align-items: center; justify-content: center; font-size: 20px;">›</button>
+              <div class="slider-counter" style="position: absolute; bottom: 12px; left: 50%; transform: translateX(-50%); background: rgba(0,0,0,0.7); color: white; padding: 6px 14px; border-radius: 16px; font-size: 13px; font-weight: 600;">
+                <span id="map-fix-slider-current">1</span> / ${fixDetails.photo_urls.length}
+              </div>
+              <div class="slider-dots" style="position: absolute; bottom: 48px; left: 50%; transform: translateX(-50%); display: flex; gap: 6px;">
+                ${fixDetails.photo_urls.map((_, idx) => `
+                  <div class="slider-dot" data-index="${idx}" style="width: 8px; height: 8px; border-radius: 50%; background: ${idx === 0 ? 'white' : 'rgba(255,255,255,0.5)'}; cursor: pointer;" onclick="mapSetFixImage(${idx})"></div>
+                `).join('')}
+              </div>
+            ` : ''}
+          </div>
+        </div>
+      `;
+      
+      // Store fix images globally for slider
+      window.mapFixImages = fixDetails.photo_urls;
+      window.mapCurrentFixImageIndex = 0;
+    }
+
+    // Fix Date
+    if (fixDetails.created_at) {
+        const fixDate = new Date(fixDetails.created_at);
+        fixHtml += `
+            <div class="fix-date-section">
+                <p><i class="fas fa-calendar" style="margin-right: 6px;"></i>Fixed on ${fixDate.toLocaleString()}</p>
+            </div>
+        `;
+    }
+
+    // Fix outcomes if available (comprehensive display like mobile app)
+    if (fixDetails.fix_outcomes && fixDetails.fix_outcomes.length > 0) {
+      fixHtml += `
+        <div class="fix-outcomes-section" style="margin-bottom: 20px;">
+          <h4>Fix Outcome</h4>
+          <div class="outcome-overall-card" style="background: rgba(255, 255, 255, 0.8); border-radius: 12px; padding: 16px; margin-bottom: 16px; border-left: 4px solid #4CAF79;">
+            <p style="margin: 0 0 8px 0;"><strong>Overall Outcome:</strong> ${getOutcomeText(fixDetails.overall_outcome || 'closed')}</p>
+            ${fixDetails.success_rate ? `<p style="margin: 0 0 8px 0;"><strong>Success Rate:</strong> ${Math.round(fixDetails.success_rate * 100)}%</p>` : ''}
+            ${fixDetails.co2_saved > 0 ? `<p style="margin: 0; color: #4CAF79; font-weight: 600;"><strong>CO₂ Saved:</strong> ${Math.round(fixDetails.co2_saved)} kg</p>` : ''}
+          </div>
+          <h4 style="margin-top: 16px; margin-bottom: 12px;">Per-Issue Results</h4>
+          ${fixDetails.fix_outcomes.map((outcome, index) => `
+            <div class="per-issue-card" style="background: rgba(255, 255, 255, 0.7); border-radius: 12px; padding: 14px; margin-bottom: 12px; border-left: 4px solid #4285f4;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px;">
+                <span style="font-size: 15px; font-weight: 700; color: #333; flex: 1;">${getIssueDisplayName(outcome.issue_type)}</span>
+                <span style="padding: 4px 10px; border-radius: 12px; font-size: 11px; font-weight: 700; color: #fff; background-color: ${getFixStatusColor(outcome.fixed)};">
+                  ${getFixStatusText(outcome.fixed)}
+                </span>
+              </div>
+              <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">
+                <span style="font-size: 13px; color: #666; font-weight: 500;">Fix Confidence:</span>
+                <span style="font-size: 13px; color: #333; font-weight: 600;">${Math.round(outcome.confidence * 100)}%</span>
+              </div>
+              ${outcome.notes ? `
+                <div style="margin-top: 10px; padding-top: 10px; border-top: 1px solid rgba(0, 0, 0, 0.1);">
+                  <p style="font-size: 13px; font-weight: 600; color: #333; margin-bottom: 4px;">Notes:</p>
+                  <p style="font-size: 13px; color: #555; line-height: 18px; margin: 0;">${outcome.notes}</p>
+                </div>
+              ` : ''}
+              ${outcome.evidence_photos && outcome.evidence_photos.length > 0 ? `
+                <div style="margin-top: 8px;">
+                  <p style="font-size: 12px; color: #666; font-style: italic; margin: 0;">Evidence Photos: ${outcome.evidence_photos.map(photoNum => `Photo #${photoNum + 1}`).join(', ')}</p>
+                </div>
+              ` : ''}
+            </div>
+          `).join('')}
+        </div>
+      `;
+    }
+
+    container.innerHTML = fixHtml;
+
+  } catch (error) {
+    console.error('Error fetching fix details:', error);
+    container.innerHTML = '<p class="error-text">Could not load fix details. Please try again later.</p>';
+  }
+}
+
+// Helper function to get outcome text
+function getOutcomeText(outcome) {
+  switch(outcome) {
+    case 'closed': return '✅ Fully Resolved';
+    case 'partially_closed': return '⚠️ Partially Resolved';
+    case 'rejected': return '❌ Rejected';
+    case 'needs_manual_review': return '⏳ Manual Review Required';
+    default: return '✅ Resolved';
+  }
+}
+
+// Helper function to get fix status color
+function getFixStatusColor(fixed) {
+  switch(fixed) {
+    case 'yes': return '#4CAF79';
+    case 'partial': return '#FF9800';
+    case 'no': return '#F44336';
+    default: return '#ccc';
+  }
+}
+
+// Helper function to get fix status text
+function getFixStatusText(fixed) {
+  switch(fixed) {
+    case 'yes': return 'FIXED';
+    case 'partial': return 'PARTIAL';
+    case 'no': return 'NOT FIXED';
+    default: return 'UNKNOWN';
+  }
+}
+
+// Helper to get a color for severity
+function getSeverityColor(severity) {
+    if (!severity) return '#ccc';
+    const sev = severity.toLowerCase();
+    if (sev === "high") return "#d32f2f";
+    if (sev === "medium") return "#f57c00";
+    return "#388e3c";
+}
+
+// Helper to get display name for issue type
+function getIssueDisplayName(type) {
+    if (!type) return "Unknown Issue";
+    return type.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+}
+
+// Handle vote/report action (like mobile app)
 async function handleVoteAction(issueId, action, button) {
   if (!currentToken) {
     showToast('Please sign in to perform this action', 'error');
@@ -394,20 +952,44 @@ async function handleVoteAction(issueId, action, button) {
 // Close modal
 function closeModal() {
   const modal = document.getElementById('issue-modal');
-  modal.style.display = 'none';
+  if (modal) {
+    modal.classList.remove('open');
+    // Reset scroll when closing so next open starts at top
+    const modalContent = modal.querySelector('.modal-content');
+    if (modalContent) {
+      modalContent.scrollTop = 0;
+    }
+  }
 }
 
 // Refresh map
 function refreshMap() {
-  if (userLocation) {
-    fetchIssues();
-    showToast('Refreshing map...', 'success');
+  if (lastFetchRegion) {
+    fetchIssuesInRegion(lastFetchRegion, true); // Force refresh from backend
+    showToast('Refreshing issues...', 'success');
   } else {
-    getUserLocation();
+    setUserLocation();
   }
 }
 
-// Open filter modal (rewritten to match mobile app and feed.js)
+// Load user profile from backend
+async function loadUserProfile() {
+  try {
+    const response = await fetch(`${API_BASE}/api/users/${currentUser.uid}/stats-firebase`, {
+      headers: { 'Authorization': `Bearer ${currentToken}` }
+    });
+    
+    if (response.ok) {
+      const data = await response.json();
+      userProfile = data.stats;
+      console.log('User profile loaded:', userProfile);
+    }
+  } catch (error) {
+    console.error('Error loading user profile:', error);
+  }
+}
+
+// Filter functions (rewritten to match mobile app and feed.js)
 function openFilterModal() {
     console.log('🔧 Opening filter modal...');
     
@@ -415,19 +997,19 @@ function openFilterModal() {
     addFilterModalStyles();
     
     // Remove existing modal if any
-    const existingModal = document.getElementById('filter-modal');
+    const existingModal = document.getElementById('filter-modal-map');
     if (existingModal) {
         existingModal.remove();
     }
     
     // Create modal HTML matching mobile app structure
     const modalHTML = `
-        <div id="filter-modal" class="filter-modal-overlay">
+        <div id="filter-modal-map" class="filter-modal-overlay">
             <div class="filter-modal-container">
                 <!-- Header -->
                 <div class="filter-header">
                     <h2 class="filter-title">Filters</h2>
-                    <button class="filter-close-btn" type="button" onclick="closeFilterModal()">
+                    <button class="filter-close-btn" type="button" onclick="closeMapFilterModal()">
                         <span>&times;</span>
                     </button>
                 </div>
@@ -438,105 +1020,25 @@ function openFilterModal() {
                     <div class="filter-section">
                         <label class="filter-section-title">Issue Types</label>
                         <div class="filter-dropdown-container">
-                            <div class="filter-multiselect" id="issue-types-selector">
-                                <div class="multiselect-display" onclick="toggleIssueTypes()">
-                                    <span id="issue-types-text">Select issue types...</span>
+                            <div class="filter-multiselect" id="issue-types-selector-map">
+                                <div class="multiselect-display" onclick="toggleMapIssueTypes()">
+                                    <span id="issue-types-text-map">Select issue types...</span>
                                     <span class="dropdown-arrow">▼</span>
                                 </div>
-                                <div class="multiselect-dropdown" id="issue-types-dropdown" style="display: none;">
+                                <div class="multiselect-dropdown" id="issue-types-dropdown-map" style="display: none;">
                                     <div class="multiselect-search">
-                                        <input type="text" placeholder="Search..." id="issue-types-search" onkeyup="filterIssueTypes()">
+                                        <input type="text" placeholder="Search..." id="issue-types-search-map" onkeyup="filterMapIssueTypes()">
                                     </div>
-                                    <div class="multiselect-options" id="issue-types-options">
-                                        <label class="multiselect-option">
-                                            <input type="checkbox" value="pothole"> Pothole
-                                        </label>
-                                        <label class="multiselect-option">
-                                            <input type="checkbox" value="streetlight"> Street Light
-                                        </label>
-                                        <label class="multiselect-option">
-                                            <input type="checkbox" value="drainage"> Drainage
-                                        </label>
-                                        <label class="multiselect-option">
-                                            <input type="checkbox" value="garbage"> Garbage
-                                        </label>
-                                        <label class="multiselect-option">
-                                            <input type="checkbox" value="water_supply"> Water Supply
-                                        </label>
-                                        <label class="multiselect-option">
-                                            <input type="checkbox" value="road_damage"> Road Damage
-                                        </label>
-                                        <label class="multiselect-option">
-                                            <input type="checkbox" value="other"> Other
-                                        </label>
+                                    <div class="multiselect-options" id="issue-types-options-map">
+                                        <!-- Options will be populated dynamically -->
                                     </div>
                                 </div>
                             </div>
                         </div>
                     </div>
 
-                    <!-- Status -->
-                    <div class="filter-section">
-                        <label class="filter-section-title">Status</label>
-                        <div class="filter-options">
-                            <button type="button" class="filter-option active" data-filter="status" data-value="all">All</button>
-                            <button type="button" class="filter-option" data-filter="status" data-value="open">Open</button>
-                            <button type="button" class="filter-option" data-filter="status" data-value="closed">Closed</button>
-                        </div>
-                    </div>
-
-                    <!-- My Contributions -->
-                    <div class="filter-section">
-                        <label class="filter-section-title">My Contributions</label>
-                        <div class="filter-options">
-                            <button type="button" class="filter-option active" data-filter="myIssues" data-value="all">All Issues</button>
-                            <button type="button" class="filter-option" data-filter="myIssues" data-value="uploaded">Uploaded by Me</button>
-                        </div>
-                    </div>
-
-                    <!-- Severity -->
-                    <div class="filter-section">
-                        <label class="filter-section-title">Severity</label>
-                        <div class="filter-options">
-                            <button type="button" class="filter-option active" data-filter="severity" data-value="all">All</button>
-                            <button type="button" class="filter-option" data-filter="severity" data-value="high">High</button>
-                            <button type="button" class="filter-option" data-filter="severity" data-value="medium">Medium</button>
-                            <button type="button" class="filter-option" data-filter="severity" data-value="low">Low</button>
-                        </div>
-                    </div>
-
-                    <!-- Time Range -->
-                    <div class="filter-section">
-                        <label class="filter-section-title">Time Range</label>
-                        <div class="filter-options">
-                            <button type="button" class="filter-option" data-filter="days" data-value="7">7d</button>
-                            <button type="button" class="filter-option active" data-filter="days" data-value="30">30d</button>
-                            <button type="button" class="filter-option" data-filter="days" data-value="90">90d</button>
-                            <button type="button" class="filter-option" data-filter="days" data-value="365">365d</button>
-                        </div>
-                    </div>
-
-                    <!-- Distance -->
-                    <div class="filter-section">
-                        <label class="filter-section-title">Distance</label>
-                        <div class="filter-options">
-                            <button type="button" class="filter-option" data-filter="radiusKm" data-value="2">2 km</button>
-                            <button type="button" class="filter-option active" data-filter="radiusKm" data-value="5">5 km</button>
-                            <button type="button" class="filter-option" data-filter="radiusKm" data-value="10">10 km</button>
-                            <button type="button" class="filter-option" data-filter="radiusKm" data-value="25">25 km</button>
-                        </div>
-                    </div>
-
-                    <!-- Number of Issues -->
-                    <div class="filter-section">
-                        <label class="filter-section-title">Number of Issues</label>
-                        <div class="filter-options">
-                            <button type="button" class="filter-option" data-filter="limit" data-value="10">10</button>
-                            <button type="button" class="filter-option active" data-filter="limit" data-value="20">20</button>
-                            <button type="button" class="filter-option" data-filter="limit" data-value="50">50</button>
-                            <button type="button" class="filter-option" data-filter="limit" data-value="100">100</button>
-                        </div>
-                    </div>
+                    <!-- Status, Severity, Time Range, etc. -->
+                    <!-- ... (add other filter sections here) ... -->
                 </div>
 
                 <!-- Footer -->
@@ -550,478 +1052,101 @@ function openFilterModal() {
 
     // Add modal to page
     document.body.insertAdjacentHTML('beforeend', modalHTML);
-    console.log('✅ Modal HTML added to page');
-    
-    // Set up event listeners for filter options
+    populateIssueTypesFilter();
+
+    // Set up event listeners and update display
     setupMapFilterEventListeners();
-    
-    // Set current filter values
     updateMapFilterDisplay();
-    
+
+    // Add logic for Apply/Reset buttons
+    const applyBtn = document.querySelector('.filter-apply-btn');
+    const resetBtn = document.querySelector('.filter-reset-btn');
+    if (applyBtn) {
+      applyBtn.onclick = function() {
+        // Read selected filters from modal and update global filters
+        // Example: status, severity, days, issueTypes, limit
+        // You may need to add more selectors if you add more filter fields
+        const statusSelect = document.getElementById('filter-status');
+        const severitySelect = document.getElementById('filter-severity');
+        const daysSelect = document.getElementById('filter-days');
+        const radiusSelect = document.getElementById('filter-radius');
+        // Issue types from custom multiselect
+        const selectedIssueTypes = window.getSelectedMapIssueTypes ? window.getSelectedMapIssueTypes() : [];
+
+        filters.status = statusSelect ? statusSelect.value : 'open';
+        filters.severity = severitySelect ? severitySelect.value : 'all';
+        filters.days = daysSelect ? parseInt(daysSelect.value) : 30;
+        filters.limit = radiusSelect ? parseInt(radiusSelect.value) * 5 : 50; // Example: radius * 5
+        filters.issueTypes = selectedIssueTypes;
+
+        // Refresh map markers
+        if (lastFetchRegion) {
+          fetchIssuesInRegion(lastFetchRegion, true);
+        } else {
+          setUserLocation();
+        }
+        closeMapFilterModal();
+      };
+    }
+    if (resetBtn) {
+      resetBtn.onclick = function() {
+        filters.status = 'open';
+        filters.severity = 'all';
+        filters.days = 30;
+        filters.issueTypes = [];
+        filters.limit = 50;
+        // Reset selects if present
+        const statusSelect = document.getElementById('filter-status');
+        const severitySelect = document.getElementById('filter-severity');
+        const daysSelect = document.getElementById('filter-days');
+        const radiusSelect = document.getElementById('filter-radius');
+        if (statusSelect) statusSelect.value = 'open';
+        if (severitySelect) severitySelect.value = 'all';
+        if (daysSelect) daysSelect.value = '30';
+        if (radiusSelect) radiusSelect.value = '10';
+        // Reset custom issue types multiselect if needed
+        if (window.resetMapIssueTypes) window.resetMapIssueTypes();
+        // Refresh map markers
+        if (lastFetchRegion) {
+          fetchIssuesInRegion(lastFetchRegion, true);
+        } else {
+          setUserLocation();
+        }
+        closeMapFilterModal();
+      };
+    }
+
     // Show modal with animation
     setTimeout(() => {
-        const modal = document.getElementById('filter-modal');
-        if (modal) {
-            modal.classList.add('show');
-            console.log('✅ Modal displayed');
-        }
+      const modal = document.getElementById('filter-modal-map');
+      if (modal) {
+        modal.classList.add('show');
+      }
     }, 10);
 }
 
-// Add CSS styles for filter modal (if not already added by feed.js)
-function addFilterModalStyles() {
-    if (document.getElementById('filter-modal-styles')) return; // Already added
-    
-    const styles = `
-    <style id="filter-modal-styles">
-    .filter-modal-overlay {
-        position: fixed;
-        top: 0;
-        left: 0;
-        right: 0;
-        bottom: 0;
-        background: rgba(0, 0, 0, 0.5);
-        display: flex;
-        align-items: center;
-        justify-content: center;
-        z-index: 10000;
-        opacity: 0;
-        transition: opacity 0.3s ease;
-    }
-    
-    .filter-modal-overlay.show {
-        opacity: 1;
-    }
-    
-    .filter-modal-container {
-        background: white;
-        width: 90%;
-        max-width: 500px;
-        max-height: 90vh;
-        border-radius: 12px;
-        overflow: hidden;
-        transform: translateY(20px);
-        transition: transform 0.3s ease;
-        box-shadow: 0 10px 30px rgba(0, 0, 0, 0.3);
-    }
-    
-    .filter-modal-overlay.show .filter-modal-container {
-        transform: translateY(0);
-    }
-    
-    .filter-header {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 20px;
-        border-bottom: 1px solid #e0e0e0;
-        background: #f8f9fa;
-    }
-    
-    .filter-title {
-        margin: 0;
-        font-size: 1.4rem;
-        font-weight: 600;
-        color: #333;
-    }
-    
-    .filter-close-btn {
-        background: none;
-        border: none;
-        font-size: 1.8rem;
-        color: #666;
-        cursor: pointer;
-        padding: 5px;
-        border-radius: 50%;
-        transition: background-color 0.2s;
-    }
-    
-    .filter-close-btn:hover {
-        background-color: #e0e0e0;
-    }
-    
-    .filter-content {
-        padding: 20px;
-        max-height: calc(90vh - 160px);
-        overflow-y: auto;
-    }
-    
-    .filter-section {
-        margin-bottom: 24px;
-    }
-    
-    .filter-section-title {
-        display: block;
-        font-weight: 600;
-        color: #333;
-        margin-bottom: 12px;
-        font-size: 1rem;
-    }
-    
-    .filter-options {
-        display: flex;
-        flex-wrap: wrap;
-        gap: 8px;
-    }
-    
-    .filter-option {
-        padding: 10px 16px;
-        border: 2px solid #e0e0e0;
-        background: white;
-        border-radius: 8px;
-        cursor: pointer;
-        font-size: 0.9rem;
-        transition: all 0.2s;
-    }
-    
-    .filter-option:hover {
-        border-color: #007bff;
-        background-color: #f8f9fa;
-    }
-    
-    .filter-option.active {
-        background-color: #007bff;
-        border-color: #007bff;
-        color: white;
-    }
-    
-    .filter-dropdown-container {
-        position: relative;
-    }
-    
-    .filter-multiselect {
-        position: relative;
-        width: 100%;
-    }
-    
-    .multiselect-display {
-        display: flex;
-        justify-content: space-between;
-        align-items: center;
-        padding: 12px 16px;
-        border: 2px solid #e0e0e0;
-        border-radius: 8px;
-        background: white;
-        cursor: pointer;
-        transition: border-color 0.2s;
-    }
-    
-    .multiselect-display:hover {
-        border-color: #007bff;
-    }
-    
-    .dropdown-arrow {
-        color: #666;
-        transition: transform 0.2s;
-    }
-    
-    .multiselect-dropdown {
-        position: absolute;
-        top: 100%;
-        left: 0;
-        right: 0;
-        background: white;
-        border: 2px solid #e0e0e0;
-        border-top: none;
-        border-radius: 0 0 8px 8px;
-        z-index: 1000;
-        max-height: 200px;
-        overflow-y: auto;
-        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
-    }
-    
-    .multiselect-search input {
-        width: 100%;
-        padding: 12px;
-        border: none;
-        border-bottom: 1px solid #e0e0e0;
-        outline: none;
-        font-size: 0.9rem;
-    }
-    
-    .multiselect-options {
-        max-height: 150px;
-        overflow-y: auto;
-    }
-    
-    .multiselect-option {
-        display: flex;
-        align-items: center;
-        padding: 12px;
-        cursor: pointer;
-        transition: background-color 0.2s;
-    }
-    
-    .multiselect-option:hover {
-        background-color: #f8f9fa;
-    }
-    
-    .multiselect-option input {
-        margin-right: 10px;
-    }
-    
-    .filter-footer {
-        display: flex;
-        gap: 12px;
-        padding: 20px;
-        border-top: 1px solid #e0e0e0;
-        background: #f8f9fa;
-    }
-    
-    .filter-reset-btn, .filter-apply-btn {
-        flex: 1;
-        padding: 12px 24px;
-        border: none;
-        border-radius: 8px;
-        font-size: 1rem;
-        font-weight: 600;
-        cursor: pointer;
-        transition: all 0.2s;
-    }
-    
-    .filter-reset-btn {
-        background: #6c757d;
-        color: white;
-    }
-    
-    .filter-reset-btn:hover {
-        background: #5a6268;
-    }
-    
-    .filter-apply-btn {
-        background: #007bff;
-        color: white;
-    }
-    
-    .filter-apply-btn:hover {
-        background: #0056b3;
-    }
-    
-    @media (max-width: 768px) {
-        .filter-modal-container {
-            width: 95%;
-            margin: 10px;
-        }
-        
-        .filter-content {
-            padding: 16px;
-        }
-        
-        .filter-header {
-            padding: 16px;
-        }
-        
-        .filter-footer {
-            padding: 16px;
-        }
-    }
-    </style>
-    `;
-    
-    document.head.insertAdjacentHTML('beforeend', styles);
-}
-
-// Setup event listeners for filter options
-function setupMapFilterEventListeners() {
-    const filterOptions = document.querySelectorAll('.filter-option');
-    filterOptions.forEach(option => {
-        option.addEventListener('click', (e) => {
-            const filterType = e.target.dataset.filter;
-            const value = e.target.dataset.value;
-            
-            // Remove active from siblings
-            const siblings = e.target.parentElement.querySelectorAll('.filter-option');
-            siblings.forEach(s => s.classList.remove('active'));
-            
-            // Add active to clicked option
-            e.target.classList.add('active');
-            
-            console.log(`Filter changed: ${filterType} = ${value}`);
-        });
-    });
-}
-
-// Update filter display with current values
-function updateMapFilterDisplay() {
-    // Set status
-    const statusBtn = document.querySelector(`[data-filter="status"][data-value="${filters.status}"]`);
-    if (statusBtn) {
-        statusBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
-        statusBtn.classList.add('active');
-    }
-    
-    // Set severity
-    const severityBtn = document.querySelector(`[data-filter="severity"][data-value="${filters.severity}"]`);
-    if (severityBtn) {
-        severityBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
-        severityBtn.classList.add('active');
-    }
-    
-    // Set days
-    const daysBtn = document.querySelector(`[data-filter="days"][data-value="${filters.days}"]`);
-    if (daysBtn) {
-        daysBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
-        daysBtn.classList.add('active');
-    }
-    
-    // Set radius
-    const radiusBtn = document.querySelector(`[data-filter="radiusKm"][data-value="${filters.radiusKm}"]`);
-    if (radiusBtn) {
-        radiusBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
-        radiusBtn.classList.add('active');
-    }
-    
-    // Set limit
-    const limitBtn = document.querySelector(`[data-filter="limit"][data-value="${filters.limit}"]`);
-    if (limitBtn) {
-        limitBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
-        limitBtn.classList.add('active');
-    }
-    
-    // Set myIssues if it exists in filters
-    if (filters.myIssues !== undefined) {
-        const myIssuesBtn = document.querySelector(`[data-filter="myIssues"][data-value="${filters.myIssues}"]`);
-        if (myIssuesBtn) {
-            myIssuesBtn.parentElement.querySelectorAll('.filter-option').forEach(btn => btn.classList.remove('active'));
-            myIssuesBtn.classList.add('active');
-        }
-    }
-    
-    // Set issue types checkboxes
-    if (filters.issueTypes && Array.isArray(filters.issueTypes)) {
-        filters.issueTypes.forEach(type => {
-            const checkbox = document.querySelector(`input[value="${type}"]`);
-            if (checkbox) checkbox.checked = true;
-        });
-    }
-    
-    updateIssueTypesDisplayMap();
-}
-
-// Toggle issue types dropdown
-function toggleIssueTypes() {
-    const dropdown = document.getElementById('issue-types-dropdown');
-    if (dropdown) {
-        dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
-    }
-}
-
-// Filter issue types based on search
-function filterIssueTypes() {
-    const search = document.getElementById('issue-types-search').value.toLowerCase();
-    const options = document.querySelectorAll('#issue-types-options .multiselect-option');
-    
-    options.forEach(option => {
-        const text = option.textContent.toLowerCase();
-        option.style.display = text.includes(search) ? 'block' : 'none';
-    });
-}
-
-// Update issue types display text
-function updateIssueTypesDisplayMap() {
-    const checkboxes = document.querySelectorAll('#issue-types-options input[type="checkbox"]:checked');
-    const display = document.getElementById('issue-types-text');
-    
-    if (display) {
-        if (checkboxes.length === 0) {
-            display.textContent = 'Select issue types...';
-        } else {
-            const types = Array.from(checkboxes).map(cb => cb.parentElement.textContent.trim());
-            display.textContent = `${types.length} type${types.length > 1 ? 's' : ''} selected`;
-        }
-    }
-}
-
-// Listen for issue type changes
-document.addEventListener('change', (e) => {
-    if (e.target.matches('#issue-types-options input[type="checkbox"]')) {
-        updateIssueTypesDisplayMap();
-    }
-});
-
-// Close filter modal
-function closeFilterModal() {
-    const modal = document.getElementById('filter-modal');
+function closeMapFilterModal() {
+    const modal = document.getElementById('filter-modal-map');
     if (modal) {
         modal.classList.remove('show');
         setTimeout(() => modal.remove(), 300);
     }
-    console.log('✅ Filter modal closed');
 }
 
-// Reset filters to default
-function resetMapFilters() {
-    // Initialize with default values
-    filters.status = 'all';
-    filters.severity = 'all';
-    filters.days = 30;
-    filters.radiusKm = 5;
-    filters.limit = 20;
-    filters.issueTypes = [];
-    if (filters.myIssues !== undefined) {
-        filters.myIssues = 'all';
-    }
-    
-    updateMapFilterDisplay();
-    console.log('✅ Filters reset to default');
-}
+// Make functions global
+window.openFilterModal = openFilterModal;
+window.closeMapFilterModal = closeMapFilterModal;
+// ... (add other filter functions to window)
 
-// Apply selected filters
-function applyMapFilters() {
-    // Get all selected filter values
-    const statusBtn = document.querySelector('.filter-option[data-filter="status"].active');
-    if (statusBtn) filters.status = statusBtn.dataset.value;
-    
-    const severityBtn = document.querySelector('.filter-option[data-filter="severity"].active');
-    if (severityBtn) filters.severity = severityBtn.dataset.value;
-    
-    const daysBtn = document.querySelector('.filter-option[data-filter="days"].active');
-    if (daysBtn) filters.days = parseInt(daysBtn.dataset.value);
-    
-    const radiusBtn = document.querySelector('.filter-option[data-filter="radiusKm"].active');
-    if (radiusBtn) filters.radiusKm = parseInt(radiusBtn.dataset.value);
-    
-    const limitBtn = document.querySelector('.filter-option[data-filter="limit"].active');
-    if (limitBtn) filters.limit = parseInt(limitBtn.dataset.value);
-    
-    const myIssuesBtn = document.querySelector('.filter-option[data-filter="myIssues"].active');
-    if (myIssuesBtn) filters.myIssues = myIssuesBtn.dataset.value;
 
-    // Get selected issue types
-    const selectedTypes = Array.from(document.querySelectorAll('#issue-types-options input[type="checkbox"]:checked'))
-        .map(cb => cb.value);
-    filters.issueTypes = selectedTypes;
-
-    console.log('🎯 Applied filters:', filters);
-    
-    // Close modal and fetch issues with new filters
-    closeFilterModal();
-    
-    // Fetch new issues with filters
-    fetchIssues();
-    
-    // Update filter summary
-    updateFilterSummary();
-    
-    showToast('✅ Filters applied successfully!', 'success');
-}
-
-// Make functions global for onclick handlers
-window.closeFilterModal = closeFilterModal;
-window.resetMapFilters = resetMapFilters;
-window.applyMapFilters = applyMapFilters;
-window.toggleIssueTypes = toggleIssueTypes;
-window.filterIssueTypes = filterIssueTypes;
-
-// Update filter summary
+// Utility functions
 function updateFilterSummary(count) {
   const summary = document.getElementById('filter-summary');
   if (summary) {
-    summary.textContent = `${count} issues found`;
+    summary.textContent = `${count || 0} issues found`;
   }
 }
 
-// Show loading state
 function showLoading(show) {
   const loadingEl = document.getElementById('loading-state');
   if (loadingEl) {
@@ -1029,16 +1154,13 @@ function showLoading(show) {
   }
 }
 
-// Show no location state
 function showNoLocationState() {
-  const container = document.getElementById('map');
   const noLocationEl = document.getElementById('no-location-state');
   if (noLocationEl) {
     noLocationEl.style.display = 'flex';
   }
 }
 
-// Show empty state
 function showEmptyState() {
   const emptyState = document.getElementById('empty-state');
   if (emptyState) {
@@ -1046,14 +1168,47 @@ function showEmptyState() {
   }
 }
 
+// Make functions global for onclick handlers
+window.closeModal = closeModal;
+window.openFilterModal = openFilterModal;
+
 // Initialize page
 document.addEventListener('DOMContentLoaded', () => {
-  console.log("Map page loaded");
-  
+        // Feed-style dropdown logic for status, severity, days
+        function setupDropdown(selectorId, displayId, dropdownId, optionsId, textId, filterKey, defaultTextMap) {
+          const display = document.getElementById(displayId);
+          const dropdown = document.getElementById(dropdownId);
+          const options = document.getElementById(optionsId);
+          const text = document.getElementById(textId);
+          if (display && dropdown) {
+            display.addEventListener('click', () => {
+              dropdown.style.display = dropdown.style.display === 'none' ? 'block' : 'none';
+            });
+          }
+          if (options && text) {
+            options.addEventListener('change', (e) => {
+              if (e.target.matches('input[type="radio"]')) {
+                filters[filterKey] = e.target.value;
+                text.textContent = defaultTextMap[e.target.value] || e.target.value;
+                dropdown.style.display = 'none';
+              }
+            });
+          }
+        }
+
+        setupDropdown('status-selector-map', 'status-display-map', 'status-dropdown-map', 'status-options-map', 'status-text-map', 'status', {
+          all: 'All', open: 'Open', closed: 'Closed'
+        });
+        setupDropdown('severity-selector-map', 'severity-display-map', 'severity-dropdown-map', 'severity-options-map', 'severity-text-map', 'severity', {
+          all: 'All', high: 'High (8+)', medium: 'Medium (4-7)', low: 'Low (0-3)'
+        });
+        setupDropdown('days-selector-map', 'days-display-map', 'days-dropdown-map', 'days-options-map', 'days-text-map', 'days', {
+          '7': 'Last 7 days', '30': 'Last 30 days', '90': 'Last 90 days', '365': 'Last year'
+        });
+  console.log("Map page loaded - Google Maps version");
+
   initThemeToggle();
   initMobileMenu();
-
-  // Initialize auth listener
   initializeAuthListener();
 
   // Wait for authentication
@@ -1068,43 +1223,122 @@ document.addEventListener('DOMContentLoaded', () => {
       currentUser = user;
       currentToken = await getIdToken(user);
       console.log("User authenticated, loading profile and initializing map");
-      
+
       // Load user profile first
       await loadUserProfile();
-      
-      // Initialize map
-      initMap();
+
+      // Initialize Google Maps (requires Google Maps API to be loaded first)
+      if (typeof google !== 'undefined' && google.maps) {
+        initMap();
+      } else {
+        console.error('Google Maps API not loaded');
+        showToast('Error loading map. Please refresh the page.', 'error');
+      }
 
       // Add event listeners
       const refreshBtn = document.getElementById('refresh-btn');
       const filterBtn = document.getElementById('filter-btn');
       const myLocationBtn = document.getElementById('my-location-btn');
       const closeModalBtn = document.getElementById('close-modal');
-      const closeFilterBtn = document.getElementById('close-filter-modal');
-      const applyFilterBtn = document.getElementById('apply-filters');
-      const retryLocationBtn = document.getElementById('retry-location-btn');
 
       if (refreshBtn) refreshBtn.addEventListener('click', refreshMap);
-      if (filterBtn) filterBtn.addEventListener('click', openFilterModal);
-      if (myLocationBtn) myLocationBtn.addEventListener('click', getUserLocation);
+      if (myLocationBtn) myLocationBtn.addEventListener('click', setUserLocation);
       if (closeModalBtn) closeModalBtn.addEventListener('click', closeModal);
-      if (closeFilterBtn) closeFilterBtn.addEventListener('click', closeFilterModal);
-      if (applyFilterBtn) applyFilterBtn.addEventListener('click', applyFilters);
-      if (retryLocationBtn) retryLocationBtn.addEventListener('click', getUserLocation);
 
-      // Close modals on background click
+      // Multiselect dropdown logic for issue types
+      const issueTypesDisplay = document.getElementById('issue-types-display-map');
+      const issueTypesDropdown = document.getElementById('issue-types-dropdown-map');
+      const issueTypesSearch = document.getElementById('issue-types-search-map');
+      const issueTypesOptions = document.getElementById('issue-types-options-map');
+      const issueTypesText = document.getElementById('issue-types-text-map');
+
+      if (issueTypesDisplay && issueTypesDropdown) {
+        issueTypesDisplay.addEventListener('click', () => {
+          issueTypesDropdown.style.display = issueTypesDropdown.style.display === 'none' ? 'block' : 'none';
+        });
+      }
+
+      if (issueTypesSearch && issueTypesOptions) {
+        issueTypesSearch.addEventListener('keyup', () => {
+          const search = issueTypesSearch.value.toLowerCase();
+          const options = issueTypesOptions.querySelectorAll('.multiselect-option');
+          options.forEach(option => {
+            const text = option.textContent.toLowerCase();
+            option.style.display = text.includes(search) ? 'block' : 'none';
+          });
+        });
+      }
+
+      function updateIssueTypesDisplayMap() {
+        const checked = issueTypesOptions.querySelectorAll('input[type="checkbox"]:checked');
+        if (checked.length === 0) {
+          issueTypesText.textContent = 'Select issue types...';
+        } else {
+          issueTypesText.textContent = `${checked.length} type${checked.length > 1 ? 's' : ''} selected`;
+        }
+      }
+
+      if (issueTypesOptions) {
+        issueTypesOptions.addEventListener('change', (e) => {
+          if (e.target.matches('input[type="checkbox"]')) {
+            updateIssueTypesDisplayMap();
+          }
+        });
+      }
+
+      // Fix: Make filter button open the correct modal
+      if (filterBtn) {
+        filterBtn.addEventListener('click', () => {
+          const filterModal = document.getElementById('filter-modal');
+          if (filterModal) {
+            filterModal.style.display = 'flex';
+          }
+        });
+      }
+
+      // Close filter modal on close button
+      const closeFilterModalBtn = document.getElementById('close-filter-modal');
+      if (closeFilterModalBtn) {
+        closeFilterModalBtn.addEventListener('click', () => {
+          const filterModal = document.getElementById('filter-modal');
+          if (filterModal) filterModal.style.display = 'none';
+        });
+      }
+
+      // Apply filters logic
+      const applyFiltersBtn = document.getElementById('apply-filters');
+      if (applyFiltersBtn) {
+        applyFiltersBtn.addEventListener('click', () => {
+          // Read filter values from dropdowns
+          const checkedTypes = issueTypesOptions ? Array.from(issueTypesOptions.querySelectorAll('input[type="checkbox"]:checked')).map(cb => cb.value) : [];
+          // Status
+          const statusRadio = document.querySelector('#status-options-map input[type="radio"]:checked');
+          filters.status = statusRadio ? statusRadio.value : 'open';
+          // Severity
+          const severityRadio = document.querySelector('#severity-options-map input[type="radio"]:checked');
+          filters.severity = severityRadio ? severityRadio.value : 'all';
+          // Days
+          const daysRadio = document.querySelector('#days-options-map input[type="radio"]:checked');
+          filters.days = daysRadio ? parseInt(daysRadio.value) : 30;
+          // Issue Types
+          filters.issueTypes = checkedTypes;
+          // Force refresh from backend with new filters
+          if (lastFetchRegion) {
+            fetchIssuesInRegion(lastFetchRegion, true);
+          } else {
+            setUserLocation();
+          }
+          // Close modal
+          const filterModal = document.getElementById('filter-modal');
+          if (filterModal) filterModal.style.display = 'none';
+        });
+      }
+
+      // Close modal on background click
       const issueModal = document.getElementById('issue-modal');
-      const filterModal = document.getElementById('filter-modal');
-      
       if (issueModal) {
         issueModal.addEventListener('click', (e) => {
           if (e.target === issueModal) closeModal();
-        });
-      }
-      
-      if (filterModal) {
-        filterModal.addEventListener('click', (e) => {
-          if (e.target === filterModal) closeFilterModal();
         });
       }
 
@@ -1114,3 +1348,404 @@ document.addEventListener('DOMContentLoaded', () => {
     }
   });
 });
+
+// Global function for Google Maps API callback
+window.initMap = initMap;
+
+// Global slider functions for fix images
+window.mapChangeFixImage = function(direction) {
+  if (!window.mapFixImages || window.mapFixImages.length <= 1) return;
+  
+  window.mapCurrentFixImageIndex = (window.mapCurrentFixImageIndex + direction + window.mapFixImages.length) % window.mapFixImages.length;
+  
+  const img = document.getElementById('map-fix-slider-image');
+  const counter = document.getElementById('map-fix-slider-current');
+  const dots = document.querySelectorAll('.fix-image-slider .slider-dot');
+  
+  if (img) img.src = window.mapFixImages[window.mapCurrentFixImageIndex];
+  if (counter) counter.textContent = window.mapCurrentFixImageIndex + 1;
+  
+  dots.forEach((dot, idx) => {
+    dot.style.background = idx === window.mapCurrentFixImageIndex ? 'white' : 'rgba(255,255,255,0.5)';
+  });
+};
+
+window.mapSetFixImage = function(index) {
+  if (!window.mapFixImages || index < 0 || index >= window.mapFixImages.length) return;
+  
+  window.mapCurrentFixImageIndex = index;
+  
+  const img = document.getElementById('map-fix-slider-image');
+  const counter = document.getElementById('map-fix-slider-current');
+  const dots = document.querySelectorAll('.fix-image-slider .slider-dot');
+  
+  if (img) img.src = window.mapFixImages[window.mapCurrentFixImageIndex];
+  if (counter) counter.textContent = window.mapCurrentFixImageIndex + 1;
+  
+  dots.forEach((dot, idx) => {
+    dot.style.background = idx === window.mapCurrentFixImageIndex ? 'white' : 'rgba(255,255,255,0.5)';
+  });
+};
+
+// Fix Upload Modal Functions
+let currentFixIssue = null;
+let fixPhotos = [];
+
+function openFixUploadModal(issue) {
+  currentFixIssue = issue;
+  fixPhotos = [];
+  
+  const modal = document.getElementById('fix-upload-modal');
+  const preview = document.getElementById('fix-photos-preview');
+  const description = document.getElementById('fix-description-input');
+  const submitBtn = document.getElementById('fix-submit-btn');
+  
+  // Reset form
+  preview.innerHTML = '';
+  description.value = '';
+  submitBtn.disabled = true;
+  
+  // Show modal
+  modal.classList.add('open');
+  
+  // Setup file upload handlers
+  setupFixUploadHandlers();
+}
+
+function closeFixUploadModal() {
+  const modal = document.getElementById('fix-upload-modal');
+  modal.classList.remove('open');
+  currentFixIssue = null;
+  fixPhotos = [];
+}
+
+function setupFixUploadHandlers() {
+  const fileInput = document.getElementById('fix-photo-input');
+  const cameraInput = document.getElementById('fix-camera-input');
+  const fileUploadBtn = document.getElementById('file-upload-btn');
+  const cameraUploadBtn = document.getElementById('camera-upload-btn');
+  const uploadArea = document.getElementById('fix-photos-upload');
+  const description = document.getElementById('fix-description-input');
+  const submitBtn = document.getElementById('fix-submit-btn');
+  
+  // File upload button
+  fileUploadBtn.onclick = () => fileInput.click();
+  
+  // Camera button
+  cameraUploadBtn.onclick = () => cameraInput.click();
+  
+  // File input change
+  fileInput.onchange = (e) => handleFixPhotoSelect(e.target.files);
+  cameraInput.onchange = (e) => handleFixPhotoSelect(e.target.files);
+  
+  // Drag and drop
+  uploadArea.ondragover = (e) => {
+    e.preventDefault();
+    uploadArea.classList.add('drag-over');
+  };
+  
+  uploadArea.ondragleave = () => {
+    uploadArea.classList.remove('drag-over');
+  };
+  
+  uploadArea.ondrop = (e) => {
+    e.preventDefault();
+    uploadArea.classList.remove('drag-over');
+    handleFixPhotoSelect(e.dataTransfer.files);
+  };
+  
+  // Description change
+  description.oninput = validateFixForm;
+  
+  // Submit button
+  submitBtn.onclick = submitFix;
+}
+
+function handleFixPhotoSelect(files) {
+  const maxPhotos = 5;
+  const remainingSlots = maxPhotos - fixPhotos.length;
+  
+  if (remainingSlots <= 0) {
+    showToast('Maximum 5 photos allowed', 'error');
+    return;
+  }
+  
+  const filesToAdd = Array.from(files).slice(0, remainingSlots);
+  
+  filesToAdd.forEach(file => {
+    if (!file.type.startsWith('image/')) {
+      showToast('Only image files are allowed', 'error');
+      return;
+    }
+    
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      fixPhotos.push({
+        file: file,
+        url: e.target.result
+      });
+      renderFixPhotos();
+      validateFixForm();
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+function renderFixPhotos() {
+  const preview = document.getElementById('fix-photos-preview');
+  preview.innerHTML = fixPhotos.map((photo, index) => `
+    <div class="fix-photo-item">
+      <img src="${photo.url}" alt="Fix photo ${index + 1}">
+      <button class="fix-photo-remove" onclick="removeFixPhoto(${index})">&times;</button>
+    </div>
+  `).join('');
+}
+
+function removeFixPhoto(index) {
+  fixPhotos.splice(index, 1);
+  renderFixPhotos();
+  validateFixForm();
+}
+
+function validateFixForm() {
+  const description = document.getElementById('fix-description-input');
+  const submitBtn = document.getElementById('fix-submit-btn');
+  
+  const isValid = fixPhotos.length > 0 && description.value.trim().length > 0;
+  submitBtn.disabled = !isValid;
+}
+
+async function submitFix() {
+  if (!currentFixIssue || fixPhotos.length === 0) {
+    showToast('Please add at least one photo', 'error');
+    return;
+  }
+  
+  const description = document.getElementById('fix-description-input').value.trim();
+  if (!description) {
+    showToast('Please provide a description', 'error');
+    return;
+  }
+  
+  // Show progress modal
+  const progressModal = document.getElementById('upload-progress-modal');
+  const progressText = document.getElementById('upload-progress-text');
+  const progressSubtext = document.getElementById('upload-progress-subtext');
+  
+  progressModal.classList.add('open');
+  progressText.textContent = 'Uploading fix...';
+  progressSubtext.textContent = 'Preparing images';
+  
+  try {
+    const idToken = await getIdToken(currentUser, true);
+    const formData = new FormData();
+    
+    // Add photos
+    progressSubtext.textContent = `Uploading ${fixPhotos.length} photo(s)`;
+    fixPhotos.forEach((photo, index) => {
+      formData.append('files', photo.file);
+    });
+    
+    // Add description
+    formData.append('description', description);
+    
+    progressSubtext.textContent = 'Submitting fix...';
+    
+    const response = await fetch(`${API_BASE}/issues/${currentFixIssue.issue_id}/submit-fix`, {
+      method: 'POST',
+      headers: {
+        'Authorization': `Bearer ${idToken}`
+      },
+      body: formData
+    });
+    
+    progressModal.classList.remove('open');
+    
+    if (!response.ok) {
+      const error = await response.json();
+      throw new Error(error.detail || 'Failed to submit fix');
+    }
+    
+    const result = await response.json();
+    
+    // Close modals
+    closeFixUploadModal();
+    closeModal();
+    
+    // Show detailed verification results in modal
+    showFixResultModal(result);
+    
+    // Refresh map
+    if (lastFetchRegion) {
+      fetchIssuesInRegion(lastFetchRegion, true);
+    }
+    
+  } catch (error) {
+    progressModal.classList.remove('open');
+    console.error('Error submitting fix:', error);
+    showToast(`❌ ${error.message}`, 'error');
+  }
+}
+
+// Fix Result Modal Functions
+function showFixResultModal(result) {
+  const modal = document.getElementById('fix-result-modal');
+  const content = document.getElementById('fix-result-content');
+  
+  if (!modal || !content) return;
+  
+  let outcomeMessage = '';
+  let outcomeIcon = '';
+  let outcomeColor = '';
+  let outcomeBackground = '';
+  
+  if (result.overall_outcome === 'closed') {
+    outcomeIcon = '✅';
+    outcomeMessage = 'Fix Verified - Issue Fully Resolved!';
+    outcomeColor = '#4CAF79';
+    outcomeBackground = 'rgba(76, 175, 121, 0.1)';
+  } else if (result.overall_outcome === 'partially_closed') {
+    outcomeIcon = '⚠️';
+    outcomeMessage = 'Fix Submitted - Issue Partially Resolved';
+    outcomeColor = '#FF9800';
+    outcomeBackground = 'rgba(255, 152, 0, 0.1)';
+  } else if (result.overall_outcome === 'rejected') {
+    outcomeIcon = '❌';
+    outcomeMessage = 'Fix Rejected - Issue Not Adequately Addressed';
+    outcomeColor = '#F44336';
+    outcomeBackground = 'rgba(244, 67, 54, 0.1)';
+  } else {
+    outcomeIcon = '✅';
+    outcomeMessage = 'Fix Submitted Successfully!';
+    outcomeColor = '#4CAF79';
+    outcomeBackground = 'rgba(76, 175, 121, 0.1)';
+  }
+  
+  let html = `
+    <div style="text-align: center; margin-bottom: 24px;">
+      <div style="font-size: 64px; margin-bottom: 16px;">${outcomeIcon}</div>
+      <h2 style="margin: 0 0 8px 0; color: ${outcomeColor};">${outcomeMessage}</h2>
+    </div>
+    
+    <div style="background: ${outcomeBackground}; border-left: 4px solid ${outcomeColor}; padding: 20px; border-radius: 8px; margin-bottom: 24px;">
+      <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+  `;
+  
+  if (result.success_rate !== undefined) {
+    html += `
+      <div>
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #666; font-weight: 600;">Success Rate</p>
+        <p style="margin: 0; font-size: 24px; font-weight: 700; color: ${outcomeColor};">${Math.round(result.success_rate * 100)}%</p>
+      </div>
+    `;
+  }
+  
+  if (result.co2_saved !== undefined && result.co2_saved > 0) {
+    html += `
+      <div>
+        <p style="margin: 0 0 8px 0; font-size: 13px; color: #666; font-weight: 600;">CO₂ Saved</p>
+        <p style="margin: 0; font-size: 24px; font-weight: 700; color: ${outcomeColor};">${Math.round(result.co2_saved)} kg</p>
+      </div>
+    `;
+  }
+  
+  html += `
+      </div>
+    </div>
+  `;
+  
+  // Show per-issue results if available
+  if (result.per_issue_results && result.per_issue_results.length > 0) {
+    html += `
+      <div style="margin-top: 24px;">
+        <h3 style="margin: 0 0 16px 0; font-size: 18px;">Detailed Verification Results</h3>
+    `;
+    
+    result.per_issue_results.forEach((issue, index) => {
+      const fixStatusColor = issue.fixed === 'yes' ? '#4CAF79' : issue.fixed === 'partial' ? '#FF9800' : '#F44336';
+      const fixStatusText = issue.fixed === 'yes' ? 'FIXED' : issue.fixed === 'partial' ? 'PARTIAL' : 'NOT FIXED';
+      
+      html += `
+        <div style="background: white; border: 1px solid #e0e0e0; border-radius: 8px; padding: 16px; margin-bottom: 12px;">
+          <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px;">
+            <span style="font-weight: 700; font-size: 15px;">${getFeedIssueDisplayName(issue.issue_type)}</span>
+            <span style="background: ${fixStatusColor}; color: white; padding: 4px 12px; border-radius: 12px; font-size: 11px; font-weight: 700;">${fixStatusText}</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 8px;">
+            <div>
+              <span style="font-size: 13px; color: #666;">Fix Confidence:</span>
+              <span style="font-size: 13px; font-weight: 600; margin-left: 8px;">${Math.round(issue.confidence * 100)}%</span>
+            </div>
+            <div>
+              <span style="font-size: 13px; color: #666;">Original Confidence:</span>
+              <span style="font-size: 13px; font-weight: 600; margin-left: 8px;">${Math.round(issue.original_confidence * 100)}%</span>
+            </div>
+          </div>
+          ${issue.notes ? `
+            <div style="margin-top: 12px; padding-top: 12px; border-top: 1px solid #e0e0e0;">
+              <p style="font-size: 13px; color: #666; margin: 0 0 4px 0; font-weight: 600;">Notes:</p>
+              <p style="font-size: 13px; color: #333; margin: 0; line-height: 1.5;">${issue.notes}</p>
+            </div>
+          ` : ''}
+        </div>
+      `;
+    });
+    
+    html += `</div>`;
+  }
+  
+  // Action buttons
+  html += `
+    <div style="margin-top: 32px; display: flex; gap: 12px; justify-content: center;">
+  `;
+  
+  if (result.overall_outcome === 'rejected') {
+    html += `
+      <button onclick="retryFixUpload()" style="flex: 1; padding: 14px 24px; background: ${outcomeColor}; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 15px;">
+        Try Again
+      </button>
+    `;
+  }
+  
+  html += `
+      <button onclick="closeFixResultModal(); closeModal();" style="flex: 1; padding: 14px 24px; background: #6c757d; color: white; border: none; border-radius: 8px; font-weight: 600; cursor: pointer; font-size: 15px;">
+        ${result.overall_outcome === 'rejected' ? 'Cancel' : 'Close'}
+      </button>
+    </div>
+  `;
+  
+  content.innerHTML = html;
+  
+  // Show modal
+  modal.style.display = 'flex';
+  modal.style.opacity = '1';
+  modal.style.pointerEvents = 'auto';
+  modal.classList.add('open');
+}
+
+function closeFixResultModal() {
+  const modal = document.getElementById('fix-result-modal');
+  if (modal) {
+    modal.classList.remove('open');
+    modal.style.opacity = '0';
+    modal.style.pointerEvents = 'none';
+    setTimeout(() => {
+      if (!modal.classList.contains('open')) {
+        modal.style.display = 'none';
+      }
+    }, 300);
+  }
+}
+
+function retryFixUpload() {
+  closeFixResultModal();
+  // Re-open the fix upload modal with the same issue
+  if (currentFixIssue) {
+    openFixUploadModal(currentFixIssue);
+  }
+}
+
+// Make functions global
+window.closeFixResultModal = closeFixResultModal;
+window.retryFixUpload = retryFixUpload;
+// ...existing code...

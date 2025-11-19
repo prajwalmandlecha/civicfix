@@ -125,6 +125,7 @@ async def get_user_stats_firebase(user_id: str, user: dict = Depends(get_current
             "issuesReported": issues_reported,
             "issuesResolved": issues_resolved,
             "co2Saved": round(co2_saved, 2),
+            "userType": user_type,
             "badges": [],
             "source": "firebase",
         }

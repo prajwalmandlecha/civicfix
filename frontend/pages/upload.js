@@ -10,13 +10,28 @@ let uploadedImage = null;
 let userLocation = null;
 let detectedIssues = [];
 
-// Issue types mapping
+// Issue types mapping - matches mobile app
 const ISSUE_TYPES = {
-  'ROAD_POTHOLE': 'Pothole',
-  'WASTE_BULKY_DUMP': 'Garbage/Waste',
-  'STREETLIGHT_OUTAGE': 'Streetlight Outage',
   'DRAIN_BLOCKAGE': 'Drain Blockage',
-  'ILLEGAL_CONSTRUCTION_DEBRIS': 'Construction Debris'
+  'FALLEN_TREE': 'Fallen Tree',
+  'FLOODING_SURFACE': 'Surface Flooding',
+  'GRAFFITI_VANDALISM': 'Graffiti Vandalism',
+  'GREENSPACE_MAINTENANCE': 'Greenspace Maintenance',
+  'ILLEGAL_CONSTRUCTION_DEBRIS': 'Illegal Construction Debris',
+  'MANHOLE_MISSING_OR_DAMAGED': 'Manhole Missing/Damaged',
+  'POWER_POLE_LINE_DAMAGE': 'Power Pole/Line Damage',
+  'PUBLIC_INFRASTRUCTURE_DAMAGED': 'Public Infrastructure Damaged',
+  'PUBLIC_TOILET_UNSANITARY': 'Public Toilet Unsanitary',
+  'ROAD_POTHOLE': 'Road Pothole',
+  'SIDEWALK_DAMAGE': 'Sidewalk Damage',
+  'SMALL_FIRE_HAZARD': 'Small Fire Hazard',
+  'STRAY_ANIMALS': 'Stray Animals',
+  'STREETLIGHT_OUTAGE': 'Streetlight Outage',
+  'TRAFFIC_OBSTRUCTION': 'Traffic Obstruction',
+  'TRAFFIC_SIGN_DAMAGE': 'Traffic Sign Damage',
+  'WASTE_BULKY_DUMP': 'Waste Bulky Dump',
+  'WASTE_LITTER_SMALL': 'Waste Litter Small',
+  'WATER_LEAK_SURFACE': 'Water Leak Surface'
 };
 
 // Handle image selection
@@ -44,31 +59,74 @@ function displayImagePreview(file) {
     previewContainer.innerHTML = `
       <div class="image-preview">
         <img src="${e.target.result}" alt="Preview" class="preview-image">
-        <button class="remove-image-btn" id="remove-image-btn">✕</button>
+        <button type="button" class="remove-image-btn" id="remove-image-btn">✕</button>
       </div>
     `;
-    
-    uploadPlaceholder.style.display = 'none';
+    if (uploadPlaceholder) {
+      uploadPlaceholder.style.display = 'none';
+    }
     previewContainer.style.display = 'block';
 
-    // Add remove button listener
-    document.getElementById('remove-image-btn').addEventListener('click', removeImage);
+    // Add margin to upload-buttons only after image is uploaded
+    const uploadButtons = document.querySelector('.upload-buttons');
+    if (uploadButtons) {
+      uploadButtons.style.marginTop = '24px';
+    }
+
+    setTimeout(() => {
+      const removeBtn = document.getElementById('remove-image-btn');
+      if (removeBtn) {
+        removeBtn.onclick = function(event) {
+          console.log('Remove button clicked directly');
+          removeImage(event);
+        };
+      }
+    }, 10);
   };
   reader.readAsDataURL(file);
 }
 
 // Remove image
-function removeImage() {
+function removeImage(e) {
+  console.log('Remove image clicked');
+  if (e) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+  
   uploadedImage = null;
   const previewContainer = document.getElementById('image-preview-container');
   const uploadPlaceholder = document.getElementById('upload-placeholder');
   const fileInput = document.getElementById('file-input');
 
-  previewContainer.innerHTML = '';
-  previewContainer.style.display = 'none';
-  uploadPlaceholder.style.display = 'block';
-  fileInput.value = '';
-  
+  // Remove image preview and reset state
+  if (previewContainer) {
+    previewContainer.innerHTML = '';
+    previewContainer.style.display = 'none';
+    previewContainer.onclick = null; // Remove event listener
+  }
+  if (uploadPlaceholder) {
+    uploadPlaceholder.style.display = 'block';
+  }
+  if (fileInput) {
+    fileInput.value = '';
+  }
+  // Remove margin from upload-buttons when no image
+  const uploadButtons = document.querySelector('.upload-buttons');
+  if (uploadButtons) {
+    uploadButtons.style.marginTop = '0';
+  }
+
+  // Hide webcam preview if present
+  const webcamPreview = document.getElementById('webcam-preview');
+  if (webcamPreview) {
+    webcamPreview.style.display = 'none';
+    if (webcamPreview.srcObject) {
+      webcamPreview.srcObject.getTracks().forEach(track => track.stop());
+      webcamPreview.srcObject = null;
+    }
+  }
+
   checkFormValidity();
 }
 
@@ -153,19 +211,21 @@ async function handleSubmit() {
   showUploadProgress();
 
   try {
-    // Step 1: Upload image
-    updateUploadStep(0, 'Uploading image...');
+    updateUploadStatus('Uploading image to storage...');
     const formData = new FormData();
     formData.append('file', uploadedImage);
     formData.append('description', description);
-    formData.append('locationstr', userLocation.address);
+    formData.append('latitude', userLocation.latitude);
+    formData.append('longitude', userLocation.longitude);
     formData.append('is_anonymous', isAnonymous);
 
-    // Add selected issue types
+    // Add selected issue types as labels
     selectedIssueTypes.forEach(type => {
-      formData.append('issue_types', type);
+      formData.append('labels', type);
     });
 
+    updateUploadStatus('AI is analyzing image and identifying issues...');
+    
     const response = await fetch(`${API_BASE}/submit-issue`, {
       method: 'POST',
       headers: {
@@ -175,33 +235,42 @@ async function handleSubmit() {
     });
 
     if (!response.ok) {
-      throw new Error(`Upload failed: ${response.status}`);
+      const errorData = await response.text();
+      throw new Error(`Upload failed (${response.status}): ${errorData}`);
     }
 
-    // Step 2: Identifying issues
-    updateUploadStep(1, 'Identifying issues...');
     const result = await response.json();
-    console.log('Upload result:', result);
+    console.log('Backend response:', result);
 
-    // Step 3: Finalizing
-    updateUploadStep(2, 'Finalizing...');
+    updateUploadStatus('Processing complete!');
     
-    // Check if issues were detected
-    if (result.detected_issues && result.detected_issues.length > 0) {
-      detectedIssues = result.detected_issues;
-      showResultModal(result);
-    } else {
-      showToast('Issue uploaded successfully! No specific issues detected by AI.', 'success');
+    // Handle the response based on backend structure
+    if (result.no_issues_found) {
       setTimeout(() => {
-        window.location.href = '/feed.html';
-      }, 1500);
+        hideUploadProgress();
+        showToast('Issue uploaded successfully! No specific issues detected by AI.', 'success');
+        resetForm();
+      }, 500);
+    } else if (result.analysis && result.analysis.detected_issues) {
+      // Show detected issues in modal
+      detectedIssues = result.analysis.detected_issues;
+      setTimeout(() => {
+        hideUploadProgress();
+        showResultModal(result);
+      }, 500);
+    } else {
+      // Fallback for successful upload without detection
+      setTimeout(() => {
+        hideUploadProgress();
+        showToast('Issue uploaded successfully!', 'success');
+        resetForm();
+      }, 500);
     }
 
-    hideUploadProgress();
   } catch (error) {
     console.error('Error uploading issue:', error);
-    showToast(`Upload failed: ${error.message}`, 'error');
     hideUploadProgress();
+    showToast(`Upload failed: ${error.message}`, 'error');
   }
 }
 
@@ -218,16 +287,7 @@ function hideUploadProgress() {
 }
 
 // Update upload step
-function updateUploadStep(stepIndex, text) {
-  const steps = document.querySelectorAll('.progress-step');
-  steps.forEach((step, index) => {
-    if (index <= stepIndex) {
-      step.classList.add('active');
-    } else {
-      step.classList.remove('active');
-    }
-  });
-
+function updateUploadStatus(text) {
   const statusText = document.getElementById('upload-status-text');
   if (statusText) statusText.textContent = text;
 }
@@ -237,25 +297,58 @@ function showResultModal(result) {
   const modal = document.getElementById('result-modal');
   const detectedIssuesContainer = document.getElementById('detected-issues-container');
 
-  if (detectedIssuesContainer) {
-    detectedIssuesContainer.innerHTML = result.detected_issues.map(issue => `
-      <div class="detected-issue-item">
-        <strong>${issue.type || issue.name || 'Unknown'}</strong>
-        <p>Confidence: ${Math.round((issue.confidence || 0) * 100)}%</p>
-        ${issue.description ? `<p class="issue-desc">${issue.description}</p>` : ''}
+  if (detectedIssuesContainer && detectedIssues && detectedIssues.length > 0) {
+    detectedIssuesContainer.innerHTML = detectedIssues.map((issue, index) => `
+      <div class="detected-issue-card">
+        <div class="issue-card-header">
+          <div class="issue-number">${index + 1}</div>
+          <div class="issue-title">${issue.issue_type || issue.type || issue.name || 'Unknown Issue'}</div>
+        </div>
+        <div class="issue-card-body">
+          <div class="issue-metric">
+            <span class="metric-label">Confidence</span>
+            <div class="confidence-bar">
+              <div class="confidence-fill" style="width: ${Math.round((issue.confidence || 0) * 100)}%"></div>
+              <span class="confidence-value">${Math.round((issue.confidence || 0) * 100)}%</span>
+            </div>
+          </div>
+          ${issue.severity ? `
+          <div class="issue-metric">
+            <span class="metric-label">Severity</span>
+            <span class="metric-value severity-${issue.severity.toLowerCase()}">${issue.severity}</span>
+          </div>
+          ` : ''}
+          ${issue.priority_level ? `
+          <div class="issue-metric">
+            <span class="metric-label">Priority</span>
+            <span class="metric-value priority-badge">${issue.priority_level}</span>
+          </div>
+          ` : ''}
+          ${issue.description ? `
+          <div class="issue-description">
+            <span class="metric-label">Description</span>
+            <p>${issue.description}</p>
+          </div>
+          ` : ''}
+        </div>
       </div>
     `).join('');
+  } else {
+    detectedIssuesContainer.innerHTML = '<div class="no-issues"><p>✅ Issues detected and uploaded successfully!</p></div>';
   }
 
   if (modal) modal.style.display = 'flex';
 }
 
-// Close result modal and navigate to feed
+// Close result modal without navigating away
 function closeResultModal() {
   const modal = document.getElementById('result-modal');
   if (modal) modal.style.display = 'none';
-  
-  // Reset form
+  resetForm();
+}
+
+// Reset form after successful upload
+function resetForm() {
   uploadedImage = null;
   userLocation = null;
   detectedIssues = [];
@@ -263,15 +356,17 @@ function closeResultModal() {
   const fileInput = document.getElementById('file-input');
   const descriptionInput = document.getElementById('description-input');
   const anonymousCheckbox = document.getElementById('anonymous-toggle');
+  const issueTypeSelect = document.getElementById('issue-type-select');
+  const locationText = document.getElementById('location-text');
   
   if (fileInput) fileInput.value = '';
   if (descriptionInput) descriptionInput.value = '';
   if (anonymousCheckbox) anonymousCheckbox.checked = false;
+  if (issueTypeSelect) issueTypeSelect.selectedIndex = -1;
+  if (locationText) locationText.textContent = 'Location not set';
   
   removeImage();
-  
-  // Navigate to feed
-  window.location.href = '/feed.html';
+  checkFormValidity();
 }
 
 // Initialize page
@@ -281,6 +376,190 @@ document.addEventListener('DOMContentLoaded', () => {
   initThemeToggle();
   initMobileMenu();
   initializeAuthListener();
+
+  // Initialize UI elements immediately
+  const fileInput = document.getElementById('file-input');
+  const uploadArea = document.getElementById('upload-area');
+  const cameraBtn = document.querySelector('.camera-btn');
+  const galleryBtn = document.querySelector('.gallery-btn');
+  const getLocationBtn = document.getElementById('get-location-btn');
+  const submitBtn = document.getElementById('submit-btn');
+  const closeResultBtn = document.getElementById('close-result-modal');
+  const uploadAnotherBtn = document.getElementById('upload-another-btn');
+  const viewInFeedBtn = document.getElementById('view-in-feed-btn');
+  const viewIssuesBtn = document.getElementById('view-issues-btn');
+
+  if (fileInput) {
+    fileInput.addEventListener('change', handleImageSelect);
+  }
+
+  // Camera button - use webcam capture
+  if (cameraBtn) {
+    cameraBtn.addEventListener('click', async (e) => {
+      e.preventDefault();
+      try {
+        // Try to access webcam
+        const stream = await navigator.mediaDevices.getUserMedia({ video: true });
+        
+        // Create video element to show camera preview
+        const video = document.createElement('video');
+        video.srcObject = stream;
+        video.autoplay = true;
+        video.style.width = '100%';
+        video.style.maxWidth = '400px';
+        video.style.borderRadius = '8px';
+        
+        // Create capture button
+        const captureBtn = document.createElement('button');
+        captureBtn.textContent = '📸 Capture Photo';
+        captureBtn.className = 'upload-btn';
+        captureBtn.style.marginTop = '10px';
+        
+        // Create cancel button
+        const cancelBtn = document.createElement('button');
+        cancelBtn.textContent = '❌ Cancel';
+        cancelBtn.className = 'upload-btn';
+        cancelBtn.style.marginTop = '10px';
+        cancelBtn.style.marginLeft = '10px';
+        
+        // Replace upload buttons with camera preview
+        const uploadButtons = document.querySelector('.upload-buttons');
+        const previewContainer = document.getElementById('image-preview-container');
+        
+        uploadButtons.style.display = 'none';
+        previewContainer.innerHTML = '';
+        previewContainer.appendChild(video);
+        previewContainer.appendChild(document.createElement('br'));
+        previewContainer.appendChild(captureBtn);
+        previewContainer.appendChild(cancelBtn);
+        previewContainer.style.display = 'block';
+        
+        // Capture photo when capture button is clicked
+        captureBtn.addEventListener('click', () => {
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          canvas.width = video.videoWidth;
+          canvas.height = video.videoHeight;
+          context.drawImage(video, 0, 0);
+          
+          // Convert canvas to blob
+          canvas.toBlob((blob) => {
+            const file = new File([blob], 'camera-photo.jpg', { type: 'image/jpeg' });
+            uploadedImage = file;
+            displayImagePreview(file);
+            checkFormValidity();
+            
+            // Stop camera stream
+            stream.getTracks().forEach(track => track.stop());
+            
+            // Reset UI
+            uploadButtons.style.display = 'flex';
+          }, 'image/jpeg', 0.8);
+        });
+        
+        // Cancel camera
+        cancelBtn.addEventListener('click', () => {
+          stream.getTracks().forEach(track => track.stop());
+          previewContainer.style.display = 'none';
+          uploadButtons.style.display = 'flex';
+        });
+        
+      } catch (error) {
+        console.error('Error accessing camera:', error);
+        showToast('Camera access denied or not available. Using file picker instead.', 'warning');
+        // Fallback to file picker with camera capture
+        if (fileInput) {
+          fileInput.setAttribute('capture', 'environment');
+          fileInput.focus();
+          setTimeout(() => fileInput.click(), 10);
+        }
+      }
+    });
+  }
+
+  // Gallery button - use file picker
+  if (galleryBtn) {
+    galleryBtn.addEventListener('click', (e) => {
+      e.preventDefault();
+      if (fileInput) {
+        fileInput.removeAttribute('capture');
+        fileInput.focus();
+        setTimeout(() => fileInput.click(), 10);
+      }
+    });
+  }
+
+  // Drag and drop support only
+  if (uploadArea) {
+    uploadArea.addEventListener('dragover', (e) => {
+      e.preventDefault();
+      uploadArea.classList.add('dragging');
+    });
+    uploadArea.addEventListener('dragleave', () => {
+      uploadArea.classList.remove('dragging');
+    });
+    uploadArea.addEventListener('drop', (e) => {
+      e.preventDefault();
+      uploadArea.classList.remove('dragging');
+      const file = e.dataTransfer.files[0];
+      if (file && file.type.startsWith('image/')) {
+        uploadedImage = file;
+        displayImagePreview(file);
+        checkFormValidity();
+      } else {
+        showToast('Please drop an image file', 'error');
+      }
+    });
+  }
+
+  if (getLocationBtn) {
+    getLocationBtn.addEventListener('click', getUserLocation);
+  }
+
+  if (submitBtn) {
+    submitBtn.addEventListener('click', handleSubmit);
+  }
+
+  if (closeResultBtn) {
+    closeResultBtn.addEventListener('click', closeResultModal);
+  }
+
+  // Close button on result modal
+  const closeResultBtnX = document.getElementById('close-result-modal-x');
+  if (closeResultBtnX) {
+    closeResultBtnX.addEventListener('click', closeResultModal);
+  }
+
+  // Close modals when clicking background
+  const resultModal = document.getElementById('result-modal');
+  if (resultModal) {
+    resultModal.addEventListener('click', (e) => {
+      if (e.target === resultModal) {
+        closeResultModal();
+      }
+    });
+  }
+
+  if (uploadAnotherBtn) {
+    uploadAnotherBtn.addEventListener('click', () => {
+      closeResultModal();
+    });
+  }
+
+  if (viewInFeedBtn) {
+    viewInFeedBtn.addEventListener('click', () => {
+      window.location.href = '/feed.html';
+    });
+  }
+
+  if (viewIssuesBtn) {
+    viewIssuesBtn.addEventListener('click', () => {
+      window.location.href = '/feed.html';
+    });
+  }
+
+  // Initialize form state
+  checkFormValidity();
 
   // Wait for authentication
   onAuthStateChanged(auth, async (user) => {
@@ -293,68 +572,6 @@ document.addEventListener('DOMContentLoaded', () => {
     try {
       currentToken = await getIdToken(user);
       console.log("User authenticated");
-
-      // Add event listeners
-      const fileInput = document.getElementById('file-input');
-      const uploadArea = document.getElementById('upload-area');
-      const getLocationBtn = document.getElementById('get-location-btn');
-      const submitBtn = document.getElementById('submit-btn');
-      const closeResultBtn = document.getElementById('close-result-modal');
-      const viewIssuesBtn = document.getElementById('view-issues-btn');
-
-      if (fileInput) {
-        fileInput.addEventListener('change', handleImageSelect);
-      }
-
-      if (uploadArea) {
-        uploadArea.addEventListener('click', () => fileInput?.click());
-        
-        // Drag and drop
-        uploadArea.addEventListener('dragover', (e) => {
-          e.preventDefault();
-          uploadArea.classList.add('dragging');
-        });
-        
-        uploadArea.addEventListener('dragleave', () => {
-          uploadArea.classList.remove('dragging');
-        });
-        
-        uploadArea.addEventListener('drop', (e) => {
-          e.preventDefault();
-          uploadArea.classList.remove('dragging');
-          
-          const file = e.dataTransfer.files[0];
-          if (file && file.type.startsWith('image/')) {
-            uploadedImage = file;
-            displayImagePreview(file);
-            checkFormValidity();
-          } else {
-            showToast('Please drop an image file', 'error');
-          }
-        });
-      }
-
-      if (getLocationBtn) {
-        getLocationBtn.addEventListener('click', getUserLocation);
-      }
-
-      if (submitBtn) {
-        submitBtn.addEventListener('click', handleSubmit);
-      }
-
-      if (closeResultBtn) {
-        closeResultBtn.addEventListener('click', closeResultModal);
-      }
-
-      if (viewIssuesBtn) {
-        viewIssuesBtn.addEventListener('click', () => {
-          window.location.href = '/feed.html';
-        });
-      }
-
-      // Initialize form state
-      checkFormValidity();
-
     } catch (error) {
       console.error("Error during initialization:", error);
       showToast('Failed to initialize. Please refresh the page.', 'error');

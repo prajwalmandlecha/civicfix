@@ -10,6 +10,7 @@
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles/map.css" />
     <link rel="stylesheet" href="styles/dark-mode.css" />
+    <link rel="stylesheet" href="styles/fix-upload-modal.css" />
   </head>
   <body>
     <!-- Navigation -->
@@ -78,88 +79,184 @@
     </section>
 
     <!-- Issue Detail Modal -->
-    <div id="issue-modal" class="modal" style="display: none;">
+    <div id="issue-modal" class="modal">
       <div class="modal-content">
-        <button id="close-modal" class="modal-close">×</button>
-        <img id="modal-issue-image" class="modal-image" src="" alt="Issue" style="display: none;">
-        
-        <h2 id="modal-issue-title" class="modal-title">Issue Title</h2>
-        
-        <div class="modal-meta">
-          <span>Status: <strong id="modal-issue-status">open</strong></span>
-          <span>Severity: <strong id="modal-issue-severity">0</strong></span>
-          <span>Date: <strong id="modal-issue-date">-</strong></span>
-        </div>
-
-        <div class="modal-stats">
-          <div class="stat-item">
-            <strong>Upvotes</strong>
-            <span id="modal-issue-upvotes">0</span>
+        <button class="modal-close" onclick="closeModal()">&times;</button>
+        <div class="modal-body">
+          <div class="modal-media">
+            <img id="modal-issue-image" src="" alt="Issue Image" style="width: 100%; height: auto; display: block;" />
           </div>
-          <div class="stat-item">
-            <strong>Reports</strong>
-            <span id="modal-issue-reports">0</span>
+
+          <div class="modal-header">
+            <h2 class="modal-title">Issue Details</h2>
           </div>
+
+          <div class="issue-info-section">
+            <div class="issue-location-card">
+              <div class="info-row">
+                <i class="fas fa-map-marker-alt"></i>
+                <p id="modal-issue-location">Location placeholder</p>
+              </div>
+              <div class="info-row">
+                <i class="fas fa-calendar-alt"></i>
+                <p>Uploaded on: <span id="modal-issue-date">Date placeholder</span></p>
+              </div>
+              <div class="info-row">
+                <i class="fas fa-user"></i>
+                <p>Uploaded by: <span id="modal-issue-uploader">Uploader placeholder</span></p>
+              </div>
+            </div>
+
+            <div class="issue-stats-grid">
+              <div class="stat-item">
+                <span class="stat-label">Status</span>
+                <span id="modal-issue-status" class="stat-value"></span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label">Severity</span>
+                <span id="modal-issue-severity" class="stat-value">N/A</span>
+              </div>
+              <div class="stat-item">
+                <span class="stat-label" id="modal-co2-label">CO₂ Risk</span>
+                <span id="modal-issue-co2" class="stat-value">0 kg</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Open Issue Details -->
+          <div id="open-issue-details">
+            <div class="issue-description-section">
+              <h3>Description</h3>
+              <p id="modal-issue-description">Description placeholder</p>
+            </div>
+            <div class="detected-issues-section">
+              <h3>Detected Issues</h3>
+              <div id="modal-detected-issues-container">
+                <!-- Detected issues will be injected here -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Closed Issue Details -->
+          <div id="closed-issue-details" style="display: none;">
+            <div class="fix-info-section">
+              <h3>Fix Information</h3>
+              <div id="fix-details-container">
+                <!-- Fix details will be loaded here -->
+                <div class="loading-spinner" style="display: none;"></div>
+              </div>
+            </div>
+          </div>
+
         </div>
-
-        <p id="modal-issue-description" class="modal-description">Description goes here</p>
-
-        <div id="modal-issue-types" class="modal-issue-types"></div>
-
-        <div class="modal-actions">
-          <button id="modal-upvote-btn" class="vote-button">👍 Upvote</button>
-          <button id="modal-report-btn" class="vote-button">🚩 Report</button>
+        <div class="modal-footer" id="modal-footer" style="display: none; padding: 16px 24px; border-top: 2px solid rgba(0,0,0,0.06); background: #F9FAFB;">
+          <!-- Action buttons will be injected here -->
         </div>
       </div>
     </div>
 
     <!-- Filter Modal -->
+    <!-- Modern Filter Modal (Feed Style, no distance filter) -->
     <div id="filter-modal" class="modal" style="display: none;">
       <div class="modal-content">
         <button id="close-filter-modal" class="modal-close">×</button>
         <h2 class="modal-title">Filter Issues</h2>
-
-        <div class="filter-group">
-          <label>Status</label>
-          <select id="filter-status" class="form-input">
-            <option value="all">All</option>
-            <option value="open" selected>Open</option>
-            <option value="closed">Closed</option>
-          </select>
+        <div class="modal-body">
+          <div class="filter-group">
+            <label>Status</label>
+            <div class="filter-dropdown-container">
+              <div class="filter-multiselect" id="status-selector-map">
+                <div class="multiselect-display" id="status-display-map">
+                  <span id="status-text-map">Open</span>
+                  <span class="dropdown-arrow">▼</span>
+                </div>
+                <div class="multiselect-dropdown" id="status-dropdown-map" style="display: none;">
+                  <div class="multiselect-options" id="status-options-map">
+                    <label class="multiselect-option"><input type="radio" name="status" value="all"> All</label>
+                    <label class="multiselect-option"><input type="radio" name="status" value="open" checked> Open</label>
+                    <label class="multiselect-option"><input type="radio" name="status" value="closed"> Closed</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Severity</label>
+            <div class="filter-dropdown-container">
+              <div class="filter-multiselect" id="severity-selector-map">
+                <div class="multiselect-display" id="severity-display-map">
+                  <span id="severity-text-map">All</span>
+                  <span class="dropdown-arrow">▼</span>
+                </div>
+                <div class="multiselect-dropdown" id="severity-dropdown-map" style="display: none;">
+                  <div class="multiselect-options" id="severity-options-map">
+                    <label class="multiselect-option"><input type="radio" name="severity" value="all" checked> All</label>
+                    <label class="multiselect-option"><input type="radio" name="severity" value="high"> High (8+)</label>
+                    <label class="multiselect-option"><input type="radio" name="severity" value="medium"> Medium (4-7)</label>
+                    <label class="multiselect-option"><input type="radio" name="severity" value="low"> Low (0-3)</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Days Back</label>
+            <div class="filter-dropdown-container">
+              <div class="filter-multiselect" id="days-selector-map">
+                <div class="multiselect-display" id="days-display-map">
+                  <span id="days-text-map">Last 30 days</span>
+                  <span class="dropdown-arrow">▼</span>
+                </div>
+                <div class="multiselect-dropdown" id="days-dropdown-map" style="display: none;">
+                  <div class="multiselect-options" id="days-options-map">
+                    <label class="multiselect-option"><input type="radio" name="days" value="7"> Last 7 days</label>
+                    <label class="multiselect-option"><input type="radio" name="days" value="30" checked> Last 30 days</label>
+                    <label class="multiselect-option"><input type="radio" name="days" value="90"> Last 90 days</label>
+                    <label class="multiselect-option"><input type="radio" name="days" value="365"> Last year</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="filter-group">
+            <label>Issue Types</label>
+            <div class="filter-dropdown-container">
+              <div class="filter-multiselect" id="issue-types-selector-map">
+                <div class="multiselect-display" id="issue-types-display-map">
+                  <span id="issue-types-text-map">Select issue types...</span>
+                  <span class="dropdown-arrow">▼</span>
+                </div>
+                <div class="multiselect-dropdown" id="issue-types-dropdown-map" style="display: none;">
+                  <div class="multiselect-search">
+                    <input type="text" placeholder="Search..." id="issue-types-search-map">
+                  </div>
+                  <div class="multiselect-options" id="issue-types-options-map">
+                    <label class="multiselect-option"><input type="checkbox" value="DRAIN_BLOCKAGE"> Drain Blockage</label>
+                    <label class="multiselect-option"><input type="checkbox" value="FALLEN_TREE"> Fallen Tree</label>
+                    <label class="multiselect-option"><input type="checkbox" value="FLOODING_SURFACE"> Surface Flooding</label>
+                    <label class="multiselect-option"><input type="checkbox" value="GRAFFITI_VANDALISM"> Graffiti Vandalism</label>
+                    <label class="multiselect-option"><input type="checkbox" value="GREENSPACE_MAINTENANCE"> Greenspace Maintenance</label>
+                    <label class="multiselect-option"><input type="checkbox" value="ILLEGAL_CONSTRUCTION_DEBRIS"> Illegal Construction Debris</label>
+                    <label class="multiselect-option"><input type="checkbox" value="MANHOLE_MISSING_OR_DAMAGED"> Manhole Missing/Damaged</label>
+                    <label class="multiselect-option"><input type="checkbox" value="POWER_POLE_LINE_DAMAGE"> Power Pole/Line Damage</label>
+                    <label class="multiselect-option"><input type="checkbox" value="PUBLIC_INFRASTRUCTURE_DAMAGED"> Public Infrastructure Damaged</label>
+                    <label class="multiselect-option"><input type="checkbox" value="PUBLIC_TOILET_UNSANITARY"> Public Toilet Unsanitary</label>
+                    <label class="multiselect-option"><input type="checkbox" value="ROAD_POTHOLE"> Road Pothole</label>
+                    <label class="multiselect-option"><input type="checkbox" value="SIDEWALK_DAMAGE"> Sidewalk Damage</label>
+                    <label class="multiselect-option"><input type="checkbox" value="SMALL_FIRE_HAZARD"> Small Fire Hazard</label>
+                    <label class="multiselect-option"><input type="checkbox" value="STRAY_ANIMALS"> Stray Animals</label>
+                    <label class="multiselect-option"><input type="checkbox" value="STREETLIGHT_OUTAGE"> Streetlight Outage</label>
+                    <label class="multiselect-option"><input type="checkbox" value="TRAFFIC_OBSTRUCTION"> Traffic Obstruction</label>
+                    <label class="multiselect-option"><input type="checkbox" value="TRAFFIC_SIGN_DAMAGE"> Traffic Sign Damage</label>
+                    <label class="multiselect-option"><input type="checkbox" value="WASTE_BULKY_DUMP"> Waste Bulky Dump</label>
+                    <label class="multiselect-option"><input type="checkbox" value="WASTE_LITTER_SMALL"> Waste Litter Small</label>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </div>
-
-        <div class="filter-group">
-          <label>Severity</label>
-          <select id="filter-severity" class="form-input">
-            <option value="all" selected>All</option>
-            <option value="high">High (8+)</option>
-            <option value="medium">Medium (4-7)</option>
-            <option value="low">Low (0-3)</option>
-          </select>
-        </div>
-
-        <div class="filter-group">
-          <label>Days Back</label>
-          <select id="filter-days" class="form-input">
-            <option value="7">Last 7 days</option>
-            <option value="30" selected>Last 30 days</option>
-            <option value="90">Last 90 days</option>
-            <option value="365">Last year</option>
-          </select>
-        </div>
-
-        <div class="filter-group">
-          <label>Radius (km)</label>
-          <select id="filter-radius" class="form-input">
-            <option value="1">1 km</option>
-            <option value="5">5 km</option>
-            <option value="10" selected>10 km</option>
-            <option value="20">20 km</option>
-            <option value="50">50 km</option>
-          </select>
-        </div>
-
-        <div class="modal-actions">
+        <div class="modal-footer">
           <button id="apply-filters" class="btn btn-primary">Apply Filters</button>
         </div>
       </div>
@@ -168,15 +265,86 @@
     <!-- Toast Notification -->
     <div id="toast" class="toast"></div>
 
+    <!-- Fix Upload Modal -->
+    <div id="fix-upload-modal" class="fix-upload-modal">
+      <div class="fix-upload-modal-content">
+        <div class="fix-upload-header">
+          <h2>Upload Fix</h2>
+          <p>Document the completed fix work with photos and description</p>
+          <button class="fix-upload-close" onclick="closeFixUploadModal()">&times;</button>
+        </div>
+        <div class="fix-upload-body">
+          <div class="fix-upload-section">
+            <h3>📷 Fix Photos *</h3>
+            <div class="fix-photos-upload" id="fix-photos-upload">
+              <div class="upload-buttons">
+                <button type="button" class="upload-button" id="camera-upload-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle>
+                  </svg>
+                  Take Photo
+                </button>
+                <button type="button" class="upload-button" id="file-upload-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                  </svg>
+                  Choose Files
+                </button>
+              </div>
+              <input type="file" id="fix-photo-input" accept="image/*" multiple hidden />
+              <input type="file" id="fix-camera-input" accept="image/*" capture="environment" hidden />
+              <p class="upload-hint">Upload up to 5 photos showing the completed fix work</p>
+              <div class="fix-photos-preview" id="fix-photos-preview"></div>
+            </div>
+          </div>
+          <div class="fix-upload-section">
+            <label for="fix-description-input">Fix Description *</label>
+            <textarea id="fix-description-input" placeholder="Describe the work done to fix this issue..." required></textarea>
+          </div>
+        </div>
+        <div class="fix-upload-footer">
+          <button type="button" class="fix-cancel-btn" onclick="closeFixUploadModal()">Cancel</button>
+          <button type="button" class="fix-submit-btn" id="fix-submit-btn" disabled>Submit Fix</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Fix Result Modal -->
+    <div id="fix-result-modal" class="modal">
+      <div class="modal-content" style="max-width: 700px;">
+        <button class="modal-close" onclick="closeFixResultModal()">&times;</button>
+        <div id="fix-result-content" style="padding: 20px;">
+          <!-- Content will be dynamically inserted -->
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload Progress Modal -->
+    <div id="upload-progress-modal" class="upload-progress-modal">
+      <div class="upload-progress-content">
+        <div class="upload-spinner"></div>
+        <p class="upload-progress-text" id="upload-progress-text">Uploading fix...</p>
+        <p class="upload-progress-subtext" id="upload-progress-subtext">Please wait</p>
+      </div>
+    </div>
+
     <!-- Footer -->
     <footer class="footer">
       <div class="container">
         <div class="footer-bottom">
-          <p>&copy; CivicFix. Powered by Elasticsearch & MapLibre GL JS</p>
+          <p>&copy; CivicFix. Powered by Elasticsearch & Google Maps</p>
         </div>
       </div>
     </footer>
 
+    <!-- Google Maps API -->
+    <script async defer
+      src="https://maps.googleapis.com/maps/api/js?key=AIzaSyArWfe-AqvplAJwvwmZC-QonAr4kmlTRjk&callback=initMap">
+    </script>
+    
     <script type="module" src="/pages/map.js"></script>
   </body>
 </html>

@@ -99,6 +99,7 @@ app.middleware("http")(verify_firebase_token_middleware)
 # Include routers
 # Issues router included twice: once at root for /issues/, once under /api for /api/issues/...
 app.include_router(issues.router, tags=["Issues"])
+app.include_router(fixes.router, tags=["Fixes"])
 app.include_router(issues.router, prefix="/api", tags=["Issues"])
 app.include_router(fixes.router, prefix="/api", tags=["Fixes"])
 app.include_router(users.router, prefix="/api", tags=["Users"])

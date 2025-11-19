@@ -12,7 +12,9 @@
       rel="stylesheet"
     />
     <link rel="stylesheet" href="styles/feed.css" />
+    <link rel="stylesheet" href="styles/map.css" />
     <link rel="stylesheet" href="styles/dark-mode.css" />
+    <link rel="stylesheet" href="styles/fix-upload-modal.css" />
     
   </head>
   <body>
@@ -59,20 +61,15 @@
 
         <!-- Filter Bar -->
         <div class="filter-bar">
-          <div class="filter-pills">
-            <button class="filter-pill active" data-filter="all">All Issues</button>
-            <button class="filter-pill" data-filter="open">Open</button>
-            <button class="filter-pill" data-filter="closed">Closed</button>
-          </div>
-          <div class="filter-actions">
-            <span id="filter-summary" class="filter-summary">0 issues</span>
-            <button id="refresh-btn" class="icon-button" title="Refresh">
-              🔄
-            </button>
-            <button id="advanced-filter-btn" class="icon-button" title="Advanced Filters">
-              ⚙️
-            </button>
-          </div>
+          <span id="filter-summary" class="filter-summary">0 issues</span>
+          <button id="refresh-btn" class="icon-button" title="Refresh Feed">
+            <span class="icon">🔄</span>
+            <span class="button-text">Refresh</span>
+          </button>
+          <button id="advanced-filter-btn" class="icon-button" title="Filter Options">
+            <span class="icon">🔍</span>
+            <span class="button-text">Filters</span>
+          </button>
         </div>
 
         <div class="issues-grid" id="issues-grid"></div>
@@ -84,6 +81,72 @@
       <div class="modal-content">
         <button class="modal-close" onclick="closeModal()">&times;</button>
         <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Fix Upload Modal -->
+    <div id="fix-upload-modal" class="fix-upload-modal">
+      <div class="fix-upload-modal-content">
+        <div class="fix-upload-header">
+          <h2>Upload Fix</h2>
+          <p>Document the completed fix work with photos and description</p>
+          <button class="fix-upload-close" onclick="closeFixUploadModal()">&times;</button>
+        </div>
+        <div class="fix-upload-body">
+          <div class="fix-upload-section">
+            <h3>📷 Fix Photos *</h3>
+            <div class="fix-photos-upload" id="fix-photos-upload">
+              <div class="upload-buttons">
+                <button type="button" class="upload-button" id="camera-upload-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path>
+                    <circle cx="12" cy="13" r="4"></circle>
+                  </svg>
+                  Take Photo
+                </button>
+                <button type="button" class="upload-button" id="file-upload-btn">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                    <polyline points="17 8 12 3 7 8"></polyline>
+                    <line x1="12" y1="3" x2="12" y2="15"></line>
+                  </svg>
+                  Choose Files
+                </button>
+              </div>
+              <input type="file" id="fix-photo-input" accept="image/*" multiple hidden />
+              <input type="file" id="fix-camera-input" accept="image/*" capture="environment" hidden />
+              <p class="upload-hint">Upload up to 5 photos showing the completed fix work</p>
+              <div class="fix-photos-preview" id="fix-photos-preview"></div>
+            </div>
+          </div>
+          <div class="fix-upload-section">
+            <label for="fix-description-input">Fix Description *</label>
+            <textarea id="fix-description-input" placeholder="Describe the work done to fix this issue..." required></textarea>
+          </div>
+        </div>
+        <div class="fix-upload-footer">
+          <button type="button" class="fix-cancel-btn" onclick="closeFixUploadModal()">Cancel</button>
+          <button type="button" class="fix-submit-btn" id="fix-submit-btn" disabled>Submit Fix</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- Upload Progress Modal -->
+    <div id="upload-progress-modal" class="upload-progress-modal">
+      <div class="upload-progress-content">
+        <div class="upload-spinner"></div>
+        <p class="upload-progress-text" id="upload-progress-text">Uploading fix...</p>
+        <p class="upload-progress-subtext" id="upload-progress-subtext">Please wait</p>
+      </div>
+    </div>
+
+    <!-- Fix Result Modal -->
+    <div id="fix-result-modal" class="modal">
+      <div class="modal-content" style="max-width: 700px;">
+        <button class="modal-close" onclick="closeFixResultModal()">&times;</button>
+        <div id="fix-result-content" style="padding: 20px;">
+          <!-- Content will be dynamically inserted -->
+        </div>
       </div>
     </div>
 

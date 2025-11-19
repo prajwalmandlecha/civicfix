@@ -76,34 +76,37 @@ def analyze_issue(
 
 
 def verify_fix(
-    before_image_url: str,
+    issue_id: str,
     after_image_urls: List[str],
-    issue_description: str,
-    fix_description: str
+    fix_description: str,
+    ngo_id: str
 ) -> Optional[Dict[str, Any]]:
     """
     Send fix to AI verifier service for validation.
     
     Args:
-        before_image_url: URL of the original issue photo
+        issue_id: ID of the issue being fixed
         after_image_urls: List of URLs of fix photos
-        issue_description: Description of the original issue
         fix_description: Description of the fix
+        ngo_id: ID of the NGO submitting the fix
         
     Returns:
         Optional[Dict]: Verification response from AI service
     """
+    from datetime import datetime
+    
     payload = {
-        "before_image_url": before_image_url,
-        "after_image_urls": after_image_urls,
-        "issue_description": issue_description,
+        "issue_id": issue_id,
+        "image_urls": after_image_urls,
         "fix_description": fix_description,
+        "ngo_id": ngo_id,
+        "timestamp": datetime.utcnow().isoformat() + "Z"
     }
 
     try:
         logger.info(f"Sending fix verification to {settings.VERIFIER_URL}")
         response = requests.post(
-            f"{settings.VERIFIER_URL}/verify-fix/",
+            f"{settings.VERIFIER_URL}/verify_fix/",
             json=payload,
             timeout=60,
         )
