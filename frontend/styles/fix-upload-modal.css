@@ -1,0 +1,317 @@
+/* Fix Upload Modal Styles */
+.fix-upload-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 10000;
+  justify-content: center;
+  align-items: center;
+  animation: fadeIn 0.3s ease;
+}
+
+.fix-upload-modal.open {
+  display: flex;
+}
+
+.fix-upload-modal-content {
+  background: white;
+  border-radius: 20px;
+  width: min(600px, 90vw);
+  max-height: 90vh;
+  overflow: hidden;
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
+  animation: slideUp 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.fix-upload-header {
+  padding: 24px;
+  border-bottom: 2px solid rgba(0, 0, 0, 0.06);
+  background: linear-gradient(135deg, #4CAF79 0%, #3BA890 100%);
+  color: white;
+  position: relative;
+}
+
+.fix-upload-header h2 {
+  margin: 0;
+  font-size: 1.5rem;
+  font-weight: 700;
+}
+
+.fix-upload-header p {
+  margin: 8px 0 0 0;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+.fix-upload-close {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  background: rgba(255, 255, 255, 0.2);
+  border: none;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  font-size: 1.5rem;
+  color: white;
+  cursor: pointer;
+  transition: all 0.3s ease;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.fix-upload-close:hover {
+  background: rgba(255, 255, 255, 0.3);
+  transform: rotate(90deg);
+}
+
+.fix-upload-body {
+  padding: 24px;
+  max-height: calc(90vh - 180px);
+  overflow-y: auto;
+}
+
+.fix-upload-section {
+  margin-bottom: 24px;
+}
+
+.fix-upload-section h3 {
+  margin: 0 0 12px 0;
+  font-size: 1rem;
+  font-weight: 600;
+  color: #1F2937;
+}
+
+.fix-upload-section label {
+  display: block;
+  margin-bottom: 8px;
+  font-weight: 500;
+  color: #374151;
+}
+
+.fix-upload-section textarea {
+  width: 100%;
+  padding: 12px;
+  border: 2px solid #E5E7EB;
+  border-radius: 8px;
+  font-family: inherit;
+  font-size: 0.95rem;
+  resize: vertical;
+  min-height: 100px;
+  transition: border-color 0.3s ease;
+}
+
+.fix-upload-section textarea:focus {
+  outline: none;
+  border-color: #4CAF79;
+}
+
+.fix-photos-upload {
+  border: 2px dashed #D1D5DB;
+  border-radius: 12px;
+  padding: 20px;
+  text-align: center;
+  background: #F9FAFB;
+  transition: all 0.3s ease;
+}
+
+.fix-photos-upload.drag-over {
+  border-color: #4CAF79;
+  background: rgba(76, 175, 121, 0.1);
+}
+
+.upload-buttons {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.upload-button {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 20px;
+  border: 2px solid #4CAF79;
+  background: white;
+  color: #4CAF79;
+  border-radius: 8px;
+  cursor: pointer;
+  font-weight: 600;
+  transition: all 0.3s ease;
+}
+
+.upload-button:hover {
+  background: #4CAF79;
+  color: white;
+}
+
+.upload-button svg {
+  width: 20px;
+  height: 20px;
+}
+
+.upload-hint {
+  color: #6B7280;
+  font-size: 0.85rem;
+  margin-top: 8px;
+}
+
+.fix-photos-preview {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(120px, 1fr));
+  gap: 12px;
+  margin-top: 16px;
+}
+
+.fix-photo-item {
+  position: relative;
+  aspect-ratio: 1;
+  border-radius: 8px;
+  overflow: hidden;
+  background: #F3F4F6;
+}
+
+.fix-photo-item img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+
+.fix-photo-remove {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  background: rgba(239, 68, 68, 0.9);
+  border: none;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  color: white;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 16px;
+  transition: all 0.3s ease;
+}
+
+.fix-photo-remove:hover {
+  background: #DC2626;
+  transform: scale(1.1);
+}
+
+.fix-upload-footer {
+  padding: 20px 24px;
+  border-top: 2px solid rgba(0, 0, 0, 0.06);
+  display: flex;
+  gap: 12px;
+  justify-content: flex-end;
+  background: #F9FAFB;
+}
+
+.fix-upload-footer button {
+  padding: 12px 24px;
+  border: none;
+  border-radius: 8px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.3s ease;
+}
+
+.fix-cancel-btn {
+  background: #E5E7EB;
+  color: #374151;
+}
+
+.fix-cancel-btn:hover {
+  background: #D1D5DB;
+}
+
+.fix-submit-btn {
+  background: linear-gradient(135deg, #4CAF79 0%, #3BA890 100%);
+  color: white;
+}
+
+.fix-submit-btn:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px rgba(76, 175, 121, 0.3);
+}
+
+.fix-submit-btn:disabled {
+  background: #D1D5DB;
+  cursor: not-allowed;
+  transform: none;
+}
+
+.upload-progress-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  width: 100%;
+  height: 100%;
+  background: rgba(0, 0, 0, 0.8);
+  z-index: 10001;
+  justify-content: center;
+  align-items: center;
+}
+
+.upload-progress-modal.open {
+  display: flex;
+}
+
+.upload-progress-content {
+  background: white;
+  border-radius: 16px;
+  padding: 32px;
+  text-align: center;
+  max-width: 400px;
+}
+
+.upload-spinner {
+  width: 60px;
+  height: 60px;
+  border: 4px solid #E5E7EB;
+  border-top-color: #4CAF79;
+  border-radius: 50%;
+  animation: spin 1s linear infinite;
+  margin: 0 auto 20px;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
+.upload-progress-text {
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #1F2937;
+  margin-bottom: 8px;
+}
+
+.upload-progress-subtext {
+  font-size: 0.9rem;
+  color: #6B7280;
+}
+
+@keyframes fadeIn {
+  from { opacity: 0; }
+  to { opacity: 1; }
+}
+
+@keyframes slideUp {
+  from {
+    opacity: 0;
+    transform: translateY(30px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
