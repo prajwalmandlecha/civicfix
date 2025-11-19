@@ -26,7 +26,7 @@ CivicFix transforms civic issue management into an intelligent, community-driven
 
 ## 🏗️ Architecture
 
-![CivicFix Architecture](doc/civicfix_architecture.png)
+![CivicFix Architecture](doc/Architecture-diagram.png)
 
 ### **Microservices Flow**
 
